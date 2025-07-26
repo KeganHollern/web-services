@@ -1,3 +1,5 @@
+import "@/styles/globals.css"
+
 import { createContext, useContext, useEffect, useState } from "react"
 
 type Theme = "dark" | "light" | "system"

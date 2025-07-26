@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/carousel"
 import Autoplay from "embla-carousel-autoplay"
 
-function Page() {
+export function HomePage() {
     const breadcrumbs = [
         { label: "lystic.dev" }
     ];
@@ -231,4 +231,3 @@ a survival style game mode to players.`,
     )
 }
 
-export default Page;
