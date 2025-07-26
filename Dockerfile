@@ -1,5 +1,5 @@
 # download deps
-FROM node:18-alpine AS deps
+FROM node:24-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 
 # build source code
-FROM node:18-alpine as builder
+FROM node:24-alpine as builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY web/. ./
