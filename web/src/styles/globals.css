@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+    --flexoki-bg: hsl(48 100% 97%);
+    --flexoki-bg-2: hsl(51 33% 92%);
+
+    --flexoki-ui: hsl(51 21% 88%);
+    --flexoki-ui-2: hsl(50 14% 83%);
+    --flexoki-ui-3: hsl(55 10% 79%);
+
+    --flexoki-tx: hsl(0 3% 6%);
+    --flexoki-tx-2: hsl(50 3% 42%);
+    --flexoki-tx-3: hsl(49 7% 70%);
+
+    --flexoki-re: hsl(3 62% 42%);
+
+    --sidebar-background: hsl(0 0% 98%);
+    --sidebar-foreground: hsl(240 5.3% 26.1%);
+    --sidebar-primary: hsl(240 5.9% 10%);
+    --sidebar-primary-foreground: hsl(0 0% 98%);
+    --sidebar-accent: hsl(240 4.8% 95.9%);
+    --sidebar-accent-foreground: hsl(240 5.9% 10%);
+    --sidebar-border: hsl(220 13% 91%);
+    --sidebar-ring: hsl(217.2 91.2% 59.8%);
+
+    --chart-1: oklch(0.646 0.222 41.116);
+    --chart-2: oklch(0.6 0.118 184.704);
+    --chart-3: oklch(0.398 0.07 227.392);
+    --chart-4: oklch(0.828 0.189 84.429);
+    --chart-5: oklch(0.769 0.188 70.08);
+}
+
+.dark {
+    --flexoki-bg: hsl(0 3% 6%);
+    --flexoki-bg-2: hsl(30 4% 11%);
+    --flexoki-ui: hsl(30 3% 15%);
+    --flexoki-ui-2: hsl(40 3% 20%);
+    --flexoki-ui-3: hsl(30 3% 24%);
+    --flexoki-tx: hsl(55 10% 79%);
+    --flexoki-tx-2: hsl(43 3% 52%);
+    --flexoki-tx-3: hsl(45 2% 33%);
+    --flexoki-re: hsl(5 61% 54%);
+    --sidebar-background: hsl(240 5.9% 10%);
+    --sidebar-foreground: hsl(240 4.8% 95.9%);
+    --sidebar-primary: hsl(224.3 76.3% 48%);
+    --sidebar-primary-foreground: hsl(0 0% 100%);
+    --sidebar-accent: hsl(0, 0%, 1%);
+    --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+    --sidebar-border: hsl(240 3.7% 15.9%);
+    --sidebar-ring: hsl(217.2 91.2% 59.8%);
+
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+}
+
+
+/* bind flexoki configurations to */
+:root {
+    --background: var(--flexoki-bg);
+    --foreground: var(--flexoki-tx);
+
+    --card: var(--flexoki-bg);
+    --card-foreground: var(--flexoki-tx);
+
+    --popover: var(--flexoki-bg);
+    --popover-foreground: var(--flexoki-tx);
+
+    --primary: var(--flexoki-tx);
+    --primary-foreground: var(--flexoki-bg);
+
+    --secondary: var(--flexoki-ui-2);
+    --secondary-foreground: var(--flexoki-tx-2);
+
+    --muted: var(--flexoki-bg-2);
+    --muted-foreground: var(--flexoki-tx-3);
+
+    --accent: var(--flexoki-ui);
+    --accent-foreground: var(--flexoki-tx-2);
+
+    --destructive: var(--flexoki-re);
+    --destructive-foreground: var(--flexoki-bg);
+
+    --border: var(--flexoki-ui-2);
+    --input: var(--flexoki-ui-2);
+    --ring: var(--flexoki-ui-3);
+
+    /* radius is hardcoded for all themes*/
+    --radius: 0.5rem;
+
+    --sidebar-background: var(--sidebar-background);
+    --sidebar-foreground: var(--sidebar-foreground);
+    --sidebar-primary: var(--sidebar-primary);
+    --sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --sidebar-accent: var(--sidebar-accent);
+    --sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --sidebar-border: var(--sidebar-border);
+    --sidebar-ring: var(--sidebar-ring);
+
+    --chart-1: var(--chart-1);
+    --chart-2: var(--chart-2);
+    --chart-3: var(--chart-3);
+    --chart-4: var(--chart-4);
+    --chart-5: var(--chart-5);
+}
+
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+}
