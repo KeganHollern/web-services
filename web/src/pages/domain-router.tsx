@@ -1,12 +1,13 @@
 
 import { SubdomainProvider, useSubdomain } from "@/context/subdomain-provider"; // Adjust import path
+
 import { HomeRouter } from "@/pages/home/router";
+import { BlogRouter } from "@/pages/blog/router";
+
 import { PageNotFound } from "@/pages/404/page";
-// TODO: routers for other subdomain
+import Cookies from "js-cookie";
 
 export function DomainRouter() {
-    // TODO: detect subdomain to route
-    // Function to detect subdomain
     const getSubdomain = () => {
         const hostname = window.location.hostname;
         const parts = hostname.split('.');
@@ -18,19 +19,17 @@ export function DomainRouter() {
         return 'main'; // Or '' for the root domain
     };
 
-    const isDev = process.env.NODE_ENV === "development";
-    const initialSubdomain = getSubdomain();
-
-    if (isDev) {
-        // In dev, we'll use the context value, but defer the switch until inside the provider
+    if (process.env.NODE_ENV === "development") {
+        // in dev mode, we have a provider that will allow us to switch subdomains implicitly
+        // we also store the selected subdomain in a cookie, so we can retain it between reloads
         return (
-            <SubdomainProvider initialSubdomain={initialSubdomain}>
+            <SubdomainProvider initialSubdomain={Cookies.get("dev_subdomain") ?? getSubdomain()}>
                 <DomainRouterInner />
             </SubdomainProvider>
         )
     } else {
         // Prod: No provider, just use detected subdomain
-        let PageRouter: React.FC = GetPageRouter(initialSubdomain);
+        let PageRouter: React.FC = GetPageRouter(getSubdomain());
         return <PageRouter />;
     }
 }
@@ -46,7 +45,9 @@ function GetPageRouter(subdomain: string): React.FC {
     switch (subdomain) {
         case "main":
             return HomeRouter;
-        // TODO: Add cases as you implement more subdomains
+        case "blog":
+            return BlogRouter;
+
         default:
             return PageNotFound;
     }

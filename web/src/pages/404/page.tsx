@@ -1,11 +1,20 @@
 import { Header } from "@/components/page-header";
 import YouAreLost from "@/assets/you-are-lost.gif";
 
-export function PageNotFound() {
+type PageNotFoundProps = {
+    domain?: string
+}
+
+export function PageNotFound({ domain }: PageNotFoundProps) {
+    if (domain === undefined) {
+        domain = "lystic.dev"
+    }
+
     const breadcrumbs = [
-        { label: "lystic.dev", href: "https://lystic.dev" },
+        { label: domain, href: `https://${domain}` },
         { label: "404" }
     ];
+
     return (
         <Header breadcrumbItems={breadcrumbs}>
             <div className="flex-1 flex justify-center items-center w-full">
