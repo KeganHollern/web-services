@@ -1,4 +1,3 @@
-import "@/styles/globals.css"
 
 import { SidebarProvider, SidebarInset, Sidebar as BaseSidebar, SidebarGroup, SidebarContent, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
 import { type LucideProps } from "lucide-react";

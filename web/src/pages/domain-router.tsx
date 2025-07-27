@@ -1,4 +1,3 @@
-import "@/styles/globals.css"
 
 import { SubdomainProvider, useSubdomain } from "@/context/subdomain-provider"; // Adjust import path
 import { HomeRouter } from "@/pages/home/router";

@@ -1,4 +1,4 @@
-import "@/styles/globals.css"
+
 
 import { Moon, Sun } from "lucide-react"
 

@@ -1,4 +1,3 @@
-import "@/styles/globals.css"
 
 import React from "react";
 

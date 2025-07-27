@@ -1,4 +1,3 @@
-import "@/styles/globals.css"
 
 import { createContext, useContext, useEffect, useState } from "react"
 
