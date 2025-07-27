@@ -1,6 +1,8 @@
 import "@/styles/globals.css"
 
+import { SubdomainProvider, useSubdomain } from "@/context/subdomain-provider"; // Adjust import path
 import { HomeRouter } from "@/pages/home/router";
+import { PageNotFound } from "@/pages/404/page";
 // TODO: routers for other subdomain
 
 export function DomainRouter() {
@@ -17,21 +19,37 @@ export function DomainRouter() {
         return 'main'; // Or '' for the root domain
     };
 
+    const isDev = process.env.NODE_ENV === "development";
+    const initialSubdomain = getSubdomain();
 
-    // select which router we need to use based on which subdomain the user is on
-    let PageRouter: React.FC
-    const subdomain = getSubdomain();
-
-    switch (subdomain) {
-        case 'main':
-            PageRouter = HomeRouter;
-            break;
-        default:
-            PageRouter = HomeRouter; // TODO: 404 not found page
+    if (isDev) {
+        // In dev, we'll use the context value, but defer the switch until inside the provider
+        return (
+            <SubdomainProvider initialSubdomain={initialSubdomain}>
+                <DomainRouterInner />
+            </SubdomainProvider>
+        )
+    } else {
+        // Prod: No provider, just use detected subdomain
+        let PageRouter: React.FC = GetPageRouter(initialSubdomain);
+        return <PageRouter />;
     }
-
-    // return whichever router we need
-    return (
-        <PageRouter />
-    )
 }
+
+// Inner component for dev mode to access context
+function DomainRouterInner() {
+    const { subdomain } = useSubdomain();
+    let PageRouter: React.FC = GetPageRouter(subdomain);
+    return <PageRouter />;
+}
+
+function GetPageRouter(subdomain: string): React.FC {
+    switch (subdomain) {
+        case "main":
+            return HomeRouter;
+        // TODO: Add cases as you implement more subdomains
+        default:
+            return PageNotFound;
+    }
+}
+

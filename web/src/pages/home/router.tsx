@@ -2,12 +2,13 @@ import "@/styles/globals.css"
 
 import { Route, Routes } from "react-router";
 import { HomePage } from "./page";
+import { PageNotFound } from "@/pages/404/page";
 
 export function HomeRouter() {
     return (
         <Routes>
             <Route path="/" element={<HomePage />} />
-            {/* <Route path="*" element={<NotFoundPage />} /> */}
+            <Route path="*" element={<PageNotFound />} />
         </Routes>
     )
 }

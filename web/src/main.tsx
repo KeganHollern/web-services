@@ -4,7 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { BrowserRouter } from "react-router";
-import { ThemeProvider } from "@/components/theme-provider"
+import { ThemeProvider } from "@/context/theme-provider"
 import { DomainRouter } from "@/pages/domain-router"
 
 import { Code, Home, Newspaper, BookLock } from "lucide-react";

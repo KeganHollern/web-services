@@ -1,10 +1,13 @@
 import "@/styles/globals.css"
 
+import React from "react";
+
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ModeToggle } from "@/components/mode-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import React from "react";
+import { SubdomainSelector } from "@/components/subdomain-selector";
+
 
 interface BreadcrumbItem {
     label: string;
@@ -22,10 +25,10 @@ export function Header({ children, breadcrumbItems }: HeaderProps) {
 
     return (
         <>
-            <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4">
-                <div className="flex items-center gap-2">
+            <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+                <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6 py-2">
                     <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="mr-2 h-4" />
+                    <Separator orientation="vertical" className="mx-2 data-[orientation=vertical]:h-4" />
                     <Breadcrumb>
                         <BreadcrumbList>
                             {items.map((item, index) => (
@@ -48,8 +51,11 @@ export function Header({ children, breadcrumbItems }: HeaderProps) {
                             ))}
                         </BreadcrumbList>
                     </Breadcrumb>
+                    <div className="ml-auto flex items-center gap-2">
+                        <SubdomainSelector />
+                        <ThemeToggle />
+                    </div>
                 </div>
-                <ModeToggle />
             </header>
             <main className="flex flex-1 flex-col overflow-hidden">
                 {children}
