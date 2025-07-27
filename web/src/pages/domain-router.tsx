@@ -1,11 +1,13 @@
 
 import { SubdomainProvider, useSubdomain } from "@/context/subdomain-provider"; // Adjust import path
 
-import { HomeRouter } from "@/pages/home/router";
-import { BlogRouter } from "@/pages/blog/router";
+import { HomeRouter } from "@/pages/home/router"
+import { BlogRouter } from "@/pages/blog/router"
+import { SecretRouter } from "@/pages/secret/router"
+import { EditRouter } from "@/pages/edit/router"
 
-import { PageNotFound } from "@/pages/404/page";
-import Cookies from "js-cookie";
+import { PageNotFound } from "@/pages/404/page"
+import Cookies from "js-cookie"
 
 export function DomainRouter() {
     const getSubdomain = () => {
@@ -47,6 +49,10 @@ function GetPageRouter(subdomain: string): React.FC {
             return HomeRouter;
         case "blog":
             return BlogRouter;
+        case "secret":
+            return SecretRouter;
+        case "edit":
+            return EditRouter;
 
         default:
             return PageNotFound;

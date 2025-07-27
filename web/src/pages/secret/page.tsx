@@ -1,13 +1,13 @@
 import { Header } from "@/components/page-header";
 
-export function BlogPage() {
+export function SecretPage() {
     const breadcrumbs = [
-        { label: "blog.lystic.dev" },
+        { label: "secret.lystic.dev" },
     ];
     return (
         <Header breadcrumbItems={breadcrumbs}>
             <div className="flex-1 flex justify-center items-center w-full">
-                BLOG IS TODO
+                SECRETS IS TODO
             </div>
         </Header>
     );

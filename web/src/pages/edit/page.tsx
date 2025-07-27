@@ -1,13 +1,13 @@
 import { Header } from "@/components/page-header";
 
-export function BlogPage() {
+export function EditPage() {
     const breadcrumbs = [
-        { label: "blog.lystic.dev" },
+        { label: "edit.lystic.dev" },
     ];
     return (
         <Header breadcrumbItems={breadcrumbs}>
             <div className="flex-1 flex justify-center items-center w-full">
-                BLOG IS TODO
+                EDITOR IS TODO
             </div>
         </Header>
     );

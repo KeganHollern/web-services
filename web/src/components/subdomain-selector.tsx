@@ -26,9 +26,9 @@ export function SubdomainSelector() {
                 <SelectContent>
                     <SelectItem value="main">Main</SelectItem>
                     <SelectItem value="blog">Blog</SelectItem>
+                    <SelectItem value="secret">Secret</SelectItem>
+                    <SelectItem value="edit">Edit</SelectItem>
                     <SelectItem value="not-found">Not Found</SelectItem>
-                    {/* TODO: Add options as you implement more subdomains */}
-                    {/* <SelectItem value="other">Other</SelectItem> */}
                 </SelectContent>
             </Select>
         </div>
