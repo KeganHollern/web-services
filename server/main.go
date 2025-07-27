@@ -13,19 +13,25 @@ func main() {
 	// Echo instance
 	e := echo.New()
 
-	// Middleware
+	// Global Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Routes
-	e.GET("/", hello)
+	// Serve react SPA
+	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
+		Skipper:    nil,
+		Root:       "dist",
+		Index:      "index.html",
+		HTML5:      true, // send not-found files to SPA (react) to handle routing
+		Browse:     false,
+		IgnoreBase: false,
+		Filesystem: nil,
+	}))
+
+	// TODO: register routes
 
 	// Start server
-	if err := e.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
 	}
-}
-
-func hello(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello, World!")
 }
