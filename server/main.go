@@ -17,6 +17,7 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	// Serve react SPA
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Skipper:    nil,
 		Root:       "dist",
@@ -27,11 +28,31 @@ func main() {
 		Filesystem: nil,
 	}))
 
+	// create a base /api route which all api requests will land in
 	api := e.Group("/api")
-	api.GET("/test", func(c echo.Context) error { return echo.ErrForbidden })  //
 	api.Any("*", func(c echo.Context) error { return echo.ErrNotImplemented }) // any unimplemented api request
 
-	// Serve react SPA
+	// create /api/secret route for all secret.lystic.dev api requests
+	secret := api.Group("/secret")
+	secret.GET("/:id", func(c echo.Context) error {
+		return c.String(http.StatusOK, "TODO fetch secret")
+	})
+	secret.POST("/:id", func(c echo.Context) error {
+		var data struct {
+			Data string `json:"data"`
+		}
+
+		if err := c.Bind(&data); err != nil {
+			return c.String(http.StatusBadRequest, "bad request")
+		}
+
+		// TODO: store secret
+
+		// TODO: generate unique id for this secret
+		return c.String(http.StatusOK, "ToDoUnIqUeIdHeRe")
+	})
+
+	// TODO: editor APIs
 
 	// Start server
 	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {

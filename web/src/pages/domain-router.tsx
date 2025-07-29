@@ -5,6 +5,7 @@ import { HomeRouter } from "@/pages/home/router"
 import { BlogRouter } from "@/pages/blog/router"
 import { SecretRouter } from "@/pages/secret/router"
 import { EditRouter } from "@/pages/edit/router"
+import { SwapRouter } from "@/pages/swap/router";
 
 import { PageNotFound } from "@/pages/404/page"
 import Cookies from "js-cookie"
@@ -53,6 +54,8 @@ function GetPageRouter(subdomain: string): React.FC {
             return SecretRouter;
         case "edit":
             return EditRouter;
+        case "swap":
+            return SwapRouter;
 
         default:
             return PageNotFound;

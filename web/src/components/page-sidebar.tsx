@@ -8,6 +8,8 @@ type SidebarProps = {
 }
 
 export function Sidebar({ children }: SidebarProps) {
+    // TODO: probably move sidebar to page level and let page add custom sidebar items under a new "section"
+    // so domains/pages can have custom sidebar segments
     const items = [
         {
             title: "Home",
@@ -24,7 +26,6 @@ export function Sidebar({ children }: SidebarProps) {
             url: "https://rustpad.lystic.dev",
             icon: Code,
         },
-
         {
             title: "Secret",
             url: "https://secret.lystic.dev",
