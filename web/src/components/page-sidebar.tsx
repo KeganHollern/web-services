@@ -1,29 +1,43 @@
 
-import { SidebarProvider, SidebarInset, Sidebar as BaseSidebar, SidebarGroup, SidebarContent, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
-import { type LucideProps } from "lucide-react";
-import Cookies from 'js-cookie';
+import { SidebarInset, Sidebar as BaseSidebar, SidebarGroup, SidebarContent, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
+import { Code, Home, Newspaper, BookLock } from "lucide-react";
 import React from "react";
 
-type SidebarItem = {
-    title: string
-    url: string
-    icon: React.ForwardRefExoticComponent<Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>>
-}
 type SidebarProps = {
     children: React.ReactNode
-    items: SidebarItem[]
-    title: string
 }
 
-export function Sidebar({ children, items, title }: SidebarProps) {
-    const open = (Cookies.get('sidebar_state') ?? "true") === "true";
+export function Sidebar({ children }: SidebarProps) {
+    const items = [
+        {
+            title: "Home",
+            url: "https://lystic.dev",
+            icon: Home,
+        },
+        {
+            title: "Blog",
+            url: "https://blog.lystic.dev",
+            icon: Newspaper,
+        },
+        {
+            title: "Editor",
+            url: "https://rustpad.lystic.dev",
+            icon: Code,
+        },
+
+        {
+            title: "Secret",
+            url: "https://secret.lystic.dev",
+            icon: BookLock,
+        },
+    ];
 
     return (
-        <SidebarProvider defaultOpen={open}>
+        <>
             <BaseSidebar>
                 <SidebarContent>
                     <SidebarGroup>
-                        <SidebarGroupLabel>{title}</SidebarGroupLabel>
+                        <SidebarGroupLabel>Lystic's Platform</SidebarGroupLabel>
                         <SidebarGroupContent>
                             <SidebarMenu>
                                 {items.map((item) => (
@@ -44,6 +58,6 @@ export function Sidebar({ children, items, title }: SidebarProps) {
             <SidebarInset>
                 {children}
             </SidebarInset>
-        </SidebarProvider>
+        </>
     )
 }
