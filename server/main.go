@@ -17,7 +17,6 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Serve react SPA
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Skipper:    nil,
 		Root:       "dist",
@@ -28,7 +27,11 @@ func main() {
 		Filesystem: nil,
 	}))
 
-	// TODO: register routes
+	api := e.Group("/api")
+	api.GET("/test", func(c echo.Context) error { return echo.ErrForbidden })  //
+	api.Any("*", func(c echo.Context) error { return echo.ErrNotImplemented }) // any unimplemented api request
+
+	// Serve react SPA
 
 	// Start server
 	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {
