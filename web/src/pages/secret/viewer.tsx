@@ -1,22 +1,21 @@
 import { Header } from "@/components/page-header";
 import { useLocation, useParams } from "react-router";
+import { useSecret } from '@/hooks/api/use-secret'; // Adjust path
 
 function GetContent() {
-    const { id } = useParams();
-    let { hash } = useLocation();
+    const { id = '' } = useParams<{ id: string }>(); // Default to '' for safety
+    const { hash } = useLocation();
+    const { content, error, isLoading } = useSecret(id, hash);
 
-    if (hash === "") {
-        return (
-            <>TODO display failure case</>
-        )
+    if (error) {
+        return <div className="text-red-500">{error}</div>;
     }
 
-    // strip # from hash
-    hash = hash.slice(1)
+    if (isLoading) {
+        return <div>Loading...</div>; // Or use a spinner component
+    }
 
-    return (
-        <>TODO send query to /api/secret/{id} and AES decrypt with key {hash}</>
-    )
+    return <div>{content}</div>;
 }
 
 export function SecretViewerPage() {
@@ -24,15 +23,11 @@ export function SecretViewerPage() {
         { label: "secret.lystic.dev" },
     ];
 
-    // TODO: this entire thing will be reworked when api request is created
-
     return (
-        // TODO: display optional "new" button in header
         <Header breadcrumbItems={breadcrumbs}>
             <div className="flex-1 flex justify-center items-center w-full">
-                {GetContent()}
+                <GetContent />
             </div>
         </Header>
-    )
+    );
 }
-

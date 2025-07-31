@@ -35,7 +35,7 @@ func main() {
 	// create /api/secret route for all secret.lystic.dev api requests
 	secret := api.Group("/secret")
 	secret.GET("/:id", func(c echo.Context) error {
-		return c.String(http.StatusOK, "TODO fetch secret")
+		return c.String(http.StatusOK, "TODO fetch an actual secret")
 	})
 	secret.POST("/:id", func(c echo.Context) error {
 		var data struct {
