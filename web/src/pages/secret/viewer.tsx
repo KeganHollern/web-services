@@ -1,6 +1,7 @@
 import { Header } from "@/components/page-header";
 import { useLocation, useParams } from "react-router";
 import { useSecret } from '@/hooks/api/use-secret'; // Adjust path
+import { Loader } from "lucide-react";
 
 function GetContent() {
     const { id = '' } = useParams<{ id: string }>(); // Default to '' for safety
@@ -12,7 +13,7 @@ function GetContent() {
     }
 
     if (isLoading) {
-        return <div>Loading...</div>; // Or use a spinner component
+        return <div><Loader /></div>; // Or use a spinner component
     }
 
     return <div>{content}</div>;
