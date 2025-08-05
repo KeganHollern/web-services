@@ -11,7 +11,6 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import Cookies from 'js-cookie';
 import { Sidebar } from "@/components/page-sidebar"
 
-
 const open = (Cookies.get('sidebar_state') ?? "true") === "true";
 
 createRoot(document.getElementById('root')!).render(
