@@ -20,8 +20,11 @@ function GetContent() {
 }
 
 export function SecretViewerPage() {
+    const { id = 'UNKNOWN' } = useParams<{ id: string }>();
+
     const breadcrumbs = [
-        { label: "secret.lystic.dev" },
+        { label: "secret.lystic.dev", href: "/" },
+        { label: id }
     ];
 
     return (

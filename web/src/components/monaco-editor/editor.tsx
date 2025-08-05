@@ -1,15 +1,18 @@
 import Monaco from '@monaco-editor/react';
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
-// TODO: is there a better way to do this?
-import * as constants from "./constants"
+import type { editor } from 'monaco-editor';
+// TODO: is there better way to do this?
+import * as constants from "./constants";
+
+export type CodeEditor = editor.IStandaloneCodeEditor | null;
 
 type EditorProps = {
-    ref?: React.RefObject<null>
+    ref?: React.RefObject<CodeEditor>
 }
 
 export function Editor({ ref }: EditorProps) {
-    const editorRef = useRef(null);
+    const editorRef = useRef<CodeEditor>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     // these two functions to ensure editor shrinks with browser
@@ -30,7 +33,7 @@ export function Editor({ ref }: EditorProps) {
         };
     }, []);
 
-    const handleEditorDidMount = (editor: any, _monaco: any) => {
+    const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor, _monaco: any) => {
         editorRef.current = editor;
         if (ref) {
             ref.current = editor;
