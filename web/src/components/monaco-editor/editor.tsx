@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import type { editor } from 'monaco-editor';
 // TODO: is there better way to do this?
 import * as constants from "./constants";
+import { useTheme } from '@/context/theme-provider';
 
 export type CodeEditor = editor.IStandaloneCodeEditor | null;
 
@@ -14,6 +15,7 @@ type EditorProps = {
 export function Editor({ ref }: EditorProps) {
     const editorRef = useRef<CodeEditor>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const { theme } = useTheme();
 
     // these two functions to ensure editor shrinks with browser
     useEffect(() => {
@@ -46,15 +48,26 @@ export function Editor({ ref }: EditorProps) {
 
     // applies theme to editor
     const handleEditorWillMount = (monaco: any) => {
-        monaco.editor.defineTheme("flexoki", constants.flexokiTheme);
+        // TODO: create flexoki LIGHT theme
+        // TODO use themeprovider ENUM for theme name hesre
+        monaco.editor.defineTheme("dark", constants.flexokiTheme);
+
+        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+            .matches
+            ? constants.flexokiTheme
+            : constants.flexokiTheme // TODO: change this to the light theme !
+
+        monaco.editor.defineTheme("system", systemTheme);
+
     };
 
 
+    // TODO: change theme on theme selector changing
     return (
         <div className="w-full h-full relative" ref={containerRef}>
             <Monaco
                 className='absolute inset-0'
-                theme="flexoki"
+                theme={theme}
                 beforeMount={handleEditorWillMount}
                 onMount={handleEditorDidMount}
                 defaultLanguage="markdown"

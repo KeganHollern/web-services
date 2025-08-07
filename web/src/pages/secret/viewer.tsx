@@ -1,7 +1,8 @@
 import { Header } from "@/components/page-header";
 import { useLocation, useParams } from "react-router";
 import { useSecret } from '@/hooks/api/use-secret'; // Adjust path
-import { Loader } from "lucide-react";
+import { Loader, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 function GetContent() {
     const { id = '' } = useParams<{ id: string }>(); // Default to '' for safety
@@ -28,10 +29,17 @@ export function SecretViewerPage() {
     ];
 
     return (
-        <Header breadcrumbItems={breadcrumbs}>
-            <div className="flex-1 flex justify-center items-center w-full">
-                <GetContent />
-            </div>
-        </Header>
+        <>
+            <Header breadcrumbItems={breadcrumbs}>
+                <Button onClick={() => { alert("TODO") }} >
+                    <Plus /> New
+                </Button>
+            </Header>
+            <main className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-1 flex justify-center items-center w-full">
+                    <GetContent />
+                </div>
+            </main>
+        </>
     );
 }

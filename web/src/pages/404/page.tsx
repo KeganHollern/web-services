@@ -16,14 +16,17 @@ export function PageNotFound({ domain }: PageNotFoundProps) {
     ];
 
     return (
-        <Header breadcrumbItems={breadcrumbs}>
-            <div className="flex-1 flex justify-center items-center w-full">
-                <img
-                    src={YouAreLost}
-                    alt="Page Not Found"
-                    className="max-w-full max-h-full"
-                />
-            </div>
-        </Header>
+        <>
+            <Header breadcrumbItems={breadcrumbs} />
+            <main className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-1 flex justify-center items-center w-full">
+                    <img
+                        src={YouAreLost}
+                        alt="Page Not Found"
+                        className="max-w-full max-h-full"
+                    />
+                </div>
+            </main>
+        </>
     );
 }

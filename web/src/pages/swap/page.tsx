@@ -4,11 +4,15 @@ export function SwapPage() {
     const breadcrumbs = [
         { label: "swap.lystic.dev" },
     ];
+
     return (
-        <Header breadcrumbItems={breadcrumbs}>
-            <div className="flex-1 flex justify-center items-center w-full">
-                SWAP IS TODO
-            </div>
-        </Header>
+        <>
+            <Header breadcrumbItems={breadcrumbs} />
+            <main className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-1 flex justify-center items-center w-full">
+                    SWAP IS TODO
+                </div>
+            </main>
+        </>
     );
 }

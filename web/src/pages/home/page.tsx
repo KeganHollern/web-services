@@ -13,17 +13,20 @@ export function HomePage() {
     ];
 
     return (
-        <Header breadcrumbItems={breadcrumbs}>
-            <div className="container mx-auto py-6 space-y-12">
-                <Profile />
-                <Separator />
-                <Projects />
-                <Separator />
-                <Skills />
-                <Separator />
-                <Tools />
-            </div>
-        </Header>
-    )
+        <>
+            <Header breadcrumbItems={breadcrumbs} />
+            <main className="flex flex-1 flex-col overflow-hidden">
+                <div className="container mx-auto py-6 space-y-12">
+                    <Profile />
+                    <Separator />
+                    <Projects />
+                    <Separator />
+                    <Skills />
+                    <Separator />
+                    <Tools />
+                </div>
+            </main>
+        </>
+    );
 }
 

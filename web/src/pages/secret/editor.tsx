@@ -5,6 +5,8 @@ import { encryptSecret } from "@/lib/crypto"
 
 import { Editor, type CodeEditor } from "@/components/monaco-editor/editor"
 import { useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Save } from "lucide-react";
 
 export function SecretEditorPage() {
     const breadcrumbs = [
@@ -18,15 +20,24 @@ export function SecretEditorPage() {
         const content = encryptSecret("test", "abc123");
         pushSecret(content).then((id) => {
             alert(id)
+        }).catch((err) => {
+            alert(err);
         });
     }
 
     return (
-        // TODO: header needs optional button(s) i can define
-        <Header breadcrumbItems={breadcrumbs}>
-            <div className="flex-1 flex justify-center items-center w-full">
-                <Editor ref={editor} />
-            </div>
-        </Header>
+        <>
+            <Header breadcrumbItems={breadcrumbs}>
+                <Button onClick={save}>
+                    <Save /> Save
+                </Button>
+            </Header >
+            <main className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-1 flex justify-center items-center w-full">
+                    <Editor ref={editor} />
+                </div>
+            </main>
+        </>
+
     );
 }

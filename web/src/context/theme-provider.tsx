@@ -37,6 +37,7 @@ export function ThemeProvider({
         root.classList.remove("light", "dark")
 
         if (theme === "system") {
+            // TODO: make this a util to map system theme to light or dark
             const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
                 .matches
                 ? "dark"
