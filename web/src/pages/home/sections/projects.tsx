@@ -17,7 +17,7 @@ export function Projects() {
 Her key features are Text Chat, Voice Chat, and Vision.
 She is a companion, an assistant, and a utility.`,
             link: "https://github.com/KeganHollern/Aika",
-            picture: "https://aika.lystic.zip/selfies/932890148_aika,%20cute,%20tongue,%20blonde,%20green%20eyes,%20white%20shirt,%20nature,%20close%20up,%20facial%20shot,%20open%20mouth,%20winking,%20rawr_0.png",
+            picture: "https://aika.lystic.dev/selfies/932890148_aika,%20cute,%20tongue,%20blonde,%20green%20eyes,%20white%20shirt,%20nature,%20close%20up,%20facial%20shot,%20open%20mouth,%20winking,%20rawr_0.png",
         },
         {
             title: "Randal",
