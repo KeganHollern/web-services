@@ -50,12 +50,13 @@ export function Editor({ ref }: EditorProps) {
     const handleEditorWillMount = (monaco: any) => {
         // TODO: create flexoki LIGHT theme
         // TODO use themeprovider ENUM for theme name hesre
-        monaco.editor.defineTheme("dark", constants.flexokiTheme);
+        monaco.editor.defineTheme("dark", constants.flexokiThemeDark);
+        monaco.editor.defineTheme("light", constants.flexokiThemeLight);
 
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
             .matches
-            ? constants.flexokiTheme
-            : constants.flexokiTheme // TODO: change this to the light theme !
+            ? constants.flexokiThemeDark
+            : constants.flexokiThemeLight // TODO: change this to the light theme !
 
         monaco.editor.defineTheme("system", systemTheme);
 
