@@ -3,6 +3,11 @@ import { createContext, useContext, useEffect, useState } from "react"
 
 type Theme = "dark" | "light" | "system"
 
+export const LightTheme: Theme = "light"
+export const DarkTheme: Theme = "dark"
+export const SystemTheme: Theme = "system"
+
+
 type ThemeProviderProps = {
     children: React.ReactNode
     defaultTheme?: Theme
@@ -15,7 +20,7 @@ type ThemeProviderState = {
 }
 
 const initialState: ThemeProviderState = {
-    theme: "system",
+    theme: SystemTheme,
     setTheme: () => null,
 }
 
@@ -24,7 +29,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export function ThemeProvider({
     children,
-    defaultTheme = "system",
+    defaultTheme = SystemTheme,
     storageKey = "vite-ui-theme",
     ...props
 }: ThemeProviderProps) {
@@ -37,7 +42,7 @@ export function ThemeProvider({
 
         root.classList.remove("light", "dark")
 
-        if (theme === "system") {
+        if (theme === SystemTheme) {
             // TODO: make this a util to map system theme to light or dark
             const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
                 .matches

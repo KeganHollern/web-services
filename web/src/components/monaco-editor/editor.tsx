@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import type { editor } from 'monaco-editor';
 // TODO: is there better way to do this?
 import * as constants from "./constants";
-import { useTheme } from '@/context/theme-provider';
+import { DarkTheme, LightTheme, SystemTheme, useTheme } from '@/context/theme-provider';
 
 export type CodeEditor = editor.IStandaloneCodeEditor | null;
 
@@ -50,15 +50,15 @@ export function Editor({ ref }: EditorProps) {
     const handleEditorWillMount = (monaco: any) => {
         // TODO: create flexoki LIGHT theme
         // TODO use themeprovider ENUM for theme name hesre
-        monaco.editor.defineTheme("dark", constants.flexokiThemeDark);
-        monaco.editor.defineTheme("light", constants.flexokiThemeLight);
+        monaco.editor.defineTheme(DarkTheme, constants.flexokiThemeDark);
+        monaco.editor.defineTheme(LightTheme, constants.flexokiThemeLight);
 
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
             .matches
             ? constants.flexokiThemeDark
             : constants.flexokiThemeLight // TODO: change this to the light theme !
 
-        monaco.editor.defineTheme("system", systemTheme);
+        monaco.editor.defineTheme(SystemTheme, systemTheme);
 
     };
 

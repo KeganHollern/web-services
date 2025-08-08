@@ -9,7 +9,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useTheme } from "@/context/theme-provider"
+import { DarkTheme, LightTheme, SystemTheme, useTheme } from "@/context/theme-provider"
 
 export function ThemeToggle() {
     const { setTheme } = useTheme()
@@ -25,13 +25,13 @@ export function ThemeToggle() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
                 {/* TODO: make themes an enum i can import from themeprovider */}
-                <DropdownMenuItem onClick={() => setTheme("light")}>
+                <DropdownMenuItem onClick={() => setTheme(LightTheme)}>
                     Light
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                <DropdownMenuItem onClick={() => setTheme(DarkTheme)}>
                     Dark
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("system")}>
+                <DropdownMenuItem onClick={() => setTheme(SystemTheme)}>
                     System
                 </DropdownMenuItem>
             </DropdownMenuContent>

@@ -15,7 +15,7 @@ const open = (Cookies.get('sidebar_state') ?? "true") === "true";
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider defaultTheme="dark">
+    <ThemeProvider>
       <SidebarProvider defaultOpen={open}>
         <Sidebar> {/* global sidebar for all my website */}
           <BrowserRouter>
