@@ -17,7 +17,13 @@ export function SecretEditorPage() {
     const editor = useRef<CodeEditor>(null);
 
     const save = () => {
-        const content = encryptSecret("test", "abc123");
+        const value = editor.current?.getValue();
+        if (!value) {
+            alert("ERROR");
+            return;
+        }
+
+        const content = encryptSecret(value, "abc123");
         pushSecret(content).then((id) => {
             alert(id)
         }).catch((err) => {
