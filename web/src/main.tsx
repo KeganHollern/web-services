@@ -7,6 +7,8 @@ import { BrowserRouter } from "react-router";
 import { ThemeProvider } from "@/context/theme-provider"
 import { DomainRouter } from "@/pages/domain-router"
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { Toaster } from "@/components/ui/sonner"
+
 
 import Cookies from 'js-cookie';
 import { Sidebar } from "@/components/page-sidebar"
@@ -23,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
           </BrowserRouter>
         </Sidebar>
       </SidebarProvider>
+      <Toaster /> {/* for global toast notifications */}
     </ThemeProvider>
   </StrictMode>,
 )

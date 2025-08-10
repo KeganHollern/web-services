@@ -3,6 +3,8 @@ import { useLocation, useParams } from "react-router";
 import { useSecret } from '@/hooks/api/use-secret'; // Adjust path
 import { Loader, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner"
+
 
 function GetContent() {
     const { id = '' } = useParams<{ id: string }>(); // Default to '' for safety
@@ -31,7 +33,7 @@ export function SecretViewerPage() {
     return (
         <>
             <Header breadcrumbItems={breadcrumbs}>
-                <Button onClick={() => { alert("TODO") }} >
+                <Button onClick={() => { toast("TODO") }} >
                     <Plus /> New
                 </Button>
             </Header>

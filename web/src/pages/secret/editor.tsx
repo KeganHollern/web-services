@@ -4,6 +4,7 @@ import { pushSecret } from "@/api/secret"
 import { encryptSecret } from "@/lib/crypto"
 
 import { Editor, type CodeEditor } from "@/components/monaco-editor/editor"
+import { toast } from "sonner"
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Save } from "lucide-react";
@@ -19,17 +20,20 @@ export function SecretEditorPage() {
     const save = () => {
         const value = editor.current?.getValue();
         if (!value) {
-            alert("ERROR");
+            toast.error("ERROR");
             return;
         }
 
         const content = encryptSecret(value, "abc123");
         pushSecret(content).then((id) => {
-            alert(id)
-        }).catch((err) => {
-            alert(err);
+            toast.success(id)
+        }).catch((err: Error) => {
+            toast.error(err.message);
         });
     }
+
+    // TODO: ctrl+s
+    // TODO: add popup for 
 
     return (
         <>
