@@ -16,7 +16,7 @@ export function useSecret(id: string, hash: string): UseSecretResult {
 
     useEffect(() => {
         if (hasFetched.current) {
-            console.log('Skipping duplicate API call');
+            console.debug('Skipping duplicate API call');
             return;
         }
 

@@ -10,7 +10,6 @@ import { useEffect, useRef } from "react";
 export function SecretViewerPage() {
     const { id = 'UNKNOWN' } = useParams<{ id: string }>();
     const { hash } = useLocation();
-    const editor = useRef<CodeEditor>(null);
     const navigate = useNavigate();
 
     const { content, error, isLoading } = useSecret(id, hash);
@@ -41,7 +40,7 @@ export function SecretViewerPage() {
                     {isLoading ?
                         <Loader />
                         :
-                        <Editor ref={editor} readonly={true} content={content ?? ""} />
+                        <Editor readonly={true} content={content ?? ""} />
                     }
                 </div>
             </main>

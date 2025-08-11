@@ -10,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Save } from "lucide-react";
 
 export function SecretEditorPage() {
+    const editor = useRef<CodeEditor>(null);
+
     const breadcrumbs = [
         { label: "secret.lystic.dev" },
     ];
 
     // this ref holds the monaco editor so we can call functionality on it like `getValue()` to get the content
-    const editor = useRef<CodeEditor>(null);
 
     const save = () => {
         const value = editor.current?.getValue();
