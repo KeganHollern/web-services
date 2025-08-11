@@ -5,14 +5,17 @@ import type { editor } from 'monaco-editor';
 // TODO: is there better way to do this?
 import * as constants from "./constants";
 import { DarkTheme, LightTheme, SystemTheme, useTheme } from '@/context/theme-provider';
+import { Loader } from 'lucide-react';
 
 export type CodeEditor = editor.IStandaloneCodeEditor | null;
 
 type EditorProps = {
     ref?: React.RefObject<CodeEditor>
+    readonly?: boolean
+    content?: string
 }
 
-export function Editor({ ref }: EditorProps) {
+export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONTENT }: EditorProps) {
     const editorRef = useRef<CodeEditor>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const { theme } = useTheme();
@@ -48,8 +51,6 @@ export function Editor({ ref }: EditorProps) {
 
     // applies theme to editor
     const handleEditorWillMount = (monaco: any) => {
-        // TODO: create flexoki LIGHT theme
-        // TODO use themeprovider ENUM for theme name hesre
         monaco.editor.defineTheme(DarkTheme, constants.flexokiThemeDark);
         monaco.editor.defineTheme(LightTheme, constants.flexokiThemeLight);
 
@@ -59,11 +60,8 @@ export function Editor({ ref }: EditorProps) {
             : constants.flexokiThemeLight // TODO: change this to the light theme !
 
         monaco.editor.defineTheme(SystemTheme, systemTheme);
-
     };
 
-
-    // TODO: change theme on theme selector changing
     return (
         <div className="w-full h-full relative" ref={containerRef}>
             <Monaco
@@ -80,8 +78,10 @@ export function Editor({ ref }: EditorProps) {
                     padding: { top: 16 },
                     lineNumbers: "on",
                     automaticLayout: true,
+                    readOnly: readonly,
                 }}
-                defaultValue={constants.DEFAULT_CONTENT} />
+                loading={<Loader />}
+                defaultValue={content} />
         </div >
     );
 };
