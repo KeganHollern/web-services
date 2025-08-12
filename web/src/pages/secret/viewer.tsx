@@ -4,8 +4,8 @@ import { useSecret } from '@/hooks/api/use-secret'; // Adjust path
 import { Loader, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner"
-import { Editor, type CodeEditor } from "@/components/monaco-editor/editor";
-import { useEffect, useRef } from "react";
+import { Editor } from "@/components/monaco-editor/editor";
+import { useEffect } from "react";
 
 export function SecretViewerPage() {
     const { id = 'UNKNOWN' } = useParams<{ id: string }>();
