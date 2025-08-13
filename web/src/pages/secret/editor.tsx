@@ -21,16 +21,20 @@ export function SecretEditorPage() {
     const save = () => {
         const value = editor.current?.getValue();
         if (!value) {
-            toast.error("ERROR");
+            toast.error("no editor content");
             return;
         }
 
-        encryptSecret(value, "abc123")
-            .then(pushSecret)
+        // generate random key use web crypto
+        // https://stackoverflow.com/questions/60738424/javascript-generate-random-hexadecimal (lol)
+        const key = [...crypto.getRandomValues(new Uint8Array(20))].map(m => ('0' + m.toString(16)).slice(-2)).join('');
+
+        encryptSecret(value, key)
+            .then(encrypted => pushSecret(encrypted))
             .then(id => {
                 toast.success(id);
-                // TEMPORARY
-                navigator.clipboard.writeText(id);
+                // TEMPORARY UNTIL POPUP
+                navigator.clipboard.writeText(`${id}#${key}`);
             })
             .catch((err: Error) => toast.error(err.message))
     }
