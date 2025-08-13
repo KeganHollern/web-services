@@ -30,16 +30,11 @@ export function useSecret(id: string, hash: string): UseSecretResult {
         hasFetched.current = true;
 
         fetchSecret(id)
-            .then(encrypted => {
-                const decrypted = decryptSecret(encrypted, key);
-                setContent(decrypted);
-            })
-            .catch(err => {
-                setError(err.message);
-            })
-            .finally(() => {
-                setIsLoading(false);
-            });
+            .then(encrypted => decryptSecret(encrypted, key))
+            .then(decrypted => setContent(decrypted))
+            .catch((err: Error) => setError(err.message))
+            .finally(() => setIsLoading(false));
+
     }, [id, hash]);
 
     return { content, error, isLoading };

@@ -25,12 +25,14 @@ export function SecretEditorPage() {
             return;
         }
 
-        const content = encryptSecret(value, "abc123");
-        pushSecret(content).then((id) => {
-            toast.success(id)
-        }).catch((err: Error) => {
-            toast.error(err.message);
-        });
+        encryptSecret(value, "abc123")
+            .then(pushSecret)
+            .then(id => {
+                toast.success(id);
+                // TEMPORARY
+                navigator.clipboard.writeText(id);
+            })
+            .catch((err: Error) => toast.error(err.message))
     }
 
     // TODO: ctrl+s

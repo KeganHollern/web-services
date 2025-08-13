@@ -26,6 +26,7 @@ func Register(api *echo.Group) {
 	)
 
 	secret := api.Group("/secret")
+
 	secret.GET("/:id", func(c echo.Context) error {
 		slog.Info("request to fetch secret", slog.String("id", c.Param("id")))
 
@@ -50,6 +51,7 @@ func Register(api *echo.Group) {
 		slog.Info("request to store secret", slog.String("content", body.Content))
 
 		id := uuid.NewString()
+
 		cache.Set(id, body.Content, ttlcache.DefaultTTL)
 
 		return c.String(http.StatusOK, id)
