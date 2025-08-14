@@ -5,12 +5,15 @@ import { encryptSecret } from "@/lib/crypto"
 
 import { Editor, type CodeEditor } from "@/components/monaco-editor/editor"
 import { toast } from "sonner"
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Save } from "lucide-react";
+import { LinkShareDialog } from "@/components/link-share-dialog";
 
 export function SecretEditorPage() {
     const editor = useRef<CodeEditor>(null);
+    const [shareUrl, setShareUrl] = useState("");
+    const [open, setOpen] = useState(false);
 
     const breadcrumbs = [
         { label: "secret.lystic.dev" },
@@ -32,15 +35,13 @@ export function SecretEditorPage() {
         encryptSecret(value, key)
             .then(encrypted => pushSecret(encrypted))
             .then(id => {
-                toast.success(id);
-                // TEMPORARY UNTIL POPUP
-                navigator.clipboard.writeText(`${id}#${key}`);
+                setShareUrl(`${window.location.origin}/s/${id}#${key}`);
+                setOpen(true);
             })
             .catch((err: Error) => toast.error(err.message))
     }
 
     // TODO: ctrl+s
-    // TODO: add popup for 
 
     return (
         <>
@@ -49,11 +50,21 @@ export function SecretEditorPage() {
                     <Save /> Save
                 </Button>
             </Header >
+
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 flex justify-center items-center w-full">
                     <Editor ref={editor} />
                 </div>
             </main>
+
+            {/* TODO:   probably we'll change this to a provider or something & have a `ShareLink(title, description, url)` 
+                        that sets all these values and makes the dialog pop up... storing the state internally. IDK how to do this yet...
+            */}
+            <LinkShareDialog
+                title="Share Your Secret"
+                description="Your secret has been saved. Share this one-time URL with someone. The content will be deleted after the first view."
+                url={shareUrl} open={open} onOpenChanged={setOpen}
+            />
         </>
 
     );
