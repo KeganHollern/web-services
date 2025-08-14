@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
 import Cookies from 'js-cookie';
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 // Context type
 interface SubdomainContextType {

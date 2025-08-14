@@ -1,14 +1,12 @@
+import { pushSecret } from "@/api/secret";
+import { Editor, type CodeEditor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
-
-import { pushSecret } from "@/api/secret"
-import { encryptSecret } from "@/lib/crypto"
-
-import { Editor, type CodeEditor } from "@/components/monaco-editor/editor"
-import { toast } from "sonner"
-import { useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Save } from "lucide-react";
 import { useLinkShare } from "@/context/linkshare-provider";
+import { encryptSecret } from "@/lib/crypto";
+import { Save } from "lucide-react";
+import { useRef } from "react";
+import { toast } from "sonner";
 
 import * as constants from "./constants";
 

@@ -1,10 +1,10 @@
+import { DarkTheme, LightTheme, SystemTheme, useTheme } from '@/context/theme-provider';
 import { Editor as MonacoEditor, type Monaco } from '@monaco-editor/react';
+import { Loader } from 'lucide-react';
 import type { editor } from 'monaco-editor';
 import { useEffect, useRef } from 'react';
-// TODO: is there better way to do this?
-import { DarkTheme, LightTheme, SystemTheme, useTheme } from '@/context/theme-provider';
-import { Loader } from 'lucide-react';
 import * as constants from "./constants";
+
 
 export type CodeEditor = editor.IStandaloneCodeEditor | null;
 
@@ -26,7 +26,6 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
 
         const resizeObserver = new ResizeObserver(() => {
             if (editorRef.current) {
-                // @ts-ignore - we know editor exists
                 editorRef.current.layout();
             }
         });
@@ -61,7 +60,7 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
             .matches
             ? constants.flexokiThemeDark
-            : constants.flexokiThemeLight // TODO: change this to the light theme !
+            : constants.flexokiThemeLight
 
         monaco.editor.defineTheme(SystemTheme, systemTheme);
     };

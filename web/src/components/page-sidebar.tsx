@@ -1,6 +1,6 @@
 
-import { SidebarInset, Sidebar as BaseSidebar, SidebarGroup, SidebarContent, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
-import { Code, Home, Newspaper, BookLock } from "lucide-react";
+import { Sidebar as BaseSidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { BookLock, Code, Home, Newspaper } from "lucide-react";
 import React from "react";
 
 type SidebarProps = {
