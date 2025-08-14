@@ -12,6 +12,19 @@
       background-color: hsl(0 3% 6%);
     }
   </style>
+
+  <script>
+    // Read theme from localStorage or use system preference
+    const storedTheme = localStorage.getItem('vite-ui-theme');
+    const theme = storedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    if (theme !== 'system') {
+      document.documentElement.classList.add(theme);
+    } else {
+      document.documentElement.classList.add(
+        window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      );
+    }
+  </script>
 </head>
 
 <body>
