@@ -12,20 +12,23 @@ import { Toaster } from "@/components/ui/sonner"
 
 import Cookies from 'js-cookie';
 import { Sidebar } from "@/components/page-sidebar"
+import { LinkShareProvider } from '@/context/linkshare-provider';
 
 const open = (Cookies.get('sidebar_state') ?? "true") === "true";
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
-      <SidebarProvider defaultOpen={open}>
-        <Sidebar> {/* global sidebar for all my website */}
-          <BrowserRouter>
-            <DomainRouter />
-          </BrowserRouter>
-        </Sidebar>
-      </SidebarProvider>
-      <Toaster /> {/* for global toast notifications */}
+      <LinkShareProvider>
+        <SidebarProvider defaultOpen={open}>
+          <Sidebar> {/* global sidebar for all my website */}
+            <BrowserRouter>
+              <DomainRouter />
+            </BrowserRouter>
+          </Sidebar>
+        </SidebarProvider>
+        <Toaster /> {/* for global toast notifications */}
+      </LinkShareProvider>
     </ThemeProvider>
   </StrictMode>,
 )

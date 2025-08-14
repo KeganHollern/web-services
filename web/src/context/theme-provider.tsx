@@ -7,6 +7,17 @@ export const LightTheme: Theme = "light"
 export const DarkTheme: Theme = "dark"
 export const SystemTheme: Theme = "system"
 
+// all themes mapped to human readible name
+type ThemeNameEntry = {
+    theme: Theme
+    name: string
+}
+export const ThemeNames: ThemeNameEntry[] = [
+    { theme: LightTheme, name: "Light" },
+    { theme: DarkTheme, name: "Dark" },
+    { theme: SystemTheme, name: "System" },
+];
+
 
 type ThemeProviderProps = {
     children: React.ReactNode

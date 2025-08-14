@@ -1,11 +1,10 @@
-import Monaco from '@monaco-editor/react';
-import { useEffect, useRef } from 'react';
-
+import { Editor as MonacoEditor, type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import { useEffect, useRef } from 'react';
 // TODO: is there better way to do this?
-import * as constants from "./constants";
 import { DarkTheme, LightTheme, SystemTheme, useTheme } from '@/context/theme-provider';
 import { Loader } from 'lucide-react';
+import * as constants from "./constants";
 
 export type CodeEditor = editor.IStandaloneCodeEditor | null;
 
@@ -13,9 +12,10 @@ type EditorProps = {
     ref?: React.RefObject<CodeEditor>
     readonly?: boolean
     content?: string
+    onSave?(): void
 }
 
-export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONTENT }: EditorProps) {
+export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONTENT, onSave }: EditorProps) {
     const editorRef = useRef<CodeEditor>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const { theme } = useTheme();
@@ -38,10 +38,14 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
         };
     }, []);
 
-    const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor, _monaco: any) => {
+    const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
         editorRef.current = editor;
         if (ref) {
             ref.current = editor;
+        }
+
+        if (onSave) {
+            editor.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.KeyS, onSave)
         }
 
         // ensure initial layout is correct
@@ -50,7 +54,7 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
 
 
     // applies theme to editor
-    const handleEditorWillMount = (monaco: any) => {
+    const handleEditorWillMount = (monaco: Monaco) => {
         monaco.editor.defineTheme(DarkTheme, constants.flexokiThemeDark);
         monaco.editor.defineTheme(LightTheme, constants.flexokiThemeLight);
 
@@ -64,7 +68,7 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
 
     return (
         <div className="w-full h-full relative" ref={containerRef}>
-            <Monaco
+            <MonacoEditor
                 className='absolute inset-0'
                 theme={theme}
                 beforeMount={handleEditorWillMount}

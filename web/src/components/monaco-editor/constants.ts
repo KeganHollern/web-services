@@ -1,3 +1,5 @@
+import type { editor } from 'monaco-editor';
+
 export const DEFAULT_CONTENT = `# Secret Title
 
 Write your secret below in **Markdown**.
@@ -21,7 +23,7 @@ print("This is an example of a code block.")
 
 
 // https://github.com/kepano/flexoki/tree/main/vscode
-export const flexokiThemeDark = {
+export const flexokiThemeDark: editor.IStandaloneThemeData = {
     "inherit": true,
     "base": "vs-dark",
     "colors": {
@@ -590,7 +592,7 @@ export const flexokiThemeDark = {
     ],
     "encodedTokensColors": []
 };
-export const flexokiThemeLight = {
+export const flexokiThemeLight: editor.IStandaloneThemeData = {
     "inherit": true,
     "base": "vs",
     "colors": {
