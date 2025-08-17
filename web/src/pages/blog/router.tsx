@@ -1,7 +1,7 @@
 
 import { PageNotFound } from "@/pages/404/page";
 import { Route, Routes } from "react-router";
-import { BlogPage } from "./page";
+import { BrowsePage } from "./browse";
 import { Post } from "./post";
 import { Modules, type PostModule } from "./posts";
 
@@ -34,7 +34,7 @@ export function BlogRouter() {
     return (
         <Routes>
             {/* home page */}
-            <Route path="/" element={<BlogPage />} />
+            <Route path="/" element={<BrowsePage />} />
 
             {
                 // if development then inject /test/ typography page
