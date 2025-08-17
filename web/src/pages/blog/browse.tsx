@@ -4,7 +4,7 @@ import { Link as Hyperlink } from "lucide-react";
 import { Link } from "react-router";
 import { Modules } from "./posts";
 
-export function BlogPage() {
+export function BrowsePage() {
     const breadcrumbs = [
         { label: "blog.lystic.dev" },
     ];
