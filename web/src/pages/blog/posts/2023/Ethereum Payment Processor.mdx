@@ -14,7 +14,7 @@ Every online startup I've ever run has always had a single serious problem, paym
 
 So I decided I would just build my own payment processor. I first built it using the Bitcoin network, but opted to migrate to Ethereum thanks to the myriad of tools available.
 
-[insert] <img class="alignnone wp-image-929" src="http://blog.lystic.dev/wp-content/uploads/2022/11/eth-e1669233086572.jpg" alt="" width="1200" height="200" /> [/insert]
+<img class="alignnone wp-image-929" src="http://blog.lystic.dev/wp-content/uploads/2022/11/eth-e1669233086572.jpg" alt="" />
 
 How do we approach a payment processor? Lets start with the high level view, how should funds flow from <em>customer</em> to <em>vendor</em>.
 
@@ -57,7 +57,7 @@ A transaction has 5 states:
 </ol>
 This makes it obvious we should treat each transaction as a <a href="https://en.wikipedia.org/wiki/Finite-state_machine">Finite-state Machine</a>.
 
-[insert] <img class="alignnone wp-image-940" src="http://blog.lystic.dev/wp-content/uploads/2022/11/banner.jpg" alt="" width="1200" height="200" /> [/insert]
+<img class="alignnone wp-image-940" src="http://blog.lystic.dev/wp-content/uploads/2022/11/banner.jpg" alt="" />
 
 I want this processor to be easy to integrate. For that, we'll notify vendors of a completed payment via <a href="https://www.redhat.com/en/topics/automation/what-is-a-webhook">Webhooks</a>. So step #4 will send a POST request to a URL hosted by the vendor with information on the transaction.
 
@@ -65,8 +65,9 @@ To enable vendors to pass extra information, much like PayPal and Stripe APIs al
 
 Mapping out our processors endpoints, we'll have:
 
-http://localhost/buy/&lt;<strong>ProductID</strong>&gt;?data=&lt;<strong>ArbitaryUserData</strong>&gt;
-http://localhost/checkout/&lt;<strong>TransactionId</strong>&gt;
+- `http://localhost/buy/<ProductID>?data=<ArbitaryUserData>`
+- `http://localhost/checkout/<TransactionId>`
+
 
 The vendors webhook will look something like this:
 
@@ -78,7 +79,7 @@ POST http://localhost/onpurchase
 
 The <em>buy</em> page will create a new transaction and forward us to the <em>checkout</em> page. The checkout page will track the state of the transaction. Checkout lets the user know <em>where</em> to send funds, <em>how much</em> to send, and <em>what</em> is the state of that transfer.
 
-[insert] <img class="alignnone wp-image-950 size-full" src="http://blog.lystic.dev/wp-content/uploads/2022/11/go-e1669233921303.jpg" alt="" width="1143" height="200" /> [/insert]
+<img class="alignnone wp-image-950 size-full" src="http://blog.lystic.dev/wp-content/uploads/2022/11/go-e1669233921303.jpg" alt="" width="1143" height="200" />
 
 All of this will work for any cryptocurrency, but by using Ethereum we get the benefit of working with <a href="https://github.com/ethereum/go-ethereum">GETH</a>.
 
@@ -101,18 +102,19 @@ The first few are checking the state of our intermediary wallet's balance. Once 
 
 So all we need to do is iterate all open transactions periodically and transition them between states.
 
-[status_ok] That's it! It's actually quite simple. [/status_ok]
+{/* TODO: this should be like a banner or sometihng... */}
+*That's it! It's actually quite simple.*
 
 This doesn't handle the complexities of all eCommerce, but it does provide a simple interface vendors could integrate their system with.
 
 There are some trade-offs made in the design:
-<ul>
- 	<li>Fees are passed on to the vendor, rather than an additional charge to customers.</li>
- 	<li>The processor does not take any cut, so the system is best self hosted by the vendor.</li>
- 	<li>Products are stored in a Database, dynamic checkouts are not supported (though could be!)</li>
- 	<li>Not simple to add <a href="https://ethereum.org/en/developers/docs/standards/tokens/erc-20/">ERC20</a> token support in checkout</li>
- 	<li>Not easy to add support for <a href="https://ethereum.org/en/layer-2/">L2 chains</a>.</li>
-</ul>
+
+- Fees are passed on to the vendor, rather than an additional charge to customers.
+- The processor does not take any cut, so the system is best self hosted by the vendor.
+- Products are stored in a Database, dynamic checkouts are not supported (though could be!)
+- Not simple to add <a href="https://ethereum.org/en/developers/docs/standards/tokens/erc-20/">ERC20</a> token support in checkout
+- Not easy to add support for <a href="https://ethereum.org/en/layer-2/">L2 chains</a>.
+
 As a thought exercise: if we wanted to add ERC20 support, we would need to avoid the Ethereum transaction costs associated with paying out the vendor. We could use a Web3 wallet like <a href="https://metamask.io/">Metamask</a> &amp; automate a <a href="https://uniswap.org/">Uniswap</a> transaction to convert user funds to ETH before transferring them to our vendor. With this approach, the gateway could accept <strong>any</strong> Ethereum asset!
 
 Anyway I thought this project was quite fun. I plan several projects around it, so you'll be seeing more of this in the future.
