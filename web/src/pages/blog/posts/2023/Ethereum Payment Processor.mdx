@@ -70,8 +70,11 @@ http://localhost/checkout/&lt;<strong>TransactionId</strong>&gt;
 
 The vendors webhook will look something like this:
 
-<em>POST</em> http://localhost/onpurchase
-{"product": "<strong>&lt;ProductID&gt;</strong>", "data": <strong>&lt;ArbitraryUserData&gt;</strong>}
+```text
+POST http://localhost/onpurchase
+
+{"product": "<ProductID>", "data": <ArbitraryUserData>}
+```
 
 The <em>buy</em> page will create a new transaction and forward us to the <em>checkout</em> page. The checkout page will track the state of the transaction. Checkout lets the user know <em>where</em> to send funds, <em>how much</em> to send, and <em>what</em> is the state of that transfer.
 
