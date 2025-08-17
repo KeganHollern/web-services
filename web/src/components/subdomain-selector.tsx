@@ -11,10 +11,11 @@ import {
 import { Label } from "@/components/ui/label";
 
 export function SubdomainSelector() {
+    const { subdomain, setSubdomain } = useSubdomain();
+
     const isDev = process.env.NODE_ENV === "development";
     if (!isDev) return null;
 
-    const { subdomain, setSubdomain } = useSubdomain();
 
     return (
         <div className="flex items-center gap-2">

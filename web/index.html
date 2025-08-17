@@ -14,9 +14,43 @@
   </style>
 
   <script>
-    // Read theme from localStorage or use system preference
-    const storedTheme = localStorage.getItem('vite-ui-theme');
+    function getRootDomain() {
+      const hostname = window.location.hostname;
+      const parts = hostname.split('.');
+      if (parts.length > 2) {
+        return parts.slice(-2).join('.');
+      }
+      return hostname;
+    }
+
+    function getCookie(key) {
+      const cookies = document.cookie.split('; ');
+      for (const cookie of cookies) {
+        const [cookieKey, cookieValue] = cookie.split('=');
+        if (cookieKey === key) {
+          return decodeURIComponent(cookieValue);
+        }
+      }
+      return null;
+    }
+
+    function getItem(key) {
+      let value = getCookie(key);
+      if (value !== null) {
+        return JSON.parse(value);
+      }
+
+      value = localStorage.getItem(key);
+      return JSON.parse(value);
+    }
+
+    // Read theme from shared storage
+    const storedTheme = getItem('theme');
+
+    // Determine theme: stored value or system preference, default to 'light'
     const theme = storedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+    console.log(theme);
     if (theme !== 'system') {
       document.documentElement.classList.add(theme);
     } else {

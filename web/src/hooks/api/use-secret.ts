@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
 import { fetchSecret } from '@/api/secret'; // Adjust path as needed
 import { decryptSecret } from '@/lib/crypto'; // Adjust path as needed
+import { useEffect, useRef, useState } from 'react';
 
 interface UseSecretResult {
     content: string | null;

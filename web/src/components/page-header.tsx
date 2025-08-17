@@ -1,12 +1,10 @@
 
-import React from "react";
-
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Separator } from "@/components/ui/separator";
-import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { SubdomainSelector } from "@/components/subdomain-selector";
-
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import React from "react";
 
 interface BreadcrumbItem {
     label: string;
@@ -57,6 +55,5 @@ export function Header({ children, breadcrumbItems }: HeaderProps) {
                 </div>
             </div>
         </header>
-
     )
 }

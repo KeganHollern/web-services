@@ -1,8 +1,3 @@
-// File: src/components/LinkShareProvider.tsx
-// This file defines a self-contained LinkShareProvider that manages the dialog state,
-// renders a built-in LinkShareDialog component, and provides a useLinkShare hook for triggering it.
-// You can import and wrap your app with <LinkShareProvider> to make useLinkShare() available everywhere.
-// Usage: const { shareLink } = useLinkShare(); shareLink("Title", "Description", "https://example.com");
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,26 +6,13 @@ import {
     DialogDescription,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog"; // Assuming shadcn/ui is set up
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import type { LinkShareState } from "./constants";
+import { LinkShareContext } from "./useShareLink";
 
-interface LinkShareState {
-    open: boolean;
-    title: string;
-    description: string;
-    url: string;
-}
-
-interface LinkShareContextType {
-    shareLink: (title: string, description: string, url: string) => void;
-    closeDialog: () => void;
-}
-
-const LinkShareContext = createContext<LinkShareContextType | undefined>(undefined);
-
-// Built-in LinkShareDialog component (self-contained, not reusing the existing one)
 function InternalLinkShareDialog({
     title,
     description,
@@ -68,7 +50,7 @@ function InternalLinkShareDialog({
     );
 }
 
-export function LinkShareProvider({ children }: { children: ReactNode }) {
+export default function LinkShareProvider({ children }: { children: ReactNode }) {
     const [dialogState, setDialogState] = useState<LinkShareState>({
         open: false,
         title: "",
@@ -98,10 +80,3 @@ export function LinkShareProvider({ children }: { children: ReactNode }) {
     );
 }
 
-export function useLinkShare() {
-    const context = useContext(LinkShareContext);
-    if (!context) {
-        throw new Error("useLinkShare must be used within a LinkShareProvider");
-    }
-    return context;
-}
