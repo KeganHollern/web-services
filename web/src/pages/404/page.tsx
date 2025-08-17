@@ -1,5 +1,5 @@
-import { Header } from "@/components/page-header";
 import YouAreLost from "@/assets/you-are-lost.gif";
+import { Header } from "@/components/page-header";
 
 type PageNotFoundProps = {
     domain?: string
@@ -11,7 +11,7 @@ export function PageNotFound({ domain }: PageNotFoundProps) {
     }
 
     const breadcrumbs = [
-        { label: domain, href: `https://${domain}` },
+        { label: domain, href: `/` },
         { label: "404" }
     ];
 

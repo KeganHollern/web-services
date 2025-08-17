@@ -5,6 +5,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import React from "react";
+import { Link } from "react-router";
 
 interface BreadcrumbItem {
     label: string;
@@ -34,8 +35,10 @@ export function Header({ children, breadcrumbItems }: HeaderProps) {
                                     className={items.length === 1 ? "hidden md:block" : undefined}
                                 >
                                     {item.href ? (
-                                        <BreadcrumbLink href={item.href}>
-                                            {item.label}
+                                        <BreadcrumbLink asChild>
+                                            <Link to={{ pathname: item.href }}>
+                                                {item.label}
+                                            </Link>
                                         </BreadcrumbLink>
                                     ) : (
                                         <BreadcrumbPage>{item.label}</BreadcrumbPage>

@@ -1,4 +1,5 @@
 import { Header } from "@/components/page-header";
+import { Link } from "react-router";
 import { Modules } from "./posts";
 
 export function BlogPage() {
@@ -21,7 +22,13 @@ export function BlogPage() {
                 <div className="flex-1 flex justify-center items-center w-full">
                     {
                         posts.map(([slug, title]) => {
-                            return (<p><a href={`/${slug}`}>{title}</a></p>)
+                            return (
+                                <p>
+                                    <Link to={{ pathname: `/${slug}` }}>
+                                        {title}
+                                    </Link>
+                                </p>
+                            )
                         })
                     }
                 </div>
