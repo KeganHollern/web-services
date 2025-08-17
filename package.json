@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@mdx-js/react": "^3.1.0",
+    "@mdx-js/rollup": "^3.1.0"
+  }
+}

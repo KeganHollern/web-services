@@ -1,8 +1,8 @@
 
-import { Avatar } from "@/components/avatar-kegan"
+import { Avatar } from "@/components/avatar-kegan";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function Profile() {
     // TODO: can we make these icons?
