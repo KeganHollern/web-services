@@ -1,0 +1,827 @@
+---
+title: Escape From Tarkov DMA Radar
+description: |
+    I have continued my adventures into DMA cheating over the last year
+    & have begun the task of writing a DMA framework dedicated to cheat development...
+slug: escape-from-tarkov-dma-radar
+---
+
+# Escape From Tarkov DMA Radar
+
+> You can buy my Tarkov cheats @ [echeats.io](https://echeats.io)
+
+I have continued my adventures into DMA cheating over the last year & have begun the task of writing a DMA framework dedicated to cheat development. For this, I wanted to make a simple cheat that can make effective use of the library; so I came back to Tarkov.
+
+One of the simplest cheats that can give an edge over others in EFT is the _Radar_. This enables us to view anything we want on a 2D display of the game map.
+
+Many radar cheats will incorporate their own desktop app using JPG or SVG images of the many maps in game. I hate doing this, and I often use online maps when playing without cheats- so I opted to make use of [tarkov.help](https://tarkov.help/).
+
+![map](https://ss.lystic.zip/2023-11-04/20-06-04/C7qjpQJM7FTdLAXBUcZTemYK.png)
+
+This website contains all maps in high-res and easily zoomable & navigable. Our goal will be to render player positions on this map.
+
+---
+
+The first step in developing this cheat is to figure out: _How can we render custom icons over the map on this webpage?_ The answer to this begins with: _What framework/library is being used by this website to render the map?_
+
+![code](https://ss.lystic.zip/2023-11-04/20-57-31/dV2FY8RxAZ2GYF3CaXCButmZ.png)
+
+Inspecting the page and we find the canvas has this `leaflet-zoom-animated` class. A quick google search and we discover [LeafletJS](https://leafletjs.com/). Leaflet is an extremely popular JavaScript library for interactive 2D maps. With it, icons and many other things can be quickly rendered on the map with hardware acceleration- making it perfect for our Radar.
+
+In order to interact with the map, we need to run our own custom JavaScript on the webpage. There are several ways to do this, but I opted to write a [Chrome Extension](https://developer.chrome.com/docs/extensions/). With an extension, I can write a [content script](https://developer.chrome.com/docs/extensions/mv3/content_scripts/), which will run my custom JavaScript.
+
+Rendering custom icons requires gaining access to the LeafletJS _map_ object. This wasn't trivial due to the React/Angular design of Tarkov.help and required hijacking the Eventing system in LeaftletJS.
+
+```js
+// --- hacky way to extract the map variable from leafletjs events
+const init = () => {
+    let TarkovMap = null;
+
+    for (let prop in L) {
+        if (Object.prototype.hasOwnProperty.call(L, prop)) {
+            // do stuff
+            if( L[prop].addInitHook !== null &&
+                typeof L[prop].addInitHook === 'function'
+            ) {
+                //console.log(prop);
+                L[prop].addInitHook(function() {
+                    if(TarkovMap === null) {
+                        setTimeout(() => {
+                            //console.log('init of: ' + prop);
+                            //console.log(Object.keys(this));
+                            if (this['_map'] !== undefined) {
+                                if(TarkovMap === null) {
+                                    TarkovMap = this['_map'];
+                                    OnMapDiscovered(TarkovMap);
+                                }
+                                //console.log("FOUND MAP");
+                            }
+                        }, 250);
+                    }
+                });
+
+            }
+        }
+    }
+
+    // force a leafletjs event to fire (click a button which hides markers)
+    document.querySelector("#map-page > div.leaflet-control-container > div.leaflet-top.leaflet-left > div:nth-child(5) > button").click();
+};
+```
+
+Once run, this code will insert an _init hook_ for everything in the framework that captures the map variable. To trigger the hook, we force click a button on the webpage which hides all icons on the map. With the map variable acquired, we can begin to write logic for rendering icons on the map.
+
+```js
+const OnMapDiscovered = (map) => {
+    console.log('initializing tarkov cheats...');
+
+    // connect to DMA device
+    ConnectToDevice(map);
+
+
+    // DEBUG
+    markers.example.marker = createMarker([0,0],"zero","#33F")
+        .addTo(map);
+
+    map.on('click', (event) => {
+        console.log([event.latlng.lng, event.latlng.lat]);
+
+        let dev = createMarker(event.latlng, "example", "hsl(360,100%, 50%)")
+            .addTo(map);
+        setTimeout(() => map.removeLayer(dev), 2000); // if no update for this player received in 2 seconds - delete marker
+    });
+};
+```
+
+With this, when I click on the map this cool "Example" icon is drawn wherever I click. Now we just need to hook this up to our DMA-based cheat which reads out all player positions.
+
+![map](https://ss.lystic.zip/2023-11-04/22-03-02/qFnNKk8ZR6UvjDwfNgJapNzD.png)
+
+To connect our chrome extension with our DMA device, I opted for a WebSocket. I wrote [SimpleWS](https://github.com/KeganHollern/SimpleWS) to make this easy for me. To bypass SSL security restrictions, I made a WebSocket proxy service on my website.
+
+---
+
+Last, we just need to read player positions & send them over the WebSocket. For this, we'll make use of my [MemStream](https://github.com/KeganHollern/MemStream) library. MemStream wraps [MemProcFS](https://github.com/ufrisk/MemProcFS), the library all DMA devices use, to simplify cheat development. MemStream does this by forcing developers to write _optimized multi-address read operations, otherwise known as **scatter reads**_.
+
+I want to break the cheat down into consumable snippets. This will help get my logic across without requiring in-depth knowledge of my MemStream library or DMA cheating.
+
+1. Connect to the Device, Find Tarkov, and extract the Game Object Manager.
+
+```cpp
+ // init fpga
+PMSSContext ctx;
+HRESULT hr = MSS_InitFPGA(&ctx);
+if (FAILED(hr) || !ctx) return 1;
+
+// configure card (disable master abort)
+//TODO: make this a launch flag
+//hr = MSS_DisableMasterAbort(ctx);
+//if (FAILED(hr)) return 1;
+
+// find tarkov
+printf("Starting...\n");
+PMSSProcess game;
+hr = MSS_GetProcess(ctx, "EscapeFromTarkov.exe", &game);
+if (FAILED(hr) || !game) {
+	printf("Game not found. Launch Tarkov before the cheat!");
+	return 1;
+}
+
+PMSSProcess anticheat;
+hr = MSS_GetProcess(ctx, "EscapeFromTarkov_BE.exe", &anticheat);
+if(FAILED(hr) || !anticheat) {
+	printf("BattlEye not found!\n");
+} else {
+	printf("BattlEye detected!\n");
+}
+
+
+uint64_t unity_base = 0;
+hr = MSS_GetModuleBase(game, "UnityPlayer.dll", &unity_base);
+if(FAILED(hr)) {
+	printf("Could not find UnityPlayer.dll\n");
+	return 1;
+}
+printf("Found unityplayer.dll @ 0x%p\n", (void*)unity_base);
+
+
+uint64_t gameObjectManager = 0;
+do {
+	hr = MSS_ReadSingle(game, unity_base + OFFSET_GOM, &gameObjectManager, sizeof(uint64_t));
+	if (FAILED(hr)) {
+		Sleep(100);
+		gameObjectManager = 0;
+	}
+} while(!gameObjectManager);
+printf("Found GameObjectManager @ 0x%p\n", (void*)gameObjectManager);
+```
+
+2. Loop call a function which will act as our "_on each frame_" function.
+
+```cpp
+// call do_cheat until it returns a fail code (something went wrong if that happens)
+while(1) {
+	hr = do_cheat(game, gameObjectManager);
+	if(FAILED(hr)) {
+		printf("[%lx] ", hr);
+		break;
+	}
+	printf("reinitializing cheat!\n");
+}
+```
+
+3. Find GameWorld and the Player List.
+
+```cpp
+HRESULT hr = E_FAIL;
+printf("Searching for game world...");
+uint64_t monoworld = 0;
+do {
+	hr = FindActiveObject(game, gameObjectManager, "GameWorld", 2500, &monoworld);
+	if (FAILED(hr)) {
+		Sleep(1000);
+		monoworld = 0;
+	}
+} while(!monoworld);
+printf("found @ 0x%p\n", (void*)monoworld);
+
+printf("Extracting object...");
+uint64_t world = 0;
+hr = ObjectFromMono(game, monoworld, &world);
+if(FAILED(hr) || !world) {
+	printf("failed to convert gameworld to real object?\n");
+	return S_OK;
+}
+printf("found @ 0x%p\n", (void*)world);
+
+// extract world info (these values never change throughout gameplay so we have them outside our main loop)
+printf("Extracting world data...");
+do {
+	ZeroMemory(&gameworld,sizeof(world_data));
+
+	hr = MSS_ReadMany(game,
+		(uint64_t []){
+		   world+OFFSET_World_RegisteredPlayers,
+		   world+OFFSET_World_MainPlayer,
+		   world+OFFSET_World_CurrentProfileId,
+		}, (void* []){
+			&gameworld.player_list._base_address,
+			&gameworld.main_player._base_address,
+			&gameworld.current_profile_id._base_address,
+		}, (size_t []){
+			sizeof(uint64_t),
+			sizeof(uint64_t),
+			sizeof(uint64_t),
+		},3);
+
+	if(FAILED(hr)){
+		printf("failed to read many\n");
+		return hr; // critical error
+	}
+
+	if(FAILED(hr)) {
+		printf("failed to free read ops\n");
+		return hr; // critical error
+	}
+
+	if(!gameworld.main_player._base_address) {
+		printf("failed to read main player?\n");
+	}
+	if(!gameworld.player_list._base_address) {
+		printf("failed to read player list?\n");
+	}
+
+	Sleep(1000);
+} while(!gameworld.main_player._base_address || !gameworld.player_list._base_address);
+printf("done!\n");
+printf("\tPlayerList @ 0x%p\n", (void*)gameworld.player_list._base_address);
+printf("\tMainPlayer @ 0x%p\n", (void*)gameworld.main_player._base_address);
+```
+
+4. Start a loop. In it we'll read the player list.
+
+```cpp
+printf("starting game loop...\n");
+while(1) {
+
+	// 1. read player list (eventually we'll also read loot list)
+	hr = MSS_ReadMany(game, (uint64_t []){
+			gameworld.player_list._base_address+OFFSET_List_Items,
+			gameworld.player_list._base_address+OFFSET_List_Size,
+	}, (void* []){
+			&gameworld.player_list.items._base_address,
+			&gameworld.player_list.size,
+	}, (size_t []){
+			sizeof(uint64_t),
+			sizeof(uint32_t),
+	},2);
+	if(FAILED(hr)) return hr;
+
+	if(!gameworld.player_list.items._base_address) {
+		printf("items list null!\n");
+		return S_OK; // non-breaking failure returns S_O
+	}
+	if(gameworld.player_list.size > 40) {
+		printf("too many players!\n");
+		return S_OK; // invalid list size
+	}
+
+	if(gameworld.player_list.size == 0) {
+		printf("no players!\n");
+		return S_OK;
+	}
+
+	//2. extract other players to a list (drop our local player)
+	if(gameworld.player_list.size > 0) {
+		uint64_t buffer[40];
+		hr = MSS_ReadSingle(game, gameworld.player_list.items._base_address + OFFSET_Array_Start, buffer, sizeof(uint64_t) * gameworld.player_list.size);
+		if (FAILED(hr)) return hr;
+
+		for (int i = 0; i < gameworld.player_list.size; i++) {
+			gameworld.player_list.items.players[i]._base_address = buffer[i];
+			gameworld.player_list.items.players[i].is_local = buffer[i] == gameworld.main_player._base_address;
+		}
+	}
+```
+
+5. Read the profile & cached pointer values.
+
+```cpp
+	//3. extract cachedptr and profile from all players in one read (also reading main_player for easy localplayer access)
+	PMSSDataArray readData;
+	hr = MSS_NewArray(2 + (gameworld.player_list.size) * 2,&readData);
+	if(FAILED(hr)) return hr;
+
+	hr = MSS_PushMany(readData,
+						   (uint64_t[]){
+			gameworld.main_player._base_address + OFFSET_Player_CachedPtr,
+			gameworld.main_player._base_address + OFFSET_Player_Profile,
+	},(void*[]){
+			&gameworld.main_player.cached_ptr._base_address,
+			&gameworld.main_player.profile._base_address,
+	},(size_t[]){
+			sizeof(uint64_t),
+			sizeof(uint64_t),
+	},2);
+	if(FAILED(hr)) return hr;
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		hr = MSS_PushMany(readData, (uint64_t[]){
+				gameworld.player_list.items.players[i]._base_address + OFFSET_Player_CachedPtr,
+				gameworld.player_list.items.players[i]._base_address + OFFSET_Player_Profile,
+		},(void*[]){
+				&gameworld.player_list.items.players[i].cached_ptr._base_address,
+				&gameworld.player_list.items.players[i].profile._base_address,
+		},(size_t[]){
+				sizeof(uint64_t),
+				sizeof(uint64_t),
+		},2);
+		if(FAILED(hr)) return hr;
+	}
+
+	hr = MSS_ReadMany(game,
+					  readData->addresses,
+					  readData->buffers,
+					  readData->sizes,
+					  readData->count);
+
+	if(FAILED(hr)) return hr;
+	hr = MSS_FreeArray(readData);
+	if(FAILED(hr)) return hr;
+```
+
+You get the idea. The remainder of the code continues the process of reading data from Tarkov until we've acquired all the player information and location data.
+
+```cpp
+    //4. extract info from all profiles & start walking cached_ptr
+	hr = MSS_NewArray(2 + (gameworld.player_list.size) * 2,&readData);
+	if(FAILED(hr)) return hr;
+
+	if(gameworld.main_player.profile._base_address) { // profile
+		hr = MSS_Push(readData, gameworld.main_player.profile._base_address + OFFSET_Profile_Info,
+						  &gameworld.main_player.profile.info._base_address, sizeof(uint64_t));
+		if (FAILED(hr))return hr;
+	}
+	if(gameworld.main_player.cached_ptr._base_address) { // cached_ptr
+		hr = MSS_Push(readData, gameworld.main_player.cached_ptr._base_address + OFFSET_Transform_One,
+						  &gameworld.main_player.cached_ptr.in_by_one._base_address, sizeof(uint64_t));
+		if (FAILED(hr))return hr;
+	}
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		if(gameworld.player_list.items.players[i].profile._base_address) { // profile
+			hr = MSS_Push(readData,
+							  gameworld.player_list.items.players[i].profile._base_address + OFFSET_Profile_Info,
+							  &gameworld.player_list.items.players[i].profile.info._base_address,
+							  sizeof(uint64_t));
+			if (FAILED(hr)) return hr;
+		}
+		if(gameworld.player_list.items.players[i].cached_ptr._base_address) { // cached_ptr
+			hr = MSS_Push(readData,
+							  gameworld.player_list.items.players[i].cached_ptr._base_address + OFFSET_Transform_One,
+							  &gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address,
+							  sizeof(uint64_t));
+			if (FAILED(hr)) return hr;
+		}
+	}
+
+	hr = MSS_ReadMany(game,
+					  readData->addresses,
+					  readData->buffers,
+					  readData->sizes,
+					  readData->count);
+	if(FAILED(hr)) return hr;
+	hr = MSS_FreeArray(readData);
+	if(FAILED(hr)) return hr;
+
+	// 5. extract data from all infos + cached_ptr walking
+	hr = MSS_NewArray(7 + (gameworld.player_list.size) * 7,&readData);
+	if(FAILED(hr)) return hr;
+
+	if(gameworld.main_player.profile._base_address &&
+			gameworld.main_player.profile.info._base_address) { // info
+		hr = MSS_PushMany(readData, (uint64_t[]) {
+				gameworld.main_player.profile.info._base_address + OFFSET_Info_Nickname,
+				gameworld.main_player.profile.info._base_address + OFFSET_Info_MainProfileNickname,
+				gameworld.main_player.profile.info._base_address + OFFSET_Info_GroupId,
+				gameworld.main_player.profile.info._base_address + OFFSET_Info_Settings,
+				gameworld.main_player.profile.info._base_address + OFFSET_Info_Side,
+				gameworld.main_player.profile.info._base_address + OFFSET_Info_TeamId,
+		}, (void *[]) {
+				&gameworld.main_player.profile.info.nickname._base_address,
+				&gameworld.main_player.profile.info.mainprofilenickname._base_address,
+				&gameworld.main_player.profile.info.groupid._base_address,
+				&gameworld.main_player.profile.info.settings._base_address,
+				&gameworld.main_player.profile.info.side,
+				&gameworld.main_player.profile.info.teamid._base_address,
+		}, (size_t[]) {
+				sizeof(uint64_t),
+				sizeof(uint64_t),
+				sizeof(uint64_t),
+				sizeof(uint64_t),
+				sizeof(uint32_t),
+				sizeof(uint64_t),
+		}, 6);
+		if (FAILED(hr)) return hr;
+	}
+	if(gameworld.main_player.cached_ptr._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one._base_address) { // inbyone
+		hr = MSS_Push(readData, gameworld.main_player.cached_ptr.in_by_one._base_address + OFFSET_Transform_Two,
+						  &gameworld.main_player.cached_ptr.in_by_one.in_by_two._base_address, sizeof(uint64_t));
+		if (FAILED(hr))return hr;
+	}
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		if(gameworld.player_list.items.players[i].profile._base_address &&
+		gameworld.player_list.items.players[i].profile.info._base_address) { // info
+			hr = MSS_PushMany(readData, (uint64_t[]) {
+					gameworld.player_list.items.players[i].profile.info._base_address + OFFSET_Info_Nickname,
+					gameworld.player_list.items.players[i].profile.info._base_address +
+					OFFSET_Info_MainProfileNickname,
+					gameworld.player_list.items.players[i].profile.info._base_address + OFFSET_Info_GroupId,
+					gameworld.player_list.items.players[i].profile.info._base_address + OFFSET_Info_Settings,
+					gameworld.player_list.items.players[i].profile.info._base_address + OFFSET_Info_Side,
+					gameworld.player_list.items.players[i].profile.info._base_address + OFFSET_Info_TeamId,
+			}, (void *[]) {
+					&gameworld.player_list.items.players[i].profile.info.nickname._base_address,
+					&gameworld.player_list.items.players[i].profile.info.mainprofilenickname._base_address,
+					&gameworld.player_list.items.players[i].profile.info.groupid._base_address,
+					&gameworld.player_list.items.players[i].profile.info.settings._base_address,
+					&gameworld.player_list.items.players[i].profile.info.side,
+					&gameworld.player_list.items.players[i].profile.info.teamid._base_address,
+			}, (size_t[]) {
+					sizeof(uint64_t),
+					sizeof(uint64_t),
+					sizeof(uint64_t),
+					sizeof(uint64_t),
+					sizeof(uint32_t),
+					sizeof(uint64_t),
+			}, 6);
+			if (FAILED(hr)) return hr;
+		}
+		if(gameworld.player_list.items.players[i].cached_ptr._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address) { // inbyone
+			hr = MSS_Push(readData, gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address + OFFSET_Transform_Two,
+							  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two._base_address, sizeof(uint64_t));
+			if (FAILED(hr))return hr;
+		}
+	}
+
+	hr = MSS_ReadMany(game,
+					  readData->addresses,
+					  readData->buffers,
+					  readData->sizes,
+					  readData->count);
+	if(FAILED(hr)) return hr;
+	hr = MSS_FreeArray(readData);
+	if(FAILED(hr)) return hr;
+
+	// 6. extract data from settings + walk transform chain
+	hr = MSS_NewArray(3 + (gameworld.player_list.size) * 3,&readData);
+	if(FAILED(hr)) return hr;
+
+	if(gameworld.main_player.profile._base_address &&
+			gameworld.main_player.profile.info._base_address &&
+			gameworld.main_player.profile.info.settings._base_address) { // settings
+		hr = MSS_PushMany(readData, (uint64_t[]) {
+				gameworld.main_player.profile.info.settings._base_address + OFFSET_Settings_BotDifficulty,
+				gameworld.main_player.profile.info.settings._base_address + OFFSET_Settings_Role,
+		}, (void *[]) {
+				&gameworld.main_player.profile.info.settings.difficulty,
+				&gameworld.main_player.profile.info.settings.role,
+		}, (size_t[]) {
+				sizeof(uint32_t),
+				sizeof(uint32_t),
+		}, 2);
+		if (FAILED(hr)) return hr;
+	}
+	if(gameworld.main_player.cached_ptr._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one.in_by_two._base_address) { // inbytwo
+		hr = MSS_Push(readData, gameworld.main_player.cached_ptr.in_by_one.in_by_two._base_address + OFFSET_Transform_Three,
+						  &gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three._base_address, sizeof(uint64_t));
+		if (FAILED(hr))return hr;
+	}
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+
+		if(gameworld.player_list.items.players[i].profile._base_address &&
+				gameworld.player_list.items.players[i].profile.info._base_address &&
+				gameworld.player_list.items.players[i].profile.info.settings._base_address) {
+			hr = MSS_PushMany(readData, (uint64_t[]) {
+					gameworld.player_list.items.players[i].profile.info.settings._base_address +
+					OFFSET_Settings_BotDifficulty,
+					gameworld.player_list.items.players[i].profile.info.settings._base_address +
+					OFFSET_Settings_Role,
+			}, (void *[]) {
+					&gameworld.player_list.items.players[i].profile.info.settings.difficulty,
+					&gameworld.player_list.items.players[i].profile.info.settings.role,
+			}, (size_t[]) {
+					sizeof(uint32_t),
+					sizeof(uint32_t),
+			}, 2);
+			if (FAILED(hr)) return hr;
+		}
+
+		if(gameworld.player_list.items.players[i].cached_ptr._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two._base_address) { // inbytwo
+			hr = MSS_Push(readData, gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two._base_address + OFFSET_Transform_Three,
+							  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three._base_address, sizeof(uint64_t));
+			if (FAILED(hr))return hr;
+		}
+
+	}
+
+	hr = MSS_ReadMany(game,
+					  readData->addresses,
+					  readData->buffers,
+					  readData->sizes,
+					  readData->count);
+	if(FAILED(hr)) return hr;
+	hr = MSS_FreeArray(readData);
+	if(FAILED(hr)) return hr;
+
+	// 7. read all non-pointer content we did not capture in previous reads (strings for example)
+	hr = MSS_NewArray(5 + (gameworld.player_list.size) * 5,&readData);
+	if(FAILED(hr)) return hr;
+
+	if(gameworld.main_player.profile._base_address &&
+			gameworld.main_player.profile.info._base_address) {
+		hr = MSS_PushMany(readData, (uint64_t[]) {
+				gameworld.main_player.profile.info.mainprofilenickname._base_address + OFFSET_String_Start,
+				gameworld.main_player.profile.info.nickname._base_address + OFFSET_String_Start,
+				gameworld.main_player.profile.info.groupid._base_address + OFFSET_String_Start,
+				gameworld.main_player.profile.info.teamid._base_address + OFFSET_String_Start,
+		}, (void *[]) {
+				gameworld.main_player.profile.info.mainprofilenickname.content,
+				gameworld.main_player.profile.info.nickname.content,
+				gameworld.main_player.profile.info.groupid.content,
+				gameworld.main_player.profile.info.teamid.content,
+		}, (size_t[]) {
+				sizeof(gameworld.main_player.profile.info.mainprofilenickname.content),
+				sizeof(gameworld.main_player.profile.info.nickname.content),
+				sizeof(gameworld.main_player.profile.info.groupid.content),
+				sizeof(gameworld.main_player.profile.info.teamid.content),
+		}, 4);
+		if (FAILED(hr)) return hr;
+	}
+	if(gameworld.main_player.cached_ptr._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one.in_by_two._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three._base_address) { // inbythree
+		hr = MSS_Push(readData, gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three._base_address + OFFSET_Transform_UnityTransform,
+						  &gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address, sizeof(uint64_t));
+		if (FAILED(hr))return hr;
+	}
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		if(gameworld.player_list.items.players[i].profile._base_address &&
+				gameworld.player_list.items.players[i].profile.info._base_address) {
+			hr = MSS_PushMany(readData, (uint64_t[]) {
+					gameworld.player_list.items.players[i].profile.info.mainprofilenickname._base_address +
+					OFFSET_String_Start,
+					gameworld.player_list.items.players[i].profile.info.nickname._base_address +
+					OFFSET_String_Start,
+					gameworld.player_list.items.players[i].profile.info.groupid._base_address + OFFSET_String_Start,
+					gameworld.player_list.items.players[i].profile.info.teamid._base_address + OFFSET_String_Start,
+			}, (void *[]) {
+					gameworld.player_list.items.players[i].profile.info.mainprofilenickname.content,
+					gameworld.player_list.items.players[i].profile.info.nickname.content,
+					gameworld.player_list.items.players[i].profile.info.groupid.content,
+					gameworld.player_list.items.players[i].profile.info.teamid.content,
+			}, (size_t[]) {
+					sizeof(gameworld.player_list.items.players[i].profile.info.mainprofilenickname.content),
+					sizeof(gameworld.player_list.items.players[i].profile.info.nickname.content),
+					sizeof(gameworld.player_list.items.players[i].profile.info.groupid.content),
+					sizeof(gameworld.player_list.items.players[i].profile.info.teamid.content),
+			}, 4);
+			if (FAILED(hr)) return hr;
+		}
+		if(gameworld.player_list.items.players[i].cached_ptr._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three._base_address) { // inbythree
+			hr = MSS_Push(readData, gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three._base_address + OFFSET_Transform_UnityTransform,
+							  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address, sizeof(uint64_t));
+			if (FAILED(hr))return hr;
+		}
+	}
+
+	hr = MSS_ReadMany(game,
+					  readData->addresses,
+					  readData->buffers,
+					  readData->sizes,
+					  readData->count);
+	if(FAILED(hr)) return hr;
+	hr = MSS_FreeArray(readData);
+	if(FAILED(hr)) return hr;
+
+
+	// -- finish extracting transform internal ptrs
+
+	hr = MSS_NewArray(1 + (gameworld.player_list.size) * 1,&readData);
+	if(FAILED(hr)) return hr;
+	if(gameworld.main_player.cached_ptr._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one.in_by_two._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three._base_address &&
+			gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address) { // unity_transform
+		hr = MSS_Push(readData, gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address + OFFSET_Transform_Internal,
+						  &gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform._base_address, sizeof(uint64_t));
+		if (FAILED(hr))return hr;
+	}
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		if(gameworld.player_list.items.players[i].cached_ptr._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three._base_address &&
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address) { // unity_transform
+			hr = MSS_Push(readData, gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address + OFFSET_Transform_Internal,
+							  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform._base_address, sizeof(uint64_t));
+			if (FAILED(hr))return hr;
+		}
+	}
+
+	hr = MSS_ReadMany(game,
+					  readData->addresses,
+					  readData->buffers,
+					  readData->sizes,
+					  readData->count);
+	if(FAILED(hr)) return hr;
+	hr = MSS_FreeArray(readData);
+	if(FAILED(hr)) return hr;
+
+	// -- read transforms
+	if(gameworld.main_player.cached_ptr._base_address &&
+	   gameworld.main_player.cached_ptr.in_by_one._base_address &&
+	   gameworld.main_player.cached_ptr.in_by_one.in_by_two._base_address &&
+	   gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three._base_address &&
+	   gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address &&
+	   gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform._base_address) {
+	   hr = ReadTransform(game,
+					  gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform._base_address,
+					  &gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.x,
+					  &gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.y,
+					  &gameworld.main_player.cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.z);
+	   if(FAILED(hr)) return hr;
+	}
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		if(gameworld.player_list.items.players[i].cached_ptr._base_address &&
+		   gameworld.player_list.items.players[i].cached_ptr.in_by_one._base_address &&
+		   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two._base_address &&
+		   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three._base_address &&
+		   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform._base_address &&
+		   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform._base_address) {
+		   hr = ReadTransform(game,
+						  gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform._base_address,
+						  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.x,
+						  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.y,
+						  &gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.z);
+		   if(FAILED(hr)) return hr;
+		}
+	}
+```
+
+Now we just need to package it up and send the information over the WebSocket. I also neatly display the information in the cheat console as well 🙂.
+
+```cpp
+	cls(hStdout);
+
+	// print output to terminal & build socket packet
+
+	SetConsoleTextAttribute(hStdout, BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE | BACKGROUND_INTENSITY);
+
+	printf("%-24s(%-24s) | %7s %7s %7s | %-32s | %-32s | %-8s | %-12s | %-8s  \n",
+		   "in game name", "main character name","x", "y", "z", "group id", "team id", "side", "role", "difficulty");
+
+	// build ws packet and send
+#define buffer_entry_length (24+1+24+1+7+1+7+1+7+1+32+1+32+1+8+1+12+1+8+1+1)
+	char buffer[(buffer_entry_length)*40] = {0};
+	char entry[buffer_entry_length] = {0};
+
+	for(int i = 0; i < gameworld.player_list.size; i++) {
+		gameworld.player_list.items.players[i].profile.info.nickname.content[254] = 0; // ensure null termination
+		gameworld.player_list.items.players[i].profile.info.mainprofilenickname.content[254] = 0; // ensure null termination
+		gameworld.player_list.items.players[i].profile.info.groupid.content[254] = 0; // ensure null termination
+		gameworld.player_list.items.players[i].profile.info.teamid.content[254] = 0; // ensure null termination
+
+		if(gameworld.player_list.items.players[i].is_local) {
+			SetConsoleTextAttribute(hStdout, 10);
+		} else if (wcscmp(gameworld.main_player.profile.info.groupid.content, L"") &&
+				!wcscmp(gameworld.player_list.items.players[i].profile.info.groupid.content, gameworld.main_player.profile.info.groupid.content)) {
+			SetConsoleTextAttribute(hStdout, 11);
+		} else if (gameworld.player_list.items.players[i].profile.info.side == savage) {
+			SetConsoleTextAttribute(hStdout, 14);
+		} else {
+			SetConsoleTextAttribute(hStdout, 12);
+		}
+
+		// print strings from game (wide characters)
+		wprintf(L"%-24s(%-24s) | %7.3f %7.3f %7.3f | %-32s | %-32s | ",
+			   gameworld.player_list.items.players[i].profile.info.nickname.content,
+			   gameworld.player_list.items.players[i].profile.info.mainprofilenickname.content,
+			   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.x,
+			   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.y,
+			   gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.z,
+			   gameworld.player_list.items.players[i].profile.info.groupid.content,
+			   gameworld.player_list.items.players[i].profile.info.teamid.content);
+		// print enum strings (characters)
+		printf("%-8s | %-12s | %-8s  \n",
+			   EPlayerSide_Name(gameworld.player_list.items.players[i].profile.info.side),
+			   EWildSpawnType_Name(gameworld.player_list.items.players[i].profile.info.settings.role),
+			   EBotDifficulty_Name(gameworld.player_list.items.players[i].profile.info.settings.difficulty));
+
+
+
+		size_t temp;
+		char name[255] = {0};
+		wcstombs_s(&temp, name, 255, gameworld.player_list.items.players[i].profile.info.nickname.content, 255);
+
+		if(strlen(name) == 0) {
+			sprintf(name, "unknown %d", i);
+		}
+
+		char main[255] = {0};
+		wcstombs_s(&temp, main, 255, gameworld.player_list.items.players[i].profile.info.mainprofilenickname.content, 255);
+		char group[255] = {0};
+		wcstombs_s(&temp, group, 255, gameworld.player_list.items.players[i].profile.info.groupid.content, 255);
+		char team[255] = {0};
+		wcstombs_s(&temp, team, 255, gameworld.player_list.items.players[i].profile.info.teamid.content, 255);
+
+		const char* side = EPlayerSide_Name(gameworld.player_list.items.players[i].profile.info.side);
+		const char* role = EWildSpawnType_Name(gameworld.player_list.items.players[i].profile.info.settings.role);
+		const char* difficulty = EBotDifficulty_Name(gameworld.player_list.items.players[i].profile.info.settings.difficulty);
+
+		sprintf(entry, "%.24s`%.24s`%.32s`%.32s`%.8s`%.12s`%.8s`%.3f`%.3f`%.3f`%d\n",
+				name,
+				main,
+				group,
+				team,
+				side,
+				role,
+				difficulty,
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.x,
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.y,
+				gameworld.player_list.items.players[i].cached_ptr.in_by_one.in_by_two.in_by_three.unity_transform.transform.z,
+				gameworld.player_list.items.players[i].is_local);
+		strcat_s(buffer, sizeof(buffer), entry);
+
+	}
+
+	buffer[sizeof(buffer)-1] = 0; // ensure null termination
+	ws_push(buffer);
+
+
+
+	printf("\n\n");
+```
+
+In the chrome extension we can parse the data and update the LeafletJS map with players. _Sadly, I don't have a screenshot of the map with players actually rendered._
+
+```js
+let active_socket = null;
+const ConnectToDevice = (map) => {
+    active_socket = new WebSocket("wss://dma.echeats.io:1337");
+    active_socket.onopen = function(e) {
+        console.log('connected');
+    };
+    active_socket.onclose = function(event) {
+        if (event.wasClean) {
+            console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+        } else {
+            console.log('[close] Connection died');
+            setTimeout(()=> ConnectToDevice(map), 1000);
+        }
+    };
+    active_socket.onerror = function(error) {
+        active_socket.close();
+    };
+
+    active_socket.onmessage = function(event) {
+        //console.log(`${event.data}`);
+        OnPacket(map, event.data);
+    };
+};
+
+// on player data received over socket
+const OnPacket = (map, content) => {
+    // deserialize packet from cheat and handle it
+   // console.log(content);
+
+    let entries = content.split("\n");
+    //console.log(entries);
+    entries.forEach((entry) => {
+        if(entry.trim() === "") return;
+
+        let parts = entry.split("`");
+        if(parts.length !== 11) {
+            console.log(`invalid message: ${entry}`);
+            return;
+        }
+        let data = {
+            name: parts[0],
+            main: parts[1],
+            group: parts[2],
+            team: parts[3],
+            side: parts[4],
+            type: parts[5],
+            difficulty: parts[6],
+            local: parseInt(parts[10])===1,
+            x: parseFloat(parts[7]),
+            y: parseFloat(parts[8]),
+            z: parseFloat(parts[9]),
+        };
+        // console.log(JSON.stringify(data));
+
+        CreateOrUpdatePlayer(map, data);
+    });
+};
+```
+
+---
+
+With that, we've successfully created a Tarkov Radar with DMA. I have hidden some of the nuances around transforming game coordinates to map coordinates, as well as my exact LeafletJS rendering techniques. I'll leave these as exercises for the reader 🙂
+
+One of the benefits of using a Chrome Extension with a websocket proxy is: I can share the extension with friends & they can _also_ see all players on their own PC, so long as I am alive & my DMA device is operating 😈.

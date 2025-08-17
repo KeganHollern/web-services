@@ -1,4 +1,6 @@
 import { Header } from "@/components/page-header";
+import { cn } from "@/lib/utils";
+import { Link as Hyperlink } from "lucide-react";
 import { Link } from "react-router";
 import { Modules } from "./posts";
 
@@ -7,27 +9,26 @@ export function BlogPage() {
         { label: "blog.lystic.dev" },
     ];
 
-
-    const posts = Object.entries(Modules).map(([filePath]) => {
-        const slug = filePath.split("/").pop()?.replace(".mdx", "") ?? "";
-        const title = slug.replaceAll("-", " ");
-
-        return [slug, title]
-    })
-
     return (
         <>
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
-                <div className="flex-1 flex justify-center items-center w-full">
+                <div className="container mx-auto py-6 space-y-6">
+                    <h1 className="scroll-m-20 text-center mx-auto text-4xl max-w-3xl font-extrabold tracking-tight text-balance mb-12 border-b-2 pb-6">Lystic's Blog</h1>
                     {
-                        posts.map(([slug, title]) => {
+                        Modules.map(({ metadata }, idx) => {
+
                             return (
-                                <p>
-                                    <Link to={{ pathname: `/${slug}` }}>
-                                        {title}
-                                    </Link>
-                                </p>
+                                <div className={cn("mx-auto max-w-3xl", idx > 0 ? "border-t-2 pt-6" : "")} key={metadata.slug}>
+                                    <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight">
+                                        <Link to={{ pathname: `/${metadata.slug}` }} className="flex items-center gap-2">
+                                            {metadata.title} <Hyperlink className="h-3 w-3" />
+                                        </Link>
+                                    </h3>
+                                    <p className="leading-7 [&:not(:first-child)]:mt-6 text-muted-foreground">
+                                        {metadata.description}
+                                    </p>
+                                </div>
                             )
                         })
                     }

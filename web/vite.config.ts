@@ -2,8 +2,11 @@ import mdx from "@mdx-js/rollup";
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from "path";
+import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from 'remark-gfm';
+import remarkMdxFrontmatter from "remark-mdx-frontmatter";
 import { defineConfig } from 'vite';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -11,12 +14,13 @@ export default defineConfig({
     {
       enforce: 'pre', ...mdx({
         providerImportSource: '@mdx-js/react',
-        remarkPlugins: [remarkGfm],
+        remarkPlugins: [remarkGfm, remarkFrontmatter, remarkMdxFrontmatter],
         // rehypePlugins: [rehypeHighlight]
       })
     }, // compile mdx first
     react({ include: /\.(jsx|js|mdx|md|tsx|ts)$/ }),
     tailwindcss(),
+    nodePolyfills(),
   ],
   resolve: {
     alias: {

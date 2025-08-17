@@ -1,0 +1,236 @@
+---
+title: Manual Syscalls on Windows
+description: |
+    I've recently been working on a new cheat and it's become necessary to take steps to obscure my code.
+    To do this, I've taken on the task of learning to run syscalls...
+slug: manual-syscalls-on-windows
+---
+
+# Manual Syscalls on Windows
+
+> "In computing, a system call (commonly abbreviated to **syscall**) is the programmatic 
+> way in which a computer program requests a service from the operating system on which 
+> it is executed." - [Wikipedia](https://en.wikipedia.org/wiki/System_call)
+
+I've recently been working on a new cheat and it's become necessary to take steps to obscure my code. 
+To do this, I've taken on the task of learning to run syscalls myself 
+rather than relying on the potentially hooked exports from NtDll.
+
+One of the ways Anticheats can flag a cheater is by monitoring 
+calls to NtDll functions such as [NtAllocateVirtualMemory](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntallocatevirtualmemory). 
+They often do this through [inline hooks](https://www.malwaretech.com/2015/01/inline-hooking-for-programmers-part-1.html) 
+on those functions, but there are many approaches that can be taken. 
+When a cheat calls a function hooked by the anticheat, it can use an arsenal of techniques 
+to determine if the caller appears nefarious.
+
+A simple way of avoiding those hooks is simply not calling a hooked function, 
+but when those hooks are on functions which talk to the kernel, the only 
+alternative is to talk to the kernel yourself.
+
+---
+
+In my case, I need the functionality contained within the following NtDll routines:
+
+- [NtCreateThreadEx](http://pinvoke.net/default.aspx/ntdll/NtCreateThreadEx.html)
+- [NtAllocateVirtualMemory](https://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FMemory%20Management%2FVirtual%20Memory%2FNtQueryVirtualMemory.html)
+- [NtProtectVirtualMemory](https://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FMemory%20Management%2FVirtual%20Memory%2FNtQueryVirtualMemory.html)
+- [NtQueryVirtualMemory](https://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FMemory%20Management%2FVirtual%20Memory%2FNtQueryVirtualMemory.html)
+
+The kernel identifies the syscalls these routines make by an integer identifier. 
+These identifiers change between windows versions, so I needed to find the correct IDs for my system. 
+To do this, I popped NtDll into [IDA Pro](https://hex-rays.com/ida-pro/) and looked over the disassembly.
+
+Here is NtAllocateVirtualMemory:
+
+```asm
+                mov     r10, rcx        ; NtAllocateVirtualMemory
+                mov     eax, 24
+                test    byte ptr ds:7FFE0308h, 1
+                jnz     short loc_18009EF55
+                syscall                 ; Low latency system call
+                retn
+; ---------------------------------------------------------------------------
+
+loc_18009EF55:                          ; CODE XREF: ZwAllocateVirtualMemory+10↑j
+                int     2Eh             ; DOS 2+ internal - EXECUTE COMMAND
+                                        ; DS:SI -> counted CR-terminated command string
+                retn
+```
+
+We can see line #2 sets the value of the ECX register to 24, 
+this tells us the syscall ID for NtAllocateVirtualMemory is 24.
+
+Knowing the [x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170), 
+I found line #1 curious. It sets the value of `r10` to `rcx`. 
+This is because the `syscall` operation [destroys the RCX register](https://stackoverflow.com/a/35619528), 
+and thus cannot be used to pass the 1st argument to the kernel; r10 takes this role instead.
+
+---
+
+The first step in doing manual syscalls is to write my own routine for the `syscall` operation. 
+I wanted this routine to be used for any syscall, so I needed to set the value of `ecx` dynamically.
+
+```asm
+; call any arbitrary syscall
+; pass syscall index in r12d
+syscall_idx PROC
+    xor rax, rax
+    mov r10, rcx
+    mov eax, r12d
+    syscall
+    ret
+syscall_idx ENDP
+```
+
+This routine takes in the syscall ID on the `r12d` register, 
+otherwise it's no different than the NtDll routines. 
+Next I am going to create functions for each syscall I want to replicate. 
+Here is NtQueryVirtualMemory:
+
+```asm
+virtual_query_syscall PROC
+    ; ecx - Syscall ID 
+    ; rdx - pAddress
+    ; r8 - pBuffer
+    ; r9 - length
+    ; rsp+28h - pResultLength
+
+    ; store 5th argument in rbx for later use
+    mov rbx, qword ptr [rsp+28h]
+
+    ; put syscallid on our syscall_idx id register
+    push r12
+    xor r12, r12
+    mov r12d, ecx
+
+    ; setup arguments
+    push rbx                                    ; - pResultLength (6th argument)
+    push r9                                     ; - dwLength (5th argument)
+
+    mov r9, r8                                  ; - pBuffer (4th argument)
+    xor r8, r8                                  ; - dwInfoClass (3rd argument)
+    ; mov rdx, rdx                              ; - lpAddress (2nd argument)
+    or rcx, 0FFFFFFFFFFFFFFFFh                  ; - qwProcess (1st argument)
+
+    ; shadow pool
+    push r9
+    push r8
+    push rdx
+    push rcx
+
+    ; make syscall
+    call syscall_idx
+    
+    ; clean stack and return
+    add rsp, 30h
+    pop r12
+    ret
+virtual_query_syscall ENDP
+```
+
+This function takes 5 arguments, 
+one for the Syscall ID, 
+and 4 which pass into the 6 argument NtQueryVirtualMemory syscall.
+
+One of the important things to note is that the [shadow space](https://stackoverflow.com/questions/30190132/what-is-the-shadow-space-in-x64-assembly) 
+still needs allocated (L26-29) (Note: I call it the "shadow pool" in reference to Dota 2 smurfing).
+
+With this, we can jump back into C and finish writing a nice wrapper function for our syscall. 
+We've successfully created a function which executes a syscall manually.
+
+```cpp
+// syscall extern from our assembly
+extern "C" NTSTATUS virtual_query_syscall(
+	uint32_t syscall_id, 
+	void* address, 
+	PMEMORY_BASIC_INFORMATION buffer, 
+	uint64_t length, 
+	uint32_t* resultLength);
+
+// nice wrapper function
+SIZE_T virtual_query(
+	LPCVOID lpAddress, 
+	PMEMORY_BASIC_INFORMATION lpBuffer, 
+	SIZE_T length) 
+{
+	SIZE_T resultLength = 0;
+
+	NTSTATUS status = virtual_query_syscall(
+		values.virtual_query, 
+		(void*)lpAddress, 
+		lpBuffer, 
+		length, 
+		(uint32_t*)&resultLength);
+	
+	if (status < 0) return 0;
+
+	return resultLength;
+}
+```
+
+---
+
+The next step would be making this syscall work across multiple versions of Windows. 
+A simple approach to this would be to read NtDll from disk and look for the 
+syscall IDs before calling any of them. 
+Here is an example of how that could be done:
+
+```cpp
+uint16_t get_syscall_id(const char* symbol) {
+	uint8_t pattern[] = {
+		0x4C, 0x8B, 0xD1,	// mov r10, rcx
+		0xB8				// mov eax, XYZ
+	};
+
+  // find the address of the pattern above after the provided symbol in NtDll
+	auto pattern_addr = (uint64_t)find_ntdll_pattern(symbol, pattern, 4);
+	if (!pattern_addr) return 0;
+
+	pattern_addr += 4;
+	return *(uint16_t*)pattern_addr; // read the next 2 bytes 
+}
+```
+
+Unfortunately, manual syscalls are not a foolproof method. 
+There exists many ways of detecting these, such as [instrumentation callbacks](https://github.com/Deputation/instrumentation_callbacks), 
+which make running a `syscall` operation from outside NtDll very suspicious.
+
+My novel (and naïve) approach to tackle this was to modify my `syscall_idx` 
+routine such that it JUMPs into NtDll to perform the `syscall` operation. 
+That looks a little something like:
+
+```asm
+.data 
+
+ntSyscall QWORD 0h
+
+.code
+
+; function to perform syscall
+syscall_idx PROC
+    xor rax, rax
+    mov r10, rcx
+    mov eax, r12d
+    ; jump to ntdll to perform
+    ; - syscall;
+    ; - ret;
+    jmp ntSyscall
+syscall_idx ENDP
+
+; function to set ntSyscall
+set_nt_syscall_addr PROC
+    mov ntSyscall, rcx
+    ret
+set_nt_syscall_addr ENDP
+```
+
+Before making a syscall, I find a `syscall; ret;` 
+instruction pair in NtDll and call `set_nt_syscall_addr(found_address);` 
+to ensure `syscall_idx` knows where to jump.
+
+This isn't flawless. An Anticheat could simply check the return address to see 
+where the `ret` instruction inside NtDll is returning to (hint: it returns to my cheat).
+
+...
+
+Anyway it was a fun learning exercise & definitely helped me learn more about `user<->kernel` interaction.

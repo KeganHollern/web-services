@@ -82,7 +82,7 @@ const flavor = {
   ),
   // TODO: give background color of bg2 from globals.css using tailwind...
   blockquote: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLQuoteElement>) => (
-    <blockquote className={cn("mt-2 border-l-2 pl-6 italic", props.className)} {...props}>
+    <blockquote className={cn("my-8 border-l-2 pl-6 italic", props.className)} {...props}>
       {children}
     </blockquote>
   ),
@@ -168,9 +168,11 @@ const code = {
       <Editor
         readonly={true}
         content={content}
-        className={cn("h-80 w-full relative border-2 border-muted rounded-lg p-1 my-2")}
+        className={cn("h-80 w-full relative border-2 border-muted rounded-lg p-1 my-4")}
         language={language}
-        minimap={true} />
+        wordwrap={false}
+        fontSize={12}
+        minimap={false} />
     )
   },
 }

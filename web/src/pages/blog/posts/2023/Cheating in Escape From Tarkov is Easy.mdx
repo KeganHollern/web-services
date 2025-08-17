@@ -1,0 +1,51 @@
+---
+title: Cheating in Escape From Tarkov is Easy
+description: |
+    Cheating in Tarkov has been making the rounds lately online.
+    Funny enough, I recently started playing the game again with friends, so I gave my old cheats a kick...
+slug: cheating-in-escape-from-tarkov-is-easy
+---
+
+# Cheating in Escape From Tarkov is Easy
+
+Cheating in Tarkov has been making the rounds lately online. Funny enough, I recently started playing the game again with friends, so I gave my old cheats a kick and decided to rebuild them from scratch. There is often a lot of misinformation and confusion around cheat development, so I figure I’d describe the process of getting a Tarkov cheat rolling from scratch just to show that it is really easy.
+
+Though normally I would, this time I don’t plan to dive into the differences between types of cheats for Tarkov. For the last two years I have been interested in Hardware cheating, so for this article, I built my cheat using a Direct Memory Access device (DMA).
+
+The first place you start when writing a Tarkov cheat is often forums like UC. Here you can find a lot of useful information if you can filter out the garbage. If you have no UC, you start with the game engine. 
+
+Tarkov is built using Unity Engine. We can find a lot of information about unity engine online, such as how all objects are maintained by the Game Object Manager (GOM). We also can learn that Unity Engine games often generate an “Assembly-CSharp” library which contains a lot of compiled game source code. This is all still public knowledge that game developers have, and that we can find online readily. 
+
+With the knowledge of the game engine and some cheat forums, we can actually deduce a simple procedure for locating the GOM and iterating through objects in the list. So, we’ll start by building a tool which dumps all objects to our console.
+
+If we do this while playing the game, we’ll notice a “GameWorld” entity appears and disappears as we enter and leave sessions. As a cheater, I hear “game world” and I instantly know I found something worth further investigation.
+
+Next, we will take a look at the Assembly-CSharp file. If we pop this into a .NET reverse engineering tool called dnSpy, we can view a lot of the game’s source code! Some of it is obfuscated, or otherwise illegible, but a large portion of it is actually human readable. 
+
+Scanning through the namespaces and classes, we find “EFT.GameWorld”. This sounds like the same object as what we found in engine earlier. Now I am no expert, so my way of validating this is to check if the structure appears to match.
+
+But how do we find the structure? How can I find GameWorld.CurrentProfileId? This is where the oldest tool in the book needs to get broken out, Cheat Engine.
+
+Despite popular belief, cheat engine is still a very popular reverse engineering tool. For Tarkov specifically, Cheat Engine 7.2 introduced even better .NET tools. One problem, if we open Cheat Engine, BattlEye will ban us, how do we get around this?
+
+BattlEye games ship with two executables:
+-	The base game executable
+-	The BattlEye wrapper executable
+
+Thanks to this, I can launch Tarkov without BattlEye, but its still not quite enough. The game quickly closes once launched. This is where our last tool comes into play, Process Suspension. By suspending this non-battleye process, we can prevent it from closing and successfully attach Cheat Engine without being banned. 
+
+Using the .NET tools in cheat engine, I can find the EFT.GameWorld class & view the offsets of each field. For example, CurrentProfileId exists at 0x50 & is a System.String. Luckily I can reverse this further using dnSpy and Cheat Engine to deduce that within System.String, at 0x14, exists the start of a wchar_t* which we can read. 
+
+In review: from our GameWorld entity we can go
+
+GameWorld]+0x50]+0x14] and read our current profile id.  
+
+Now its just a matter of reversing some .NET classes to deduce functionality. Oh look! “RegisteredPlayers” is a List of EFT.Player … you see where this goes. 
+
+So in conclusion, Tarkov is extremely easy to reverse engineer as you don’t need any technical understanding of reversing C or x86_64 assembly to do so. This has always been the case since launch, where I first developed my cheats.
+
+I am going to continue to develop my cheats, not for public sale or consumption, but simply because Tarkov is a cheat vs cheat game. Some of my work will be open source, like my DMA memory library MemStream, and other parts, like my cheats in particular, will be closed source. 
+
+The real solution is not banning cheaters, but isolating them, much like CSGO does. It’s harder for Tarkov due to the Flea Market implementation, so we’ll see what Nikita does moving forward.
+
+

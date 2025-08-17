@@ -16,6 +16,8 @@ type EditorProps = {
     className?: string
     minimap?: boolean
     language?: string
+    wordwrap?: boolean
+    fontSize?: number
 }
 
 export function Editor({
@@ -26,6 +28,9 @@ export function Editor({
     className = "w-full h-full relative",
     minimap = false,
     language = "markdown",
+    wordwrap = true,
+    fontSize = 16,
+
 }: EditorProps) {
     const editorRef = useRef<CodeEditor>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -91,14 +96,14 @@ export function Editor({
                         scale: 2,
                     },
                     fontFamily: '"Google Sans Code", monospace',
-                    fontSize: 16,
-                    wordWrap: "on",
+                    fontSize: fontSize,
+                    wordWrap: wordwrap ? "on" : "off",
                     padding: { top: 16 },
                     lineNumbers: "on",
                     automaticLayout: true,
                     readOnly: readonly,
                     scrollbar: {
-                        alwaysConsumeMouseWheel: false,
+                        // alwaysConsumeMouseWheel: false,
                     },
                 }}
                 loading={<Loader />}

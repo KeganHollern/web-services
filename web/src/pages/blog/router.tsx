@@ -3,16 +3,13 @@ import { PageNotFound } from "@/pages/404/page";
 import { Route, Routes } from "react-router";
 import { BlogPage } from "./page";
 import { Post } from "./post";
-import { Modules } from "./posts";
+import { Modules, type PostModule } from "./posts";
 
 import { lazy } from "react";
 import TestPage from "./typeography.mdx";
 
 export function BlogRouter() {
-    const routes = Object.entries(Modules).map(([filePath, importFn]) => {
-        // TODO: maybe we can embed these as metadata in the file?
-        const slug = filePath.split("/").pop()?.replace(".mdx", "") ?? "";
-        const title = slug.replaceAll("-", " ");
+    const routes = Modules.map(({ metadata, importFn }: PostModule) => {
 
         const LazyPost = lazy(() =>
             importFn().then((module) => ({
@@ -21,9 +18,9 @@ export function BlogRouter() {
         );
 
         return (
-            <Route path={`:year?/:month?/:day?/${slug}`}>
+            <Route path={`:year?/:month?/:day?/${metadata.slug}`}>
                 <Route index element={
-                    <Post title={title}>
+                    <Post title={metadata.title}>
                         <LazyPost />
                     </Post>
                 } />
