@@ -8,7 +8,7 @@ import { LanguageShortToFull } from "./constants";
 
 const headers = {
   h1: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h1 className={cn("scroll-m-20 text-center text-4xl font-bold tracking-tight text-balance", props.className)} {...props}>
+    <h1 className={cn("scroll-m-20 text-center text-4xl mb-12 pb-5 border-b-1 font-bold tracking-tight text-balance", props.className)} {...props}>
       {children}
     </h1>
   ),
