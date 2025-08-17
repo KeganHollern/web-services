@@ -1,16 +1,29 @@
 import { Header } from "@/components/page-header";
+import { Modules } from "./posts";
 
 export function BlogPage() {
     const breadcrumbs = [
         { label: "blog.lystic.dev" },
     ];
 
+
+    const posts = Object.entries(Modules).map(([filePath]) => {
+        const slug = filePath.split("/").pop()?.replace(".mdx", "") ?? "";
+        const title = slug.replaceAll("-", " ");
+
+        return [slug, title]
+    })
+
     return (
         <>
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 flex justify-center items-center w-full">
-                    BLOG IS TODO
+                    {
+                        posts.map(([slug, title]) => {
+                            return (<p><a href={`/${slug}`}>{title}</a></p>)
+                        })
+                    }
                 </div>
             </main>
         </>
