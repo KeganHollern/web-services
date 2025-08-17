@@ -1,15 +1,19 @@
 import { Header } from "@/components/page-header";
 import { MDXProvider } from "@mdx-js/react";
-
+import { Loader } from "lucide-react";
+import { Suspense } from "react";
 import { mdxComponents } from './components';
 
-import Post from './posts/typeography.mdx';
-// import Post from './posts/is-your-unique-dma-firmware-actually-unique.mdx';
 
-export function BlogPost() {
+type BlogPostProps = {
+    children?: React.ReactNode
+    title: string
+}
+
+export function Post({ children, title }: BlogPostProps) {
     const breadcrumbs = [
         { label: "blog.lystic.dev", href: "/" },
-        { label: "todo-post" }
+        { label: title }
     ];
 
     return (
@@ -17,9 +21,11 @@ export function BlogPost() {
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="container mx-auto py-6 space-y-12">
-                    <MDXProvider components={mdxComponents}>
-                        <Post />
-                    </MDXProvider>
+                    <Suspense fallback={<div className="flex-1 flex justify-center items-center w-full"><Loader /></div>}>
+                        <MDXProvider components={mdxComponents}>
+                            {children}
+                        </MDXProvider>
+                    </Suspense>
                 </div>
             </main>
         </>

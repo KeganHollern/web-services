@@ -16,6 +16,8 @@ Diving deeper into the LeechCore library, I found [LC_CMD_FPGA_PCIECFGSPACE](htt
 It returns the entire Configuration Space of your DMA card.
 Don't believe me? Compile the [CfgDump example in MemStream](https://github.com/KeganHollern/MemStream/tree/main/example/cfgdump) and print out your own Configuration Space.
 
+---
+
 This leads me to the title line.
 If a cheat developer can dump your configuration space from his cheat, is your firmware safe? The short answer is, the cheat developer can't dump the [bitstream](http://lastweek.io/fpga/bitstream/) of your device, so they can't _copy_ your device.
 **But**, with your Configuration Space, they could create their own firmware which clones _your_ firmware.
@@ -30,6 +32,8 @@ For that second item, follow LeechCore's build instructions and remove [this](ht
 This isn't flawless.
 Developers could rip your configuration space from the device many ways.
 So you may need to get creative around limiting the [DeviceFPGA_PCIeCfgSpaceCoreRead function] to just what LeechCore needs to operate.
+
+---
 
 Anyway, that's it.
 Stay safe 🙂

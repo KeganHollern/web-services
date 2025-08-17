@@ -80,6 +80,7 @@ const flavor = {
   hr: ({ ...props }: React.HTMLAttributes<HTMLHRElement>) => (
     <hr className={cn("my-6 border-muted", props.className)} {...props} />
   ),
+  // TODO: give background color of bg2 from globals.css using tailwind...
   blockquote: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote className={cn("mt-2 border-l-2 pl-6 italic", props.className)} {...props}>
       {children}
