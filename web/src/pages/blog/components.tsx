@@ -1,7 +1,10 @@
+import { Editor } from "@/components/monaco-editor/editor";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
+import React from "react";
+import { LanguageShortToFull } from "./constants";
 
 const headers = {
   h1: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLHeadingElement>) => (
@@ -111,24 +114,62 @@ const code = {
     </code>
   ),
   // block code
-  pre: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLPreElement>) => {
+  pre: ({ children }: { children: ReactNode } & React.HTMLAttributes<HTMLPreElement>) => {
+    let content = '';
+    let language = 'text'; // Default language if none is found
 
-    // console.log(children);
-    // // TODO: find child of type <code> and get its inner content
-    // // TODO: pass syntax into "editor" by extracting class from <code> 
-    // // will be `language-<syntax>`
-    // // TODO: maybe we should just make a new monaco editor that inlines properly...
-    // return (
-    //   <Editor readonly={true} content={children?.toString()} />
-    // )
+    // Convert children to array for easier traversal
+    const childrenArray = React.Children.toArray(children);
+
+    // Find the <code> child if it exists
+    const codeChild = childrenArray.find(
+      (child) => {
+        if (!React.isValidElement(child)) return false;
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        if ((child.type as Function).name !== 'code') return false;
+
+        return true;
+      }
+    ) as React.ReactElement<HTMLElement> | undefined;
+
+
+    if (codeChild) {
+      // Extract the inner content (should be a string or array of strings/nodes)
+      const codeContent = codeChild.props.children;
+      if (typeof codeContent === 'string') {
+        content = codeContent;
+      } else if (Array.isArray(codeContent)) {
+        // If it's an array, join the strings (handles multiple text nodes)
+        content = codeContent.filter((node) => typeof node === 'string').join('');
+      }
+
+      // Extract language from className (e.g., "language-javascript")
+      const className = codeChild.props.className || '';
+      const match = className.match(/language-(\w+)/);
+      if (match) {
+        language = match[1];
+      }
+    } else {
+      // If no <code> child, treat the direct children as content
+      content = childrenArray.filter((node) => typeof node === 'string').join('');
+    }
+
+    // If no content found, fallback to empty
+    if (!content) {
+      content = ''; // Or some placeholder
+    }
+
+    // map short codes to full language name for monaco
+    language = LanguageShortToFull[language] ?? language;
 
     return (
-      <pre
-        className={cn("bg-muted p-4 rounded-md overflow-auto mb-4 font-mono text-sm", props.className)}
-        {...props}
-      >
-        {children}
-      </pre>
+      <Editor
+        readonly={true}
+        content={content}
+        className={cn("h-80 w-full relative border-2 border-muted rounded-lg p-1 my-2")}
+        language={language}
+        minimap={true} />
     )
   },
 }

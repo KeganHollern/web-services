@@ -13,9 +13,20 @@ type EditorProps = {
     readonly?: boolean
     content?: string
     onSave?(): void
+    className?: string
+    minimap?: boolean
+    language?: string
 }
 
-export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONTENT, onSave }: EditorProps) {
+export function Editor({
+    ref,
+    readonly = false,
+    content = constants.DEFAULT_CONTENT,
+    onSave,
+    className = "w-full h-full relative",
+    minimap = false,
+    language = "markdown",
+}: EditorProps) {
     const editorRef = useRef<CodeEditor>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const { theme } = useTheme();
@@ -66,15 +77,19 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
     };
 
     return (
-        <div className="w-full h-full relative" ref={containerRef}>
+        <div className={className} ref={containerRef}>
             <MonacoEditor
                 className='absolute inset-0'
                 theme={theme}
                 beforeMount={handleEditorWillMount}
                 onMount={handleEditorDidMount}
-                defaultLanguage="markdown"
+                defaultLanguage={language}
                 options={{
-                    minimap: { enabled: false },
+                    minimap: {
+                        enabled: minimap,
+                        size: "proportional",
+                        scale: 2,
+                    },
                     fontFamily: '"Google Sans Code", monospace',
                     fontSize: 16,
                     wordWrap: "on",
@@ -82,6 +97,9 @@ export function Editor({ ref, readonly = false, content = constants.DEFAULT_CONT
                     lineNumbers: "on",
                     automaticLayout: true,
                     readOnly: readonly,
+                    scrollbar: {
+                        alwaysConsumeMouseWheel: false,
+                    },
                 }}
                 loading={<Loader />}
                 defaultValue={content} />
