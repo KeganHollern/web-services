@@ -16,6 +16,9 @@ export function Post({ children, title }: BlogPostProps) {
         { label: title }
     ];
 
+    // TODO: inject SEO metadata like title, and description, for
+    // discord and search engines to utilize
+
     return (
         <>
             <Header breadcrumbItems={breadcrumbs} />

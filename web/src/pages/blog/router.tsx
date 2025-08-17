@@ -17,6 +17,9 @@ export function BlogRouter() {
             }))
         );
 
+        // :year?/:month?/:day?/ exists to help with legacy wordpress
+        // urls that an unknown number of sites and search engines will have
+        // indexed.
         return (
             <Route path={`:year?/:month?/:day?/${metadata.slug}`}>
                 <Route index element={
