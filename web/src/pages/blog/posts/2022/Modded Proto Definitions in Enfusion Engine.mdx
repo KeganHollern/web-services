@@ -1,0 +1,90 @@
+---
+title: Modded Proto Definitions in Enfusion Engine
+description: |
+    Enfusion Engine's scripting language ships with Proto definitions.
+    These connect the C++ code in the engine to the scripting language...
+slug: modded-proto-definitions-in-enfusion-engine
+---
+
+# Modded Proto Definitions in Enfusion Engine 
+
+Enfusion Engine's scripting language ships with <strong>Proto</strong> definitions. These connect the C++ code in the engine to the scripting language. A clear example of this is the <strong>KickCauseCodeAPI</strong> class.
+
+<script src="https://gist.github.com/KeganHollern/ace3e4c5ac6bedefab4459690069ee9b.js"></script>
+
+Adding C++ functionality via custom <strong>proto</strong> functions would be a powerful tool for complex mods. There exists a <strong>closed-source</strong> way of adding these in <a href="https://github.com/intercept/interceptAR" target="_blank" rel="noopener">interceptAR</a>. I, of course, wanted to learn how intercept was achieving this, so I wanted to build my own! Before getting into the post, you can browse my <strong>open-source</strong> version of intercept called <a href="https://github.com/KeganHollern/Infinity" target="_blank" rel="noopener">Infinity</a> on Github.
+
+[insert] <img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-27/00-21-06/mFgmiJrAXpEs9Kygsg4Gcbyq.png" width="1534" height="209" /> [/insert]
+
+I broke this challenge into a few steps. I only want to cover a few of them in this post. All of these steps are fully implemented in Infinity.
+
+[bullets style="green"]
+<ul>
+  <li>Load a library into the server at startup</li>
+  <li>Figure out how classes are registered</li>
+  <li>Register my own class</li>
+  <li>Register my own class functions</li>
+  <li>Build out a plugin system</li>
+</ul>
+[/bullets]
+
+Enfusion Engine is nice enough to provide an easy way to load libraries via 
+<a href="https://curl.se/docs/CVE-2016-4802.html" target="_blank" rel="noopener">CVE-2016-480</a>.
+This exploit exists in libcurl and causes the game to load 
+<strong>secur32.dll</strong> from the game directory before looking in 
+<strong>c</strong><strong>:\\</strong><strong>system32</strong>. 
+I used an open-source project 
+<a href="https://github.com/nitrog0d/DLLProxyGenerator" target="_blank" rel="noopener">DLLProxyGenerator</a> 
+to create a <a href="https://kevinalmansa.github.io/application%20security/DLL-Proxying/" target="_blank" rel="noopener">Proxy Dll</a> 
+of secur32. This will let me build a library that loads into 
+<strong>ArmaReforgerServer</strong> and
+<strong>ArmaReforgerWorkbench</strong> 
+without much effort.
+
+That's step one. Now comes the hard part of learning how classes are registered. To do this, we'll pull open <a href="https://hex-rays.com/ida-pro/" target="_blank" rel="noopener">IDA Pro</a> and start reversing Reforger.
+
+[insert] <img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-27/00-32-14/rZG6sdfAPxQadW9wKUTYEGrx.png" width="2558" height="321" /> [/insert]
+
+I came across these routines that register <strong>KickCauseCodeAPI</strong> and its functions. The dream goal is to recreate this registration routine for our custom class definitions.
+
+<script src="https://gist.github.com/KeganHollern/c03ff79ab53458e843866daecab38717.js"></script>
+
+Going further, we'll find the virtual table that contains our routine.
+
+<img class="size-medium aligncenter" src="https://ss.lystic.zip/2022-06-27/00-35-27/k3TXixM2yxF7hjPuRAx3FeuW.png" width="557" height="170" />
+
+Following xrefs to <strong>vftable_KickCauseCodeScriptAPIRegistrator</strong> we get to the constructor for this object. With some cleanup, we learn about a global registration linked list. This routine pushes our registrator to the front of the list.
+
+<script src="https://gist.github.com/KeganHollern/29504d38236298f8c510bafecaa78659.js"></script>
+
+We can find other routines that add registrators to the end of the list.
+
+<script src="https://gist.github.com/KeganHollern/13378537b024fed3443491ea2d117095.js"></script>
+
+Exploring the global registration table xrefs, we come across the routine that runs our <em>register</em> method in the registration object.
+
+<script src="https://gist.github.com/KeganHollern/f9201d709eeabbf715531eb4881ce8e3.js"></script>
+
+So far, we have learned that if we can insert our own objects into the registration table, the engine will call our registration routine automatically during script compilation. This is likely very similar to the approach interceptAR takes.
+
+[insert] <img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-27/00-59-00/u79R3PWhhdhBUmT45XNAZNQQ.png" width="2004" height="266" /> [/insert]
+
+It is time to build our own <em>registrator</em> object that can safely sit inside the global table. I don't want to fill the page with much more code, so I plan to cut it short. I highly recommend reading the implementation of the script registrator <a href="https://github.com/KeganHollern/Infinity/blob/b18b990c54fe6a9426d358dc50a82bfe57d48d50/InfinityHost/ScriptRegistrator.cpp" target="_blank" rel="noopener">here</a>. Here are the class definitions for our custom <strong>ScriptRegistrator</strong>:
+
+<script src="https://gist.github.com/KeganHollern/73e958770389495b5f83e4a830a2972f.js"></script>
+
+Please note that the virtual functions defined must be created to align with the one shown for <strong>KickCauseCodeScriptAPIRegistrator</strong>. For derived registrators, we'll need to override the <strong>Register</strong> routine as <strong>BaseScriptRegistrator</strong> showcases.
+
+As well, we can now nearly copy+paste from IDA the registration routine.
+
+<script src="https://gist.github.com/KeganHollern/26fe16fb3828555c1402df798d73d581.js"></script>
+
+All that is left is constructing our <strong>BaseScriptRegistrator</strong> and sticking it into the global linked list. This is super simple, so I won't describe it 🙂.
+
+&nbsp;
+
+That explains the <em>complex</em> parts of registering custom script functions. With the knowledge above, the registration of custom classes can be approached in numerous ways. I think the way Infinity and interceptAR do this is the most intuitive.
+
+<hr />
+
+<em>Update: Infinity has been deprecated. <a href="https://github.com/EnfusionModders/InfinityC" target="_blank" rel="noopener">InfinityC</a> is the continuation of the project. </em>

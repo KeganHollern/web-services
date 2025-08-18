@@ -1,0 +1,72 @@
+---
+title: Networked Meshes in Arma Refroger
+description: |
+    Arma Reforger is the latest Arma game released by Bohemia Interactive.
+    This is more of a demo of the Enfusion Engine than a fully-featured gaming experience...
+slug: networked-meshes-in-arma-reforger
+---
+
+# Networked Meshes in Arma Refroger 
+
+<a href="https://store.steampowered.com/app/1874880/Arma_Reforger/">Arma Reforger</a> 
+is the latest Arma game released by Bohemia Interactive. 
+This is more of a demo of the <a href="https://enfusionengine.com/">Enfusion Engine</a> 
+than a fully-featured gaming experience. It has a similar scripting experience to that found in DayZ Standalone, with some markable improvements.
+
+Reforger brings two new exposed script APIs that can accomplish some heavy-lifting if used well. First is <strong>MeshObject.Create()</strong>.
+<script src="https://gist.github.com/KeganHollern/82082f615323f40cc5265c277a5e101e.js"></script>
+Next is <strong>Physics.CreateStaticEx()</strong> and <strong>Physics.CreateDynamicEx()</strong>.
+<script src="https://gist.github.com/KeganHollern/b72c4ea853b88e7d0d6d418e62820a72.js"></script>
+
+These two functions allow us to create 3D meshes through code and apply physics and collision to them. They do not, however, replicate over the network. Only the machine that runs these commands can <em>see</em> or <em>interact</em> with the object.
+
+We will design a system to replicate changes to the mesh over the network. The approach I will show is underdeveloped and has a <strong>lot</strong> of room for improvement.
+
+[insert]<img class="alignnone" src="https://ss.lystic.zip/2022-06-25/15-41-48/uZtKrAareXbgL5mBTQA4CkPJ.png" alt="Sample of the Procedural World terrain mesh." width="1888" height="415" />[/insert]
+
+First, let's talk about generating the mesh and collider. To make this post simpler, I will use the Generic Box Entity shipped with Reforger.
+
+<script src="https://gist.github.com/KeganHollern/3cb236ecc2930ebbe5e175273e60ce2f.js"></script>
+
+[status_lessoops] I am not an expert on UVs, Verts, and Indices for 3D Meshes. [/status_lessoops]
+The <strong>Generate</strong> method takes a provided size (in each axis) and generates a cube based on those bounds. L32-L39 defines the actual vertices of the cube, whereas L41-L49 defines the vertices to feed into <strong>MeshObject.Create</strong>. The indices on L51-L59 represent the triangles of the mesh. Each number corresponds to a 0-based index in the <strong>verts</strong> array. Every <strong>3</strong> values in the indices array make a triangle. The <strong>u</strong><strong>vs</strong> variable on L60-L68 tells the mesh what part of the texture to render.
+
+At the bottom of <strong>Generate,</strong> we feed our data into <strong>MeshObject.Create</strong>. There are some hard limits on array sizes, so if you need to generate a large mesh, the Create routine allows you to pass multiple Mesh definitions at once (the engine itself breaks large objects into a series of small meshes as well).
+
+[insert]<img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-25/16-04-12/LHNuTLeEzzfqG4Wiy5PS4VFc.png" width="1888" height="415" />[/insert]
+
+Adding collision to the object sounds complex, but the logic is straightforward. We are feeding the same values we created for the Mesh into the Physics Engine using <strong>PhysicsGeomDef.CreateTriMesh</strong>. There are other types of geometry we can generate for colliders as well.
+
+<script src="https://gist.github.com/KeganHollern/7866f2415846ac89b9f3561471ae1924.js"></script>
+
+First, we must destroy the existing physics object attached to the entity. Next, we construct a <strong>PhysicsGeomDef</strong> with <strong>PhysicsGeom.CreateTriMesh</strong> generated from our same verts and indices as our MeshObject. Lastly, we connect the physics geometry to the entity using <strong>Physics.CreateStaticEx</strong> or <strong>Physics.CreateDynamicEx</strong>. That will look something like the code shown below, where <strong>this</strong> is the entity we want to attach a collider to.
+
+<script src="https://gist.github.com/KeganHollern/1aec10cde9d4339dbad4010540867268.js"></script>
+
+So generating a mesh and collider can be done through code, but this code is not networked. If we run this on the server, only the server will know the collider or mesh. We need to replicate this data to all current and future clients to make them render the mesh and collider. This is done through <strong>RplProp </strong>and the replication codec methods.
+
+[insert]<img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-25/16-15-59/4fJ7zqX223pHBenmntGUCRKC.png" width="1700" height="337" />[/insert]
+
+Starting off, I want you to read over the <strong>RplTestEntity</strong> defined in the base game. This entity showcases <strong>RplProp</strong> to the fullest extent I could find. It also includes the <strong>Codec</strong> methods necessary to replicate an object structure. The replication of mesh data will make use of these techniques.
+
+<script src="https://gist.github.com/KeganHollern/15ba4f7b8112eaae08f8428495a65b2a.js"></script>
+
+Now we'll define a very rough structure to hold our object's mesh data. I used my Procedural Worlds mod for this example.
+
+<script src="https://gist.github.com/KeganHollern/c1f8a505797960db52080685827fc441.js"></script>
+
+This object holds all the minimum requirements to define a mesh object in Enfusion. We will assume the physical and texture materials are unchanging. The codec methods define loading and unloading these field values from a serialized buffer. I implore you to read this code thoroughly, as there are ways to optimize it further for smaller and larger meshes.
+
+All that is left is to define a scripted entity that implements the dynamic mesh and uses a <strong>RplComponent</strong> to render that mesh on all machines. I quickly modified the BaseChunkEntity from the Procedural Worlds mod to create a base class for these types of entities.
+
+[status_oops] I do not guarantee that the code below is without error [/status_oops]
+
+<script src="https://gist.github.com/KeganHollern/546a9bfddf32660a26dfca648b0cb92f.js"></script>
+
+Any objects derived from this base class should override <strong>Generate</strong> and update <strong>m_MeshData</strong> with the mesh information. Once the routine completes, the mesh data will be replicated to all clients, and <strong>OnMeshDataUpdate</strong> will run to generate the MeshObject and Physics on every machine. Any entity derived from this class will need a <strong>RplComponent</strong> to operate.
+
+With this, the <strong>Authority</strong> can modify the mesh as it chooses, and all <strong>Proxies</strong> will receive the changes and rerender the mesh.
+
+&nbsp;
+
+Anyway, that's pretty much it. As I said earlier, there are ways to optimize this to reduce network overhead and improve the replicated mesh quality.
