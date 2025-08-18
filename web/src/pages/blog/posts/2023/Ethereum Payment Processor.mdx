@@ -8,60 +8,70 @@ slug: ethereum-payment-processor
 
 # Ethereum Payment Processor
 
-I have been fascinated with the Ethereum ecosystem since the beginning of <a href="https://www.investopedia.com/decentralized-finance-defi-5113835">DeFi</a>. I continue to see cryptocurrency as a solution to several failure points of the internet. One of those is online payments.
+I have been fascinated with the Ethereum ecosystem since the beginning of
+<a href="https://www.investopedia.com/decentralized-finance-defi-5113835">DeFi</a>.
+I continue to see cryptocurrency as a solution to several failure points of the internet.
+One of those is online payments.
 
-Every online startup I've ever run has always had a single serious problem, payment gateways are extremely complex to configure. PayPal was the big one when I was first getting started. Their API used to be somewhat simple, but has grown so complex that I now struggle to integrate it. Stripe, on the other hand, requires a <strong>ton</strong> of tax information to open a store.
+Every online startup I've ever run has always had a single serious problem,
+payment gateways are extremely complex to configure. PayPal was the big one when
+I was first getting started. Their API used to be somewhat simple, but has
+grown so complex that I now struggle to integrate it. Stripe, on the other hand,
+requires a <strong>ton</strong> of tax information to open a store.
 
-So I decided I would just build my own payment processor. I first built it using the Bitcoin network, but opted to migrate to Ethereum thanks to the myriad of tools available.
+So I decided I would just build my own payment processor. I first built it using
+the Bitcoin network, but opted to migrate to Ethereum thanks to the myriad of tools available.
 
 <img class="alignnone wp-image-929" src="http://blog.lystic.dev/wp-content/uploads/2022/11/eth-e1669233086572.jpg" alt="" />
 
-How do we approach a payment processor? Lets start with the high level view, how should funds flow from <em>customer</em> to <em>vendor</em>.
+How do we approach a payment processor? Lets start with the high level view,
+how should funds flow from <em>customer</em> to <em>vendor</em>.
 
-[one_third]
+---
 
 <strong>CUSTOMER </strong>
 
 1. Start a transaction
 2. Transfer funds to intermediary wallet
 
-[/one_third]
-
-[one_third]
-
 <strong>INTERMEDIARY </strong>
 
 3. Receive funds
 4. Forward funds to vendor
-
-[/one_third]
-
-[one_third_last]
 
 <strong>VENDOR </strong>
 
 5. Receive funds
 6. Execute post-transaction code
 
-[/one_third_last]
+---
 
-An intermediary wallet is used to accept customer funds. This makes identifying the completion of a deposit extremely easy; we can simply check the balance of the intermediary.
+An intermediary wallet is used to accept customer funds.
+This makes identifying the completion of a deposit extremely easy;
+we can simply check the balance of the intermediary.
 
 A transaction has 5 states:
-<ol>
- 	<li>Pending - Waiting for deposit from user</li>
- 	<li>Confirming - Waiting for X confirmations on chain</li>
- 	<li>Forwarding - Transfer from intermediary to vendor</li>
- 	<li>Notifying - Sending vendor a notification</li>
- 	<li>Complete</li>
-</ol>
-This makes it obvious we should treat each transaction as a <a href="https://en.wikipedia.org/wiki/Finite-state_machine">Finite-state Machine</a>.
+
+- Pending - Waiting for deposit from user
+- Conirming - Waiting for X confirmations on chain
+- Forwarding - Transfer from intermediary to vendor
+- Notifying - Sending vendor a notification
+- Complete
+
+This makes it obvious we should treat each transaction as a 
+<a href="https://en.wikipedia.org/wiki/Finite-state_machine">Finite-state Machine</a>.
 
 <img class="alignnone wp-image-940" src="http://blog.lystic.dev/wp-content/uploads/2022/11/banner.jpg" alt="" />
 
-I want this processor to be easy to integrate. For that, we'll notify vendors of a completed payment via <a href="https://www.redhat.com/en/topics/automation/what-is-a-webhook">Webhooks</a>. So step #4 will send a POST request to a URL hosted by the vendor with information on the transaction.
+I want this processor to be easy to integrate. 
+For that, we'll notify vendors of a completed payment via 
+<a href="https://www.redhat.com/en/topics/automation/what-is-a-webhook">Webhooks</a>. 
+So step #4 will send a POST request to a URL hosted by the vendor with 
+information on the transaction.
 
-To enable vendors to pass extra information, much like PayPal and Stripe APIs allow them to, we'll add an arbitrary <em>userdata</em> attribute to transactions which pass through to the webhook.
+To enable vendors to pass extra information, much like PayPal and Stripe APIs
+allow them to, we'll add an arbitrary <em>userdata</em> attribute to
+transactions which pass through to the webhook.
 
 Mapping out our processors endpoints, we'll have:
 
@@ -77,35 +87,219 @@ POST http://localhost/onpurchase
 {"product": "<ProductID>", "data": <ArbitraryUserData>}
 ```
 
-The <em>buy</em> page will create a new transaction and forward us to the <em>checkout</em> page. The checkout page will track the state of the transaction. Checkout lets the user know <em>where</em> to send funds, <em>how much</em> to send, and <em>what</em> is the state of that transfer.
+The <em>buy</em> page will create a new transaction and forward us to the 
+<em>checkout</em> page. The checkout page will track the state of the transaction. 
+Checkout lets the user know <em>where</em> to send funds, 
+<em>how much</em> to send, and <em>what</em> is the state of that transfer.
 
-<img class="alignnone wp-image-950 size-full" src="http://blog.lystic.dev/wp-content/uploads/2022/11/go-e1669233921303.jpg" alt="" width="1143" height="200" />
+<img class="alignnone wp-image-950 size-full" src="http://blog.lystic.dev/wp-content/uploads/2022/11/go-e1669233921303.jpg" alt="" />
 
-All of this will work for any cryptocurrency, but by using Ethereum we get the benefit of working with <a href="https://github.com/ethereum/go-ethereum">GETH</a>.
+All of this will work for any cryptocurrency, but by using Ethereum we get the 
+benefit of working with <a href="https://github.com/ethereum/go-ethereum">GETH</a>.
 
-The source is quite large, so I only want to point out some key functions. First lets look at the <strong>buy</strong> API:
+The source is quite large, so I only want to point out some key functions. 
+First lets look at the <strong>buy</strong> API:
 
-<script src="https://gist.github.com/KeganHollern/e9c96c74ba887492374f46a732055c47.js"></script>
+```go
+package api
+
+import (
+	"fmt"
+	"net/http"
+	"platform/pay/coingecko"
+	"platform/pay/db"
+	"platform/pay/ethereum"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+)
+
+func (h *Handler) Buy(c *gin.Context) {
+	// generate transaction & redirect to /checkout/:transaction
+	idstr := c.Param("id")
+	userdata := c.Query("data")
+	transaction := uuid.NewString()
+	_ = userdata
+	_ = transaction
+
+	// get product from id
+	id, err := strconv.Atoi(idstr)
+	if err != nil {
+		c.String(http.StatusBadRequest, "invalid request")
+		return
+	}
+	product, err := h.SQL.GetProduct(id)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "internal error")
+		logrus.WithError(err).Errorln("failed to get product")
+		return
+	}
+
+	// create wallet for transaction
+	wallet, err := ethereum.GenerateWallet(h.Client)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "internal error")
+		logrus.WithError(err).Errorln("failed to generate wallet")
+		return
+	}
+	w := &db.Generated{
+		PrivateKey: wallet.PrivateKey,
+		PublicKey:  wallet.GetAddress(),
+	}
+	err = h.SQL.InsertGenerated(w)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "internal error")
+		logrus.WithError(err).Errorln("failed to insert generated wallet to db")
+		return
+	}
+
+	// TODO: convert USD to ETH
+	usd := product.PriceUSD
+	wei, err := coingecko.USDToWei(usd)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "internal error")
+		logrus.WithError(err).Errorln("failed to calculate usd price in wei")
+		return
+	}
+
+	err = h.SQL.InsertTransaction(&db.Transaction{
+		Product:   product,
+		Generated: w,
+		State:     db.TransactionStateWaiting,
+		Created:   time.Now(),
+		UserData:  []byte(userdata),
+		Price:     wei,
+		Id:        transaction,
+	})
+	if err != nil {
+		c.String(http.StatusInternalServerError, "internal error")
+		logrus.WithError(err).Errorln("failed to insert transaction to db")
+		return
+	}
+
+	c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("/checkout/%s", transaction))
+}
+```
 
 This:
-<ol>
- 	<li>Generates a unique intermediary</li>
- 	<li>Converts the USD price of the product to <a href="https://www.investopedia.com/terms/w/wei.asp">WEI</a></li>
- 	<li>Generates a new transaction expecting WEI to be deposited into the intermediary</li>
- 	<li>Redirects the user to the checkout page</li>
-</ol>
+
+- Generates a unique intermediary
+- Converts the USD price of the product to <a href="https://www.investopedia.com/terms/w/wei.asp">WEI</a>
+- Generates a new transaction expecting WEI to be deposited into the intermediary
+- Redirects the user to the checkout page
+
 I also want to take a look at snippets from the state transitions:
 
-<script src="https://gist.github.com/KeganHollern/7e22577e0c8256877feab6d8ad1b3a80.js"></script>
+```go
+// convert waiting into Pending or Confirmed
+func (p *Payments) processWaiting(ctx context.Context, t *db.Transaction, wallet *payeth.Wallet) error {
+	// check if wallet has a pending balance
+	// note: seems to return even the confirmed balance? so its total balance + pending extra balance?
+	pending, err := wallet.GetPending(ctx)
+	if err != nil {
+		logrus.New().WithError(err).Errorln("failed to get pending transactions")
+		return err
+	}
+	if pending.Cmp(t.Price) != -1 {
+		// payment pending!
+		t.State = db.TransactionStatePending
+		err = p.SQL.UpdateTransactionState(t)
+		if err != nil {
+			logrus.New().WithError(err).Errorln("failed to update transaction")
+		}
+		return err
+	}
 
-The first few are checking the state of our intermediary wallet's balance. Once funds have reached the intermediary, and the blocks are confirmed, we fire off a notification to the vendor. Once the vendor confirms they've received the notification, we transfer all funds to the vendor's wallet (minus a transaction fee).
+	return nil
+}
 
-So all we need to do is iterate all open transactions periodically and transition them between states.
+// convert pending into Confirmed
+func (p *Payments) processPending(ctx context.Context, t *db.Transaction, wallet *payeth.Wallet) error {
+	// check if wallet is confirmed
+	balance, err := wallet.GetHistoricalBallance(ctx, blockRequirement)
+	if err != nil {
+		return err
+	}
 
-{/* TODO: this should be like a banner or sometihng... */}
+	if balance.Cmp(t.Price) != -1 {
+		// payment complete
+		t.State = db.TransactionStateConfirmed
+		err = p.SQL.UpdateTransactionState(t)
+		if err != nil {
+			logrus.New().WithError(err).Errorln("failed to update transaction")
+		}
+		return err
+	}
+
+	return nil
+}
+
+// convert confirmed into WebhookSuccess (send webhook)
+func (p *Payments) processConfirmed(ctx context.Context, t *db.Transaction, wallet *payeth.Wallet) error {
+
+	err := p.sendWebhook(t)
+	if err != nil {
+		return err
+	}
+
+	t.State = db.TransactionStateWebhookComplete
+	err = p.SQL.UpdateTransactionState(t)
+	if err != nil {
+		logrus.New().WithError(err).Errorln("failed to update transaction")
+	}
+	return err
+
+}
+
+// convert WebhookSuccess to Finalized
+func (p *Payments) processWebhook(ctx context.Context, t *db.Transaction, wallet *payeth.Wallet) error {
+
+	// transition first so even in worst case scenario we don't get stuck
+	t.State = db.TransactionStateFinalized
+	err := p.SQL.UpdateTransactionState(t)
+	if err != nil {
+		logrus.New().WithError(err).Errorln("failed to update transaction")
+	}
+
+	// send funds
+	txid, err := wallet.SendFunds(ctx, t.Product.Wallet.Address)
+	if err != nil {
+
+		// failed to send funds, transition back so we can try again in the future
+		t.State = db.TransactionStateFinalized
+		err2 := p.SQL.UpdateTransactionState(t)
+		if err2 != nil {
+			// failed to transfer back, so funds are stuck in platform :)
+			// better than the platform stuck needlessly processing
+			logrus.New().WithError(err2).Errorln("failed to update transaction")
+		}
+
+		logrus.New().WithError(err).Errorln("failed to send funds to vendor")
+		return err
+	}
+	logrus.WithField("txid", txid).Infoln("funds sent to vendor")
+
+	return nil
+}
+```
+
+The first few are checking the state of our intermediary wallet's balance. 
+Once funds have reached the intermediary, and the blocks are confirmed, 
+we fire off a notification to the vendor. Once the vendor confirms they've 
+received the notification, we transfer all funds to the vendor's wallet (minus a transaction fee).
+
+So all we need to do is iterate all open transactions periodically and 
+transition them between states.
+
+---
+
 *That's it! It's actually quite simple.*
 
-This doesn't handle the complexities of all eCommerce, but it does provide a simple interface vendors could integrate their system with.
+This doesn't handle the complexities of all eCommerce, but it does provide a 
+simple interface vendors could integrate their system with.
 
 There are some trade-offs made in the design:
 
@@ -115,6 +309,12 @@ There are some trade-offs made in the design:
 - Not simple to add <a href="https://ethereum.org/en/developers/docs/standards/tokens/erc-20/">ERC20</a> token support in checkout
 - Not easy to add support for <a href="https://ethereum.org/en/layer-2/">L2 chains</a>.
 
-As a thought exercise: if we wanted to add ERC20 support, we would need to avoid the Ethereum transaction costs associated with paying out the vendor. We could use a Web3 wallet like <a href="https://metamask.io/">Metamask</a> &amp; automate a <a href="https://uniswap.org/">Uniswap</a> transaction to convert user funds to ETH before transferring them to our vendor. With this approach, the gateway could accept <strong>any</strong> Ethereum asset!
+As a thought exercise: if we wanted to add ERC20 support, we would 
+need to avoid the Ethereum transaction costs associated with paying out the vendor. 
+We could use a Web3 wallet like <a href="https://metamask.io/">Metamask</a> and
+automate a <a href="https://uniswap.org/">Uniswap</a> transaction to convert 
+user funds to ETH before transferring them to our vendor. 
+With this approach, the gateway could accept <strong>any</strong> Ethereum asset!
 
-Anyway I thought this project was quite fun. I plan several projects around it, so you'll be seeing more of this in the future.
+Anyway I thought this project was quite fun. I plan several projects around it, 
+so you'll be seeing more of this in the future.
