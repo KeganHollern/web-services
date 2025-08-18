@@ -3,13 +3,14 @@ import {
     Carousel,
     CarouselContent,
     CarouselItem,
-    CarouselPrevious,
     CarouselNext,
-} from "@/components/ui/carousel"
-import Autoplay from "embla-carousel-autoplay"
+    CarouselPrevious,
+} from "@/components/ui/carousel";
+import Autoplay from "embla-carousel-autoplay";
 
 export function Projects() {
     const projects = [
+        // TODO: equalcheats / echeats slide for DMA cheats
         {
             title: "Aika",
             short: "An AI Anime Waifu",
@@ -34,7 +35,7 @@ Randal before OpenAI functions were introduced.`,
             description: `DayZBR was a continuation of my years developing the
 Battle Royale genre in gaming. I brough the game mode
 to the popular Zombie-Survival game DayZ.`,
-            link: "https://dayzbr.dev",
+            link: "https://dayzbr.dev", // TODO: improve link || bring it back ?
             video: "https://youtu.be/KUxwJuG81GY"
         },
         {

@@ -9,7 +9,11 @@ export interface PostMetadata {
     title: string
     description: string
     visible: boolean
-    // TODO: image?
+    // TODO: date?
+    // TODO: tags[]
+
+    // uncertain if i want/need these...
+    // TODO: image? (optional)
 }
 export interface PostModule {
     filePath: string,
@@ -17,6 +21,7 @@ export interface PostModule {
     importFn: () => Promise<MDXModule>;
 }
 
+// TODO: go through posts and double check slugs match wordpress slugs!
 const _modules = import.meta.glob<MDXModule>("./**/*.mdx");
 const _raw = import.meta.glob<Input | { content: Input; }>("./**/*.mdx", { query: '?raw', import: 'default', eager: true });
 
