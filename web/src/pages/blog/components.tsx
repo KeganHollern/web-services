@@ -60,7 +60,7 @@ const lists = {
 
 const text = {
   p: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p className={cn("leading-7 [&:not(:first-child)]:mt-2", props.className)} {...props}>
+    <p className={cn("leading-7 [&:not(:first-child)]:mt-3", props.className)} {...props}>
       {children}
     </p>
   ),
