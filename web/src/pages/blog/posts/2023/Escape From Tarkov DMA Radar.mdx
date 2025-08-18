@@ -10,27 +10,47 @@ slug: escape-from-tarkov-dma-radar
 
 > You can buy my Tarkov cheats @ [echeats.io](https://echeats.io)
 
-I have continued my adventures into DMA cheating over the last year & have begun the task of writing a DMA framework dedicated to cheat development. For this, I wanted to make a simple cheat that can make effective use of the library; so I came back to Tarkov.
+I have continued my adventures into DMA cheating over the last year & 
+have begun the task of writing a DMA framework dedicated to cheat development. 
+For this, I wanted to make a simple cheat that can make effective use of 
+the library; so I came back to Tarkov.
 
-One of the simplest cheats that can give an edge over others in EFT is the _Radar_. This enables us to view anything we want on a 2D display of the game map.
+One of the simplest cheats that can give an edge over others in EFT is the _Radar_. 
+This enables us to view anything we want on a 2D display of the game map.
 
-Many radar cheats will incorporate their own desktop app using JPG or SVG images of the many maps in game. I hate doing this, and I often use online maps when playing without cheats- so I opted to make use of [tarkov.help](https://tarkov.help/).
+Many radar cheats will incorporate their own desktop app using JPG or 
+SVG images of the many maps in game. I hate doing this, and I often use 
+online maps when playing without cheats- so I opted to make use of [tarkov.help](https://tarkov.help/).
 
 ![map](https://ss.lystic.zip/2023-11-04/20-06-04/C7qjpQJM7FTdLAXBUcZTemYK.png)
 
-This website contains all maps in high-res and easily zoomable & navigable. Our goal will be to render player positions on this map.
+This website contains all maps in high-res and easily zoomable & navigable.
+Our goal will be to render player positions on this map.
 
 ---
 
-The first step in developing this cheat is to figure out: _How can we render custom icons over the map on this webpage?_ The answer to this begins with: _What framework/library is being used by this website to render the map?_
+The first step in developing this cheat is to figure out: 
+_How can we render custom icons over the map on this webpage?_ 
+The answer to this begins with: 
+_What framework/library is being used by this website to render the map?_
 
 ![code](https://ss.lystic.zip/2023-11-04/20-57-31/dV2FY8RxAZ2GYF3CaXCButmZ.png)
 
-Inspecting the page and we find the canvas has this `leaflet-zoom-animated` class. A quick google search and we discover [LeafletJS](https://leafletjs.com/). Leaflet is an extremely popular JavaScript library for interactive 2D maps. With it, icons and many other things can be quickly rendered on the map with hardware acceleration- making it perfect for our Radar.
+Inspecting the page and we find the canvas has this `leaflet-zoom-animated` class. 
+A quick google search and we discover [LeafletJS](https://leafletjs.com/). 
+Leaflet is an extremely popular JavaScript library for interactive 2D maps. 
+With it, icons and many other things can be quickly rendered on the map with 
+hardware acceleration- making it perfect for our Radar.
 
-In order to interact with the map, we need to run our own custom JavaScript on the webpage. There are several ways to do this, but I opted to write a [Chrome Extension](https://developer.chrome.com/docs/extensions/). With an extension, I can write a [content script](https://developer.chrome.com/docs/extensions/mv3/content_scripts/), which will run my custom JavaScript.
+In order to interact with the map, we need to run our own custom JavaScript 
+on the webpage. There are several ways to do this, but I opted to write a 
+[Chrome Extension](https://developer.chrome.com/docs/extensions/). With an extension, 
+I can write a [content script](https://developer.chrome.com/docs/extensions/mv3/content_scripts/), 
+which will run my custom JavaScript.
 
-Rendering custom icons requires gaining access to the LeafletJS _map_ object. This wasn't trivial due to the React/Angular design of Tarkov.help and required hijacking the Eventing system in LeaftletJS.
+Rendering custom icons requires gaining access to the LeafletJS _map_ object. 
+This wasn't trivial due to the React/Angular design of Tarkov.help and 
+required hijacking the Eventing system in LeaftletJS.
 
 ```js
 // --- hacky way to extract the map variable from leafletjs events
@@ -69,7 +89,10 @@ const init = () => {
 };
 ```
 
-Once run, this code will insert an _init hook_ for everything in the framework that captures the map variable. To trigger the hook, we force click a button on the webpage which hides all icons on the map. With the map variable acquired, we can begin to write logic for rendering icons on the map.
+Once run, this code will insert an _init hook_ for everything in the framework
+that captures the map variable. To trigger the hook, we force click a button on
+the webpage which hides all icons on the map. With the map variable acquired,
+we can begin to write logic for rendering icons on the map.
 
 ```js
 const OnMapDiscovered = (map) => {
@@ -93,17 +116,27 @@ const OnMapDiscovered = (map) => {
 };
 ```
 
-With this, when I click on the map this cool "Example" icon is drawn wherever I click. Now we just need to hook this up to our DMA-based cheat which reads out all player positions.
+With this, when I click on the map this cool "Example" icon is drawn
+wherever I click. Now we just need to hook this up to our DMA-based cheat
+which reads out all player positions.
 
 ![map](https://ss.lystic.zip/2023-11-04/22-03-02/qFnNKk8ZR6UvjDwfNgJapNzD.png)
 
-To connect our chrome extension with our DMA device, I opted for a WebSocket. I wrote [SimpleWS](https://github.com/KeganHollern/SimpleWS) to make this easy for me. To bypass SSL security restrictions, I made a WebSocket proxy service on my website.
+To connect our chrome extension with our DMA device, I opted for a WebSocket.
+I wrote [SimpleWS](https://github.com/KeganHollern/SimpleWS) to make this easy for me.
+To bypass SSL security restrictions, I made a WebSocket proxy service on my website.
 
 ---
 
-Last, we just need to read player positions & send them over the WebSocket. For this, we'll make use of my [MemStream](https://github.com/KeganHollern/MemStream) library. MemStream wraps [MemProcFS](https://github.com/ufrisk/MemProcFS), the library all DMA devices use, to simplify cheat development. MemStream does this by forcing developers to write _optimized multi-address read operations, otherwise known as **scatter reads**_.
+Last, we just need to read player positions & send them over the WebSocket.
+For this, we'll make use of my [MemStream](https://github.com/KeganHollern/MemStream) library.
+MemStream wraps [MemProcFS](https://github.com/ufrisk/MemProcFS), 
+the library all DMA devices use, to simplify cheat development.
+MemStream does this by forcing developers to write _optimized multi-address read operations,
+otherwise known as **scatter reads**_.
 
-I want to break the cheat down into consumable snippets. This will help get my logic across without requiring in-depth knowledge of my MemStream library or DMA cheating.
+I want to break the cheat down into consumable snippets. 
+This will help get my logic across without requiring in-depth knowledge of my MemStream library or DMA cheating.
 
 1. Connect to the Device, Find Tarkov, and extract the Game Object Manager.
 
@@ -112,11 +145,6 @@ I want to break the cheat down into consumable snippets. This will help get my l
 PMSSContext ctx;
 HRESULT hr = MSS_InitFPGA(&ctx);
 if (FAILED(hr) || !ctx) return 1;
-
-// configure card (disable master abort)
-//TODO: make this a launch flag
-//hr = MSS_DisableMasterAbort(ctx);
-//if (FAILED(hr)) return 1;
 
 // find tarkov
 printf("Starting...\n");
@@ -330,7 +358,8 @@ while(1) {
 	if(FAILED(hr)) return hr;
 ```
 
-You get the idea. The remainder of the code continues the process of reading data from Tarkov until we've acquired all the player information and location data.
+You get the idea. The remainder of the code continues the process of reading data
+from Tarkov until we've acquired all the player information and location data.
 
 ```cpp
     //4. extract info from all profiles & start walking cached_ptr
@@ -664,7 +693,9 @@ You get the idea. The remainder of the code continues the process of reading dat
 	}
 ```
 
-Now we just need to package it up and send the information over the WebSocket. I also neatly display the information in the cheat console as well 🙂.
+Now we just need to package it up and send the 
+information over the WebSocket. I also neatly display the 
+information in the cheat console as well 🙂.
 
 ```cpp
 	cls(hStdout);
@@ -753,12 +784,11 @@ Now we just need to package it up and send the information over the WebSocket. I
 	buffer[sizeof(buffer)-1] = 0; // ensure null termination
 	ws_push(buffer);
 
-
-
 	printf("\n\n");
 ```
 
-In the chrome extension we can parse the data and update the LeafletJS map with players. _Sadly, I don't have a screenshot of the map with players actually rendered._
+In the chrome extension we can parse the data and update the LeafletJS map with players.
+_Sadly, I don't have a screenshot of the map with players actually rendered._
 
 ```js
 let active_socket = null;
@@ -822,6 +852,11 @@ const OnPacket = (map, content) => {
 
 ---
 
-With that, we've successfully created a Tarkov Radar with DMA. I have hidden some of the nuances around transforming game coordinates to map coordinates, as well as my exact LeafletJS rendering techniques. I'll leave these as exercises for the reader 🙂
+With that, we've successfully created a Tarkov Radar with DMA.
+I have hidden some of the nuances around transforming game coordinates to map coordinates,
+as well as my exact LeafletJS rendering techniques.
+I'll leave these as exercises for the reader 🙂
 
-One of the benefits of using a Chrome Extension with a websocket proxy is: I can share the extension with friends & they can _also_ see all players on their own PC, so long as I am alive & my DMA device is operating 😈.
+One of the benefits of using a Chrome Extension with a websocket proxy is:
+I can share the extension with friends & they can _also_ see all players on their own PC,
+so long as I am alive & my DMA device is operating 😈.

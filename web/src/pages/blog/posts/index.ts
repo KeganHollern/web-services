@@ -8,6 +8,7 @@ export interface PostMetadata {
     slug: string
     title: string
     description: string
+    visible: boolean
     // TODO: image?
 }
 export interface PostModule {
@@ -27,15 +28,18 @@ export const Modules = Object.entries(_modules).map(([filePath, importFn]): Post
     const slug: string = rawMetadata["slug"] ?? filePath.split("/").pop()?.replace(".mdx", "") ?? "";
     const title: string = rawMetadata["title"] ?? slug.replaceAll("-", " ") ?? "";
     const description = rawMetadata["description"] ?? "";
+    const visible = rawMetadata["visible"] ?? "true"
+
 
     return {
         filePath,
         metadata: {
             slug,
             title,
-            description
+            description,
+            visible
         },
         importFn,
     }
-}).filter((module) => module.metadata.slug !== "" && module.metadata.description !== "" && module.metadata.description !== "")
+}).filter((module) => module.metadata.visible && module.metadata.slug !== "" && module.metadata.description !== "" && module.metadata.description !== "")
     .reverse() // TODO: improve sorting based on folder or something
