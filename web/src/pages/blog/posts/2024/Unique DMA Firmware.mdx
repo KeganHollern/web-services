@@ -9,24 +9,27 @@ slug: is-your-unique-dma-firmware-actually-unique
 # Is Your Unique DMA Firmware Actually Unique?
 
 > Read from the device PCIe configuration space.
-> Only the values used by the Xilinx ip core itself is read. - [LeechCore](https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L1332C6-L1332C37)
+> Only the values used by the Xilinx ip core itself is read. - [DeviceFPGA_PCIeCfgSpaceCoreRead]
 
-By now many of you know about [ECheats](https://echeats.io), a DMA cheat provider.
+By now many of you know about [ECheats], a DMA cheat provider.
 As part of developing this platform,
-I have taken a closer look at [LeechCore](https://github.com/ufrisk/LeechCore/tree/master),
-[MemProcFS](https://github.com/ufrisk/MemProcFS), and the DMA libraries everyone relies on.
+I have taken a closer look at [LeechCore],
+[MemProcFS], and the DMA libraries everyone relies on.
 These are libraries the entire DMA cheat ecosystem is built on.
 If you go out and buy a DMA cheat, you first need these libraries.
 They all use them, and some even embed them in their cheat.
-Diving deeper into the LeechCore library, I found [LC_CMD_FPGA_PCIECFGSPACE](https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/leechcore.h#L423) this is a nifty little command your FPGA DMA card can run using the [LcCommand](https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/leechcore.h#L365) API call.
-It returns the entire Configuration Space of your DMA card.
-Don't believe me? Compile the [CfgDump example in MemStream](https://github.com/KeganHollern/MemStream/tree/main/example/cfgdump) and print out your own Configuration Space.
+Diving deeper into the LeechCore library, I found [LC_CMD_FPGA_PCIECFGSPACE] 
+this is a nifty little command your FPGA DMA card can run using the [LcCommand] 
+API call. It returns the entire Configuration Space of your DMA card.
+Don't believe me? Compile the [CfgDump example in MemStream] and print out your own Configuration Space.
 
 ---
 
 This leads me to the title line.
-If a cheat developer can dump your configuration space from his cheat, is your firmware safe? The short answer is, the cheat developer can't dump the [bitstream](http://lastweek.io/fpga/bitstream/) of your device, so they can't _copy_ your device.
-**But**, with your Configuration Space, they could create their own firmware which clones _your_ firmware.
+If a cheat developer can dump your configuration space from his cheat, is your 
+firmware safe? The short answer is, the cheat developer can't dump the [bitstream]
+of your device, so they can't _copy_ your device. **But**, with your 
+Configuration Space, they could create their own firmware which clones _your_ firmware.
 If they used it and got banned, you could be as well.
 So how do you protect yourself?
 
@@ -34,10 +37,12 @@ So how do you protect yourself?
 2. Compile a **safe** LeechCore.dll which blocks this command.
 
 For the first item, if the developers cheat doesn't require any dependencies, it's a no-go.
-For that second item, follow LeechCore's build instructions and remove [this](https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L3436) and [this](https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L3286C14-L3286C38) from the source code.
+For that second item, follow LeechCore's build instructions and remove 
+[LC_OPT_FPGA_CFGSPACE_XILINX] and [LC_CMD_FPGA_PCIECFGSPACE's implementation] from the source code.
 This isn't flawless.
 Developers could rip your configuration space from the device many ways.
-So you may need to get creative around limiting the [DeviceFPGA_PCIeCfgSpaceCoreRead function] to just what LeechCore needs to operate.
+So you may need to get creative around limiting the [DeviceFPGA_PCIeCfgSpaceCoreRead] 
+function to just what LeechCore needs to operate.
 
 ---
 
@@ -45,4 +50,14 @@ Anyway, that's it.
 Stay safe 🙂
 
 {/* references */}
-[DeviceFPGA_PCIeCfgSpaceCoreRead function]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L1332
+[DeviceFPGA_PCIeCfgSpaceCoreRead]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L1332
+[MemProcFS]: https://github.com/ufrisk/MemProcFS
+[LeechCore]: https://github.com/ufrisk/LeechCore
+[ECheats]: https://echeats.io
+[LC_CMD_FPGA_PCIECFGSPACE]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/leechcore.h#L423
+[LcCommand]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/leechcore.h#L365
+[CfgDump example in MemStream]: https://github.com/KeganHollern/MemStream/tree/main/example/cfgdump
+[DeviceFPGA_PCIeCfgSpaceCoreRead]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L1332C6-L1332C37
+[bitstream]: http://lastweek.io/fpga/bitstream/
+[LC_OPT_FPGA_CFGSPACE_XILINX]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L3436
+[LC_CMD_FPGA_PCIECFGSPACE's implementation]: https://github.com/ufrisk/LeechCore/blob/aadc785a90af3396d9f4affdb2a62b56c7a391b0/leechcore/device_fpga.c#L3286C14-L3286C38
