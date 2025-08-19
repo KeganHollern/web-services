@@ -229,11 +229,4 @@ export const mdxComponents = {
   ...flavor,
   ...code,
   ...github,
-
-  // custom wrapper to wrap all markdown content
-  wrapper: ({ children }: { children: ReactNode }) => (
-    <div className="mx-auto max-w-3xl">
-      <div className="p-6">{children}</div>
-    </div>
-  ),
 };

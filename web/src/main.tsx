@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/context/theme-provider";
 import { getItem } from '@/lib/state';
 import { DomainRouter } from "@/pages/domain-router";
 import { BrowserRouter } from "react-router";
+import ScrollToTop from './hooks/scroll';
 
 const open = (getItem('sidebar_state') ?? "true") === "true";
 
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
         <SidebarProvider defaultOpen={open}>
           <Sidebar>
             <BrowserRouter>
+              <ScrollToTop />
               <DomainRouter />
             </BrowserRouter>
           </Sidebar>

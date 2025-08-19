@@ -10,16 +10,16 @@ slug: manual-syscalls-on-windows
 
 > "In computing, a system call (commonly abbreviated to **syscall**) is the programmatic 
 > way in which a computer program requests a service from the operating system on which 
-> it is executed." - [Wikipedia](https://en.wikipedia.org/wiki/System_call)
+> it is executed." - [Wikipedia]
 
 I've recently been working on a new cheat and it's become necessary to take steps to obscure my code. 
 To do this, I've taken on the task of learning to run syscalls myself 
 rather than relying on the potentially hooked exports from NtDll.
 
 One of the ways Anticheats can flag a cheater is by monitoring 
-calls to NtDll functions such as [NtAllocateVirtualMemory](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntallocatevirtualmemory). 
-They often do this through [inline hooks](https://www.malwaretech.com/2015/01/inline-hooking-for-programmers-part-1.html) 
-on those functions, but there are many approaches that can be taken. 
+calls to NtDll functions such as [NtAllocateVirtualMemory]. 
+They often do this through [inline hooks] on those functions, but there are 
+many approaches that can be taken. 
 When a cheat calls a function hooked by the anticheat, it can use an arsenal of techniques 
 to determine if the caller appears nefarious.
 
@@ -31,16 +31,16 @@ alternative is to talk to the kernel yourself.
 
 In my case, I need the functionality contained within the following NtDll routines:
 
-- [NtCreateThreadEx](http://pinvoke.net/default.aspx/ntdll/NtCreateThreadEx.html)
-- [NtAllocateVirtualMemory](https://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FMemory%20Management%2FVirtual%20Memory%2FNtQueryVirtualMemory.html)
-- [NtProtectVirtualMemory](https://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FMemory%20Management%2FVirtual%20Memory%2FNtQueryVirtualMemory.html)
-- [NtQueryVirtualMemory](https://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FMemory%20Management%2FVirtual%20Memory%2FNtQueryVirtualMemory.html)
+- [NtCreateThreadEx]
+- [NtAllocateVirtualMemory]
+- [NtProtectVirtualMemory]
+- [NtQueryVirtualMemory]
 
 The kernel identifies the syscalls these routines make by an integer identifier. 
 These identifiers change between windows versions, so I needed to find the correct IDs for my system. 
-To do this, I popped NtDll into [IDA Pro](https://hex-rays.com/ida-pro/) and looked over the disassembly.
+To do this, I popped NtDll into [IDA Pro] and looked over the disassembly.
 
-Here is NtAllocateVirtualMemory:
+Here is [NtAllocateVirtualMemory]:
 
 ```asm
                 mov     r10, rcx        ; NtAllocateVirtualMemory
@@ -58,11 +58,11 @@ loc_18009EF55:                          ; CODE XREF: ZwAllocateVirtualMemory+10‚
 ```
 
 We can see line #2 sets the value of the ECX register to 24, 
-this tells us the syscall ID for NtAllocateVirtualMemory is 24.
+this tells us the syscall ID for [NtAllocateVirtualMemory] is 24.
 
-Knowing the [x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170), 
+Knowing the [x64 calling convention], 
 I found line #1 curious. It sets the value of `r10` to `rcx`. 
-This is because the `syscall` operation [destroys the RCX register](https://stackoverflow.com/a/35619528), 
+This is because the `syscall` operation [destroys the RCX register], 
 and thus cannot be used to pass the 1st argument to the kernel; r10 takes this role instead.
 
 ---
@@ -85,7 +85,7 @@ syscall_idx ENDP
 This routine takes in the syscall ID on the `r12d` register, 
 otherwise it's no different than the NtDll routines. 
 Next I am going to create functions for each syscall I want to replicate. 
-Here is NtQueryVirtualMemory:
+Here is [NtQueryVirtualMemory]:
 
 ```asm
 virtual_query_syscall PROC
@@ -112,7 +112,7 @@ virtual_query_syscall PROC
     ; mov rdx, rdx                              ; - lpAddress (2nd argument)
     or rcx, 0FFFFFFFFFFFFFFFFh                  ; - qwProcess (1st argument)
 
-    ; shadow pool
+    ; shadow space
     push r9
     push r8
     push rdx
@@ -130,10 +130,10 @@ virtual_query_syscall ENDP
 
 This function takes 5 arguments, 
 one for the Syscall ID, 
-and 4 which pass into the 6 argument NtQueryVirtualMemory syscall.
+and 4 which pass into the 6 argument [NtQueryVirtualMemory] syscall.
 
-One of the important things to note is that the [shadow space](https://stackoverflow.com/questions/30190132/what-is-the-shadow-space-in-x64-assembly) 
-still needs allocated (L26-29) (Note: I call it the "shadow pool" in reference to Dota 2 smurfing).
+One of the important things to note is that the [shadow space] still needs 
+allocated (L26-29).
 
 With this, we can jump back into C and finish writing a nice wrapper function for our syscall. 
 We've successfully created a function which executes a syscall manually.
@@ -192,7 +192,7 @@ uint16_t get_syscall_id(const char* symbol) {
 ```
 
 Unfortunately, manual syscalls are not a foolproof method. 
-There exists many ways of detecting these, such as [instrumentation callbacks](https://github.com/Deputation/instrumentation_callbacks), 
+There exists many ways of detecting these, such as [instrumentation callbacks], 
 which make running a `syscall` operation from outside NtDll very suspicious.
 
 My novel (and na√Øve) approach to tackle this was to modify my `syscall_idx` 
@@ -234,3 +234,16 @@ where the `ret` instruction inside NtDll is returning to (hint: it returns to my
 ...
 
 Anyway it was a fun learning exercise & definitely helped me learn more about `user<->kernel` interaction.
+
+{/* reference links */}
+[Wikipedia]: https://en.wikipedia.org/wiki/System_call
+[inline hooks]: https://www.malwaretech.com/2015/01/inline-hooking-for-programmers-part-1.html
+[NtAllocateVirtualMemory]: https://ntdoc.m417z.com/ntallocatevirtualmemory
+[NtCreateThreadEx]: https://ntdoc.m417z.com/ntcreatethreadex
+[NtQueryVirtualMemory]: https://ntdoc.m417z.com/ntqueryvirtualmemory
+[NtProtectVirtualMemory]: https://ntdoc.m417z.com/ntprotectvirtualmemory
+[IDA Pro]: https://hex-rays.com/ida-pro/
+[x64 calling convention]: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
+[destroys the RCX register]: https://stackoverflow.com/a/35619528
+[shadow space]: https://stackoverflow.com/questions/30190132/what-is-the-shadow-space-in-x64-assembly
+[instrumentation callbacks]: https://github.com/Deputation/instrumentation_callbacks
