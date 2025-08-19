@@ -32,6 +32,7 @@ export function Post({ children, title }: BlogPostProps) {
                             </div>
                         </MDXProvider>
                         <div className="mx-auto max-w-4xl">
+                            {/* TODO: _next_ button for navigating to next post ? */}
                             <Link to={'..'} className="pt-6 flex items-center gap-2"><ArrowLeft /> BACK</Link>
                         </div>
                     </Suspense>

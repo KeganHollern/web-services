@@ -8,8 +8,7 @@ slug: ethereum-payment-processor
 
 # Ethereum Payment Processor
 
-I have been fascinated with the Ethereum ecosystem since the beginning of
-<a href="https://www.investopedia.com/decentralized-finance-defi-5113835">DeFi</a>.
+I have been fascinated with the Ethereum ecosystem since the beginning of [DeFi].
 I continue to see cryptocurrency as a solution to several failure points of the internet.
 One of those is online payments.
 
@@ -17,32 +16,32 @@ Every online startup I've ever run has always had a single serious problem,
 payment gateways are extremely complex to configure. PayPal was the big one when
 I was first getting started. Their API used to be somewhat simple, but has
 grown so complex that I now struggle to integrate it. Stripe, on the other hand,
-requires a <strong>ton</strong> of tax information to open a store.
+requires a **ton** of tax information to open a store.
 
 So I decided I would just build my own payment processor. I first built it using
 the Bitcoin network, but opted to migrate to Ethereum thanks to the myriad of tools available.
 
-<img class="alignnone wp-image-929" src="http://blog.lystic.dev/wp-content/uploads/2022/11/eth-e1669233086572.jpg" alt="" />
-
-How do we approach a payment processor? Lets start with the high level view,
-how should funds flow from <em>customer</em> to <em>vendor</em>.
-
 ---
 
-<strong>CUSTOMER </strong>
+How do we approach a payment processor? Lets start with the high level view,
+how should funds flow from _customer_ to _vendor_.
 
-1. Start a transaction
-2. Transfer funds to intermediary wallet
+{/* TODO: support mermaid diagrams... */}
 
-<strong>INTERMEDIARY </strong>
-
-3. Receive funds
-4. Forward funds to vendor
-
-<strong>VENDOR </strong>
-
-5. Receive funds
-6. Execute post-transaction code
+> **CUSTOMER**
+>
+> 1. Start a transaction
+> 2. Transfer funds to intermediary wallet
+>
+> **INTERMEDIARY**
+>
+> 3. Receive funds
+> 4. Forward funds to vendor
+>
+> **VENDOR**
+>
+> 5. Receive funds
+> 6. Execute post-transaction code
 
 ---
 
@@ -58,19 +57,17 @@ A transaction has 5 states:
 - Notifying - Sending vendor a notification
 - Complete
 
-This makes it obvious we should treat each transaction as a 
-<a href="https://en.wikipedia.org/wiki/Finite-state_machine">Finite-state Machine</a>.
+This makes it obvious we should treat each transaction as a [Finite-state Machine].
 
-<img class="alignnone wp-image-940" src="http://blog.lystic.dev/wp-content/uploads/2022/11/banner.jpg" alt="" />
+---
 
 I want this processor to be easy to integrate. 
-For that, we'll notify vendors of a completed payment via 
-<a href="https://www.redhat.com/en/topics/automation/what-is-a-webhook">Webhooks</a>. 
-So step #4 will send a POST request to a URL hosted by the vendor with 
+For that, we'll notify vendors of a completed payment via [Webhooks]. 
+So step 4 will send a POST request to a URL hosted by the vendor with 
 information on the transaction.
 
 To enable vendors to pass extra information, much like PayPal and Stripe APIs
-allow them to, we'll add an arbitrary <em>userdata</em> attribute to
+allow them to, we'll add an arbitrary _userdata_ attribute to
 transactions which pass through to the webhook.
 
 Mapping out our processors endpoints, we'll have:
@@ -87,18 +84,18 @@ POST http://localhost/onpurchase
 {"product": "<ProductID>", "data": <ArbitraryUserData>}
 ```
 
-The <em>buy</em> page will create a new transaction and forward us to the 
-<em>checkout</em> page. The checkout page will track the state of the transaction. 
-Checkout lets the user know <em>where</em> to send funds, 
-<em>how much</em> to send, and <em>what</em> is the state of that transfer.
+The _buy_ page will create a new transaction and forward us to the 
+_checkout_ page. The checkout page will track the state of the transaction. 
+Checkout lets the user know _where_ to send funds, _how much_ to send, and 
+_what_ is the state of that transfer.
 
-<img class="alignnone wp-image-950 size-full" src="http://blog.lystic.dev/wp-content/uploads/2022/11/go-e1669233921303.jpg" alt="" />
+---
 
 All of this will work for any cryptocurrency, but by using Ethereum we get the 
-benefit of working with <a href="https://github.com/ethereum/go-ethereum">GETH</a>.
+benefit of working with [Geth].
 
 The source is quite large, so I only want to point out some key functions. 
-First lets look at the <strong>buy</strong> API:
+First lets look at the **buy** API:
 
 ```go
 package api
@@ -187,7 +184,7 @@ func (h *Handler) Buy(c *gin.Context) {
 This:
 
 - Generates a unique intermediary
-- Converts the USD price of the product to <a href="https://www.investopedia.com/terms/w/wei.asp">WEI</a>
+- Converts the USD price of the product to [Wei]
 - Generates a new transaction expecting WEI to be deposited into the intermediary
 - Redirects the user to the checkout page
 
@@ -306,15 +303,26 @@ There are some trade-offs made in the design:
 - Fees are passed on to the vendor, rather than an additional charge to customers.
 - The processor does not take any cut, so the system is best self hosted by the vendor.
 - Products are stored in a Database, dynamic checkouts are not supported (though could be!)
-- Not simple to add <a href="https://ethereum.org/en/developers/docs/standards/tokens/erc-20/">ERC20</a> token support in checkout
-- Not easy to add support for <a href="https://ethereum.org/en/layer-2/">L2 chains</a>.
+- Not simple to add [ERC20] token support in checkout
+- Not easy to add support for [L2] chains.
 
 As a thought exercise: if we wanted to add ERC20 support, we would 
 need to avoid the Ethereum transaction costs associated with paying out the vendor. 
-We could use a Web3 wallet like <a href="https://metamask.io/">Metamask</a> and
-automate a <a href="https://uniswap.org/">Uniswap</a> transaction to convert 
+We could use a Web3 wallet like [Metamask] and
+automate a [Uniswap] transaction to convert 
 user funds to ETH before transferring them to our vendor. 
-With this approach, the gateway could accept <strong>any</strong> Ethereum asset!
+With this approach, the gateway could accept **any** Ethereum asset!
 
 Anyway I thought this project was quite fun. I plan several projects around it, 
 so you'll be seeing more of this in the future.
+
+{/* reference links */}
+[DeFi]: https://www.investopedia.com/decentralized-finance-defi-5113835
+[Finite-state Machine]: https://en.wikipedia.org/wiki/Finite-state_machine
+[Webhooks]: https://www.redhat.com/en/topics/automation/what-is-a-webhook
+[Geth]: https://github.com/ethereum/go-ethereum
+[Wei]: https://www.investopedia.com/terms/w/wei.asp
+[ERC20]: https://ethereum.org/en/developers/docs/standards/tokens/erc-20/
+[L2]: https://ethereum.org/en/layer-2/
+[Metamask]: https://metamask.io/
+[Uniswap]: https://uniswap.org/
