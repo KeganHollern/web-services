@@ -8,65 +8,687 @@ slug: networked-meshes-in-arma-refroger
 
 # Networked Meshes in Arma Refroger 
 
-<a href="https://store.steampowered.com/app/1874880/Arma_Reforger/">Arma Reforger</a> 
-is the latest Arma game released by Bohemia Interactive. 
-This is more of a demo of the <a href="https://enfusionengine.com/">Enfusion Engine</a> 
-than a fully-featured gaming experience. It has a similar scripting experience to that found in DayZ Standalone, with some markable improvements.
+[Arma Reforger] is the latest Arma game released by Bohemia Interactive. 
+This is more of a demo of the [Enfusion Engine] than a fully-featured gaming 
+experience. It has a similar scripting experience to that found in 
+DayZ Standalone, with some markable improvements.
 
-Reforger brings two new exposed script APIs that can accomplish some heavy-lifting if used well. First is <strong>MeshObject.Create()</strong>.
-<script src="https://gist.github.com/KeganHollern/82082f615323f40cc5265c277a5e101e.js"></script>
-Next is <strong>Physics.CreateStaticEx()</strong> and <strong>Physics.CreateDynamicEx()</strong>.
-<script src="https://gist.github.com/KeganHollern/b72c4ea853b88e7d0d6d418e62820a72.js"></script>
+Reforger brings two new exposed script APIs that can accomplish some 
+heavy-lifting if used well. First is `MeshObject.Create()`.
 
-These two functions allow us to create 3D meshes through code and apply physics and collision to them. They do not, however, replicate over the network. Only the machine that runs these commands can <em>see</em> or <em>interact</em> with the object.
+```cpp
+sealed class MeshObject: VObject
+{
+	static proto MeshObject Create(int numMeshes, int numVerts[], int numIndices[], string materials[], MeshObjectFlags flags);
+	proto external void UpdateVerts(int meshIdx, vector verts[], float uv[]);
+	proto external void UpdateIndices(int meshIdx, int indices[]);
+	proto external int GetNumGeoms();
+	proto external bool HasValidMask();
+	proto external bool HasLayerMask(int layerMask, int layerFilter);
+};
+```
 
-We will design a system to replicate changes to the mesh over the network. The approach I will show is underdeveloped and has a <strong>lot</strong> of room for improvement.
 
-[insert]<img class="alignnone" src="https://ss.lystic.zip/2022-06-25/15-41-48/uZtKrAareXbgL5mBTQA4CkPJ.png" alt="Sample of the Procedural World terrain mesh." width="1888" height="415" />[/insert]
+Next is `Physics.CreateStaticEx()` and `Physics.CreateDynamicEx()`.
 
-First, let's talk about generating the mesh and collider. To make this post simpler, I will use the Generic Box Entity shipped with Reforger.
+```cpp
+sealed class Physics: NativeComponent
+{
+    ...
+    static proto Physics CreateStaticEx(notnull IEntity ent, PhysicsGeomDef geoms[]);
+    static proto Physics CreateDynamicEx(notnull IEntity ent, vector centerOfMass, float mass, PhysicsGeomDef geoms[]);
+    ...
+};
+```
 
-<script src="https://gist.github.com/KeganHollern/3cb236ecc2930ebbe5e175273e60ce2f.js"></script>
+These two functions allow us to create 3D meshes through code and apply physics
+and collision to them. They do not, however, replicate over the network. 
+Only the machine that runs these commands can _see_ or _interact_ with the object.
 
-[status_lessoops] I am not an expert on UVs, Verts, and Indices for 3D Meshes. [/status_lessoops]
-The <strong>Generate</strong> method takes a provided size (in each axis) and generates a cube based on those bounds. L32-L39 defines the actual vertices of the cube, whereas L41-L49 defines the vertices to feed into <strong>MeshObject.Create</strong>. The indices on L51-L59 represent the triangles of the mesh. Each number corresponds to a 0-based index in the <strong>verts</strong> array. Every <strong>3</strong> values in the indices array make a triangle. The <strong>u</strong><strong>vs</strong> variable on L60-L68 tells the mesh what part of the texture to render.
+We will design a system to replicate changes to the mesh over the network. 
+The approach I will show is underdeveloped and has a **lot** of room for improvement.
 
-At the bottom of <strong>Generate,</strong> we feed our data into <strong>MeshObject.Create</strong>. There are some hard limits on array sizes, so if you need to generate a large mesh, the Create routine allows you to pass multiple Mesh definitions at once (the engine itself breaks large objects into a series of small meshes as well).
+---
 
-[insert]<img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-25/16-04-12/LHNuTLeEzzfqG4Wiy5PS4VFc.png" width="1888" height="415" />[/insert]
+<img class="alignnone" src="https://ss.lystic.zip/2022-06-25/15-41-48/uZtKrAareXbgL5mBTQA4CkPJ.png" alt="Sample of the Procedural World terrain mesh." />
 
-Adding collision to the object sounds complex, but the logic is straightforward. We are feeding the same values we created for the Mesh into the Physics Engine using <strong>PhysicsGeomDef.CreateTriMesh</strong>. There are other types of geometry we can generate for colliders as well.
+---
 
-<script src="https://gist.github.com/KeganHollern/7866f2415846ac89b9f3561471ae1924.js"></script>
+First, let's talk about generating the mesh and collider. 
+To make this post simpler, I will use the Generic Box Entity shipped with Reforger.
 
-First, we must destroy the existing physics object attached to the entity. Next, we construct a <strong>PhysicsGeomDef</strong> with <strong>PhysicsGeom.CreateTriMesh</strong> generated from our same verts and indices as our MeshObject. Lastly, we connect the physics geometry to the entity using <strong>Physics.CreateStaticEx</strong> or <strong>Physics.CreateDynamicEx</strong>. That will look something like the code shown below, where <strong>this</strong> is the entity we want to attach a collider to.
+```cpp
+[EntityEditorProps(category: "GameScripted/Shapes", description: "Procedural box", color: "255 0 0 255", style: "box", dynamicBox: true)]
+class SCR_GenericBoxEntityClass: GenericEntityClass
+{
+};
 
-<script src="https://gist.github.com/KeganHollern/1aec10cde9d4339dbad4010540867268.js"></script>
+/*!
+Procedural box entity.
+*/
+class SCR_GenericBoxEntity : GenericEntity
+{
+	[Attribute("1 1 1", desc: "Size of the box", category: "Generic Box")]
+	private vector m_vSize;
+	
+	[Attribute(desc: "Material mapped on outside and inside of the mesh. Inside mapping is mirrored.", uiwidget: UIWidgets.ResourcePickerThumbnail, params: "emat", category: "Generic Box")]
+	private ResourceName m_Material;
+	
+	void Generate(vector size, ResourceName material)
+	{		
+		private float vX = size[0] / 2;
+		private float vY = size[1] / 2;
+		private float vZ = size[2] / 2;
+		
+		/*
+		        7 - 6
+		       /|  /|
+			    4 - 5
+		       /   /
+		    3 - 2
+		    |   |
+			0 - 1
+		*/
+		vector vert0 = Vector(-vX, -vY, -vZ);
+		vector vert1 = Vector( vX, -vY, -vZ);
+		vector vert2 = Vector( vX, -vY,  vZ);
+		vector vert3 = Vector(-vX, -vY,  vZ);
+		vector vert4 = Vector(-vX,  vY, -vZ);
+		vector vert5 = Vector( vX,  vY, -vZ);
+		vector vert6 = Vector( vX,  vY,  vZ);
+		vector vert7 = Vector(-vX,  vY,  vZ);
+		
+		vector verts[] =
+		{
+			vert2, vert3, vert0, vert1, //--- Bottom:  0,  1,  2,  3
+			vert7, vert6, vert5, vert4, //--- Top:     4,  5,  6,  7
+			vert4, vert5, vert1, vert0, //--- Front:   8,  9, 10, 11
+			vert6, vert7, vert3, vert2, //--- Back:   12, 13, 14, 15
+			vert7, vert4, vert0, vert3, //--- Left:   16, 17, 18, 19
+			vert5, vert6, vert2, vert1, //--- Right:  20, 21, 22, 23
+		};
+		
+		int indices[] =
+		{	
+			 0,  1,  2,		 2,  3,  0, //--- Bottom
+			 4,  5,  6,		 6,  7,  4, //--- Top
+			 8,  9, 10,		10, 11,  8, //--- Front
+			12, 13, 14,		14, 15, 12, //--- Back
+			16, 17, 18,		18, 19, 16, //--- Left
+			20, 21, 22,		22, 23, 20, //--- Right
+		};
+		float uvs[] =
+		{
+			0,0, 1,0, 1,1, 0,1,
+			0,0, 1,0, 1,1, 0,1,
+			0,0, 1,0, 1,1, 0,1,
+			0,0, 1,0, 1,1, 0,1,
+			0,0, 1,0, 1,1, 0,1,
+			0,0, 1,0, 1,1, 0,1
+		};
+		
+		int numVertices[] = {24};
+		int numIndices[] = {36};
+		string materials[1] = {material};
+		
+		MeshObject meshObject = MeshObject.Create(1, numVertices, numIndices, materials, 0);
+		meshObject.UpdateVerts(0, verts, uvs);
+		meshObject.UpdateIndices(0, indices);
+		if (meshObject) SetObject(meshObject,"");
+	}
+	
+	void SCR_GenericBoxEntity(IEntitySource src, IEntity parent)
+	{
+		Generate(m_vSize, m_Material);
+	}
+	
+#ifdef WORKBENCH
+	override void _WB_GetBoundBox(inout vector min, inout vector max, IEntitySource src)
+	{
+		min = -m_vSize / 2;
+		max = m_vSize / 2;
+	}
+#endif
+};
+```
 
-So generating a mesh and collider can be done through code, but this code is not networked. If we run this on the server, only the server will know the collider or mesh. We need to replicate this data to all current and future clients to make them render the mesh and collider. This is done through <strong>RplProp </strong>and the replication codec methods.
+> I am not an expert on UVs, Verts, and Indices for 3D Meshes.
 
-[insert]<img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-25/16-15-59/4fJ7zqX223pHBenmntGUCRKC.png" width="1700" height="337" />[/insert]
+The `Generate` method takes a provided size (in each axis) and generates a cube
+based on those bounds. `L32-L39` defines the actual vertices of the cube, 
+whereas `L41-L49` defines the vertices to feed into `MeshObject.Create`. 
+The indices on `L51-L59` represent the triangles of the mesh. 
+Each number corresponds to a 0-based index in the `verts` array. 
+Every **3** values in the indices array make a triangle. The `uvs` variable on 
+`L60-L68` tells the mesh what part of the texture to render.
 
-Starting off, I want you to read over the <strong>RplTestEntity</strong> defined in the base game. This entity showcases <strong>RplProp</strong> to the fullest extent I could find. It also includes the <strong>Codec</strong> methods necessary to replicate an object structure. The replication of mesh data will make use of these techniques.
+At the bottom of `Generate`, we feed our data into `MeshObject.Create`. 
+There are some hard limits on array sizes, so if you need to generate a large mesh, 
+the Create routine allows you to pass multiple Mesh definitions at once 
+(the engine itself breaks large objects into a series of small meshes as well).
 
-<script src="https://gist.github.com/KeganHollern/15ba4f7b8112eaae08f8428495a65b2a.js"></script>
+---
 
-Now we'll define a very rough structure to hold our object's mesh data. I used my Procedural Worlds mod for this example.
+<img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-25/16-04-12/LHNuTLeEzzfqG4Wiy5PS4VFc.png" />
 
-<script src="https://gist.github.com/KeganHollern/c1f8a505797960db52080685827fc441.js"></script>
+---
 
-This object holds all the minimum requirements to define a mesh object in Enfusion. We will assume the physical and texture materials are unchanging. The codec methods define loading and unloading these field values from a serialized buffer. I implore you to read this code thoroughly, as there are ways to optimize it further for smaller and larger meshes.
+Adding collision to the object sounds complex, but the logic is straightforward. 
+We are feeding the same values we created for the Mesh into the Physics Engine 
+using `PhysicsGeomDef.CreateTriMesh`. There are other types of geometry we can 
+generate for colliders as well.
 
-All that is left is to define a scripted entity that implements the dynamic mesh and uses a <strong>RplComponent</strong> to render that mesh on all machines. I quickly modified the BaseChunkEntity from the Procedural Worlds mod to create a base class for these types of entities.
+```cpp
+sealed class PhysicsGeom: pointer
+{
+	//! Destroys geometry
+	proto external void Destroy();
+	//! Creates box geometry
+	static proto PhysicsGeom CreateBox(vector size);
+	//! Creates sphere geometry
+	static proto PhysicsGeom CreateSphere(float radius);
+	//! Creates capsule geometry
+	static proto PhysicsGeom CreateCapsule(float radius, float height);
+	//! Creates cylinder geometry
+	static proto PhysicsGeom CreateCylinder(float radius, float height);
+	//! Creates tri-mesh geometry
+	static proto PhysicsGeom CreateTriMesh(vector vertices[], int indices[], int numVertices, int numIndices);
+};
+```
 
-[status_oops] I do not guarantee that the code below is without error [/status_oops]
+First, we must destroy the existing physics object attached to the entity. 
+Next, we construct a `PhysicsGeomDef` with `PhysicsGeom.CreateTriMesh` generated
+from our same verts and indices as our MeshObject. Lastly, we connect the physics
+geometry to the entity using `Physics.CreateStaticEx` or `Physics.CreateDynamicEx`. 
+That will look something like the code shown below, where `this` is the entity 
+we want to attach a collider to.
 
-<script src="https://gist.github.com/KeganHollern/546a9bfddf32660a26dfca648b0cb92f.js"></script>
+```cpp
+Physics existing = this.GetPhysics();
+if(existing)
+{
+  existing.Destroy();
+}
 
-Any objects derived from this base class should override <strong>Generate</strong> and update <strong>m_MeshData</strong> with the mesh information. Once the routine completes, the mesh data will be replicated to all clients, and <strong>OnMeshDataUpdate</strong> will run to generate the MeshObject and Physics on every machine. Any entity derived from this class will need a <strong>RplComponent</strong> to operate.
+PhysicsGeomDef geoms[1];
 
-With this, the <strong>Authority</strong> can modify the mesh as it chooses, and all <strong>Proxies</strong> will receive the changes and rerender the mesh.
+autoptr PhysicsGeomDef geom =  new PhysicsGeomDef("", 
+    PhysicsGeom.CreateTriMesh( m_MeshData.verts, 
+        m_MeshData.indices, 
+        m_MeshData.num_verts, 
+        m_MeshData.num_indices ), 
+    "{99CE88C5B1865216}Common/Materials/Physics/dirt.physmat", 
+    EPhysicsLayerPresets.Terrain);
 
-&nbsp;
+geoms[0] = geom;
 
-Anyway, that's pretty much it. As I said earlier, there are ways to optimize this to reduce network overhead and improve the replicated mesh quality.
+Physics.CreateStaticEx(this, geoms);
+```
+
+So generating a mesh and collider can be done through code, but this code is 
+not networked. If we run this on the server, only the server will know the 
+collider or mesh. We need to replicate this data to all current and future 
+clients to make them render the mesh and collider. This is done through 
+`RplProp` and the replication codec methods.
+
+---
+
+<img class="alignnone size-medium" src="https://ss.lystic.zip/2022-06-25/16-15-59/4fJ7zqX223pHBenmntGUCRKC.png" />
+
+---
+
+Starting off, I want you to read over the `RplTestEntity` defined in the base game.
+This entity showcases `RplProp` to the fullest extent I could find. It also 
+includes the `Codec` methods necessary to replicate an object structure. 
+The replication of mesh data will make use of these techniques.
+
+```cpp
+[EntityEditorProps(category: "GameScripted/Test", description: "Testing entity for scripted replication", color: "0 0 255 255")]
+class SCR_RplTestEntityClass: GenericEntityClass
+{
+};
+
+class RplTestPropType
+{
+	int iVal;
+	float fVal;
+	bool bVal;
+
+	//################################################################################################
+	//! Codec methods
+	//------------------------------------------------------------------------------------------------
+	static void Encode(SSnapSerializerBase snapshot, ScriptCtx hint, ScriptBitSerializer packet) 
+	{
+		snapshot.Serialize(packet, 9);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool Decode(ScriptBitSerializer packet, ScriptCtx hint, SSnapSerializerBase snapshot) 
+	{
+		return snapshot.Serialize(packet, 9);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool SnapCompare(SSnapSerializerBase lhs, SSnapSerializerBase rhs, ScriptCtx hint) 
+	{
+		return lhs.CompareSnapshots(rhs, 9);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool PropCompare(RplTestPropType prop, SSnapSerializerBase snapshot, ScriptCtx hint) 
+	{
+		return snapshot.Compare(prop.iVal, 4) 
+			&& snapshot.Compare(prop.fVal, 4) 
+			&& snapshot.Compare(prop.bVal, 1);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool Extract(RplTestPropType prop, ScriptCtx hint, SSnapSerializerBase snapshot) 
+	{
+		snapshot.SerializeBytes(prop.iVal, 4);
+		snapshot.SerializeBytes(prop.fVal, 4);
+		snapshot.SerializeBytes(prop.bVal, 1);
+
+		return true;
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool Inject(SSnapSerializerBase snapshot, ScriptCtx hint, RplTestPropType prop) 
+	{
+		snapshot.SerializeBytes(prop.iVal, 4);
+		snapshot.SerializeBytes(prop.fVal, 4);
+		snapshot.SerializeBytes(prop.bVal, 1);
+
+		return true;
+	}
+	//################################################################################################
+		
+};
+
+//------------------------------------------------------------------------------------------------
+class SCR_RplTestEntity : GenericEntity
+{
+	[RplProp(condition: RplCondition.NoOwner)]
+	private int m_iTest = 0;
+	private int m_iTestLast = 0;
+	
+	float m_fdelay = 0;
+	
+	[RplProp(onRplName: "OnRpl_CustomProp")]
+	ref RplTestPropType customProp = new RplTestPropType();
+	
+	void OnRpl_CustomProp()
+	{
+		Print("CUSTOM RPLPROP CHANGE1: " + customProp.iVal);
+		Print("CUSTOM RPLPROP CHANGE2: " + customProp.fVal);
+		Print("CUSTOM RPLPROP CHANGE3: " + customProp.bVal);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	[RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+	void NetTestRpc(int testNum)
+	{
+		Print("RPC RECEIVE: " + testNum.ToString());
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	override void EOnFrame(IEntity owner, float timeSlice)
+	{
+		if (Debug.KeyState(KeyCode.KC_P))
+		{
+			Debug.ClearKey(KeyCode.KC_P);
+			int rndRPCNum = Math.RandomIntInclusive(0, 100);
+			Rpc(NetTestRpc, rndRPCNum);
+			Print("RPC SEND: " + rndRPCNum.ToString());
+		}
+		
+		if (RplSession.Mode() == RplMode.Client) // Client
+		{
+			if (m_iTestLast != m_iTest)
+			{
+				Print("RPLPROP CHANGED: " + m_iTest);
+				Print("CUSTOM RPLPROP CHANGED1: " + customProp.iVal);
+				Print("CUSTOM RPLPROP CHANGED2: " + customProp.fVal);
+				Print("CUSTOM RPLPROP CHANGED3: " + customProp.bVal);
+			}
+			
+			m_iTestLast = m_iTest;
+		}
+		else
+		{
+			m_fdelay -= timeSlice;
+			if (m_fdelay > 0)
+				return;
+			
+			m_fdelay += 2;
+			
+			// Change the value server side
+			if (RplSession.Mode() != RplMode.Client)
+			{
+				m_iTest = Math.RandomIntInclusive(0, 100);
+				customProp.iVal = Math.RandomIntInclusive(0, 100);
+				customProp.fVal = Math.RandomFloatInclusive(0, 100);
+				customProp.bVal = customProp.iVal > 50;
+			}
+			
+			Print("RPLPROP CHANGE: " + m_iTest);
+			Print("CUSTOM RPLPROP CHANGE1: " + customProp.iVal);
+			Print("CUSTOM RPLPROP CHANGE2: " + customProp.fVal);
+			Print("CUSTOM RPLPROP CHANGE3: " + customProp.bVal);
+		}
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	void SCR_RplTestEntity(IEntitySource src, IEntity parent)
+	{
+		SetEventMask(EntityEvent.FRAME);
+		SetFlags(EntityFlags.ACTIVE, true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	void ~SCR_RplTestEntity()
+	{
+	}
+};
+```
+
+Now we'll define a very rough structure to hold our object's mesh data. 
+I used my Procedural Worlds mod for this example.
+
+```cpp
+//!------------------------------------------------------------------------------------------------
+// Procedural World Generation Routines & Structures
+// 
+// Author: Kegan Hollern (lystic)
+//!------------------------------------------------------------------------------------------------
+
+//!------------------------------------------------------------------------------------------------
+// RplProp Compatible Class Definition
+class LYS_RplMeshData {
+	int num_verts = 0;
+	int num_uvs = 0;
+	int num_indices = 0;
+	
+	bool collider = true;
+	int layerMask = EPhysicsLayerPresets.Terrain;
+	
+	// I think we can make these dynamic sized but am concerned about PropCompare `prop.num_verts` not being accurate. to the actual array size
+	vector verts[1024];
+	float uvs[2048];
+	int indices[6144];
+	
+	
+	
+	//################################################################################################
+	//! Codec methods
+	//------------------------------------------------------------------------------------------------
+	static void Encode(SSnapSerializerBase snapshot, ScriptCtx hint, ScriptBitSerializer packet) 
+	{
+		snapshot.Serialize(packet, (1024*12)+(2048*4)+(6144*4)+4+1+4+4+4);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool Decode(ScriptBitSerializer packet, ScriptCtx hint, SSnapSerializerBase snapshot) 
+	{
+		return snapshot.Serialize(packet, (1024*12)+(2048*4)+(6144*4)+4+1+4+4+4);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool SnapCompare(SSnapSerializerBase lhs, SSnapSerializerBase rhs, ScriptCtx hint) 
+	{
+		return lhs.CompareSnapshots(rhs, (1024*12)+(2048*4)+(6144*4)+4+1+4+4+4);
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool PropCompare(LYS_RplMeshData prop, SSnapSerializerBase snapshot, ScriptCtx hint) 
+	{
+		bool equal = snapshot.Compare(prop.num_verts, 4)
+			&& snapshot.Compare(prop.num_uvs, 4)
+			&& snapshot.Compare(prop.num_indices, 4)
+			&& snapshot.Compare(prop.collider, 1)
+			&& snapshot.Compare(prop.layerMask, 4);
+		
+		if(!equal) return equal;
+		
+		for(int i = 0; i < 1024; i++)
+		{
+			equal = equal && snapshot.CompareVector(prop.verts[i]);
+			if(!equal) return equal;
+		}
+		
+		for(int i = 0; i < 2048; i++)
+		{
+			equal = equal && snapshot.CompareFloat(prop.uvs[i]);
+			if(!equal) return equal;
+		}
+		
+		for(int i = 0; i < 6144; i++)
+		{
+			equal = equal && snapshot.CompareInt(prop.indices[i]);
+			if(!equal) return equal;
+		}
+		
+		return equal;
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool Extract(LYS_RplMeshData prop, ScriptCtx hint, SSnapSerializerBase snapshot) 
+	{
+		snapshot.SerializeInt(prop.num_verts);
+		snapshot.SerializeInt(prop.num_uvs);
+		snapshot.SerializeInt(prop.num_indices);
+		snapshot.SerializeBool(prop.collider);
+		snapshot.SerializeInt(prop.layerMask);
+		
+		for(int i = 0; i < 1024; i++)
+		{
+			vector value = prop.verts[i];
+			snapshot.SerializeVector(value);
+			prop.verts[i] = value;
+		}
+		
+		for(int i = 0; i < 2048; i++)
+		{
+			float value = prop.uvs[i];
+			snapshot.SerializeFloat(value);
+			prop.uvs[i] = value;
+		}
+		
+		for(int i = 0; i < 6144; i++)
+		{
+			int value = prop.indices[i];
+			snapshot.SerializeInt(value);
+			prop.indices[i] = value;
+		}
+
+		return true;
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	static bool Inject(SSnapSerializerBase snapshot, ScriptCtx hint, LYS_RplMeshData prop) 
+	{
+		snapshot.SerializeInt(prop.num_verts);
+		snapshot.SerializeInt(prop.num_uvs);
+		snapshot.SerializeInt(prop.num_indices);
+		snapshot.SerializeBool(prop.collider);
+		snapshot.SerializeInt(prop.layerMask);
+		
+		for(int i = 0; i < 1024; i++)
+		{
+			vector value = prop.verts[i];
+			snapshot.SerializeVector(value);
+			prop.verts[i] = value;
+		}
+		
+		for(int i = 0; i < 2048; i++)
+		{
+			float value = prop.uvs[i];
+			snapshot.SerializeFloat(value);
+			prop.uvs[i] = value;
+		}
+		
+		for(int i = 0; i < 6144; i++)
+		{
+			int value = prop.indices[i];
+			snapshot.SerializeInt(value);
+			prop.indices[i] = value;
+		}
+
+
+		return true;
+	}
+	//################################################################################################
+}
+```
+
+This object holds all the minimum requirements to define a mesh object in Enfusion.
+We will assume the physical and texture materials are unchanging. The codec
+methods define loading and unloading these field values from a serialized buffer.
+I implore you to read this code thoroughly, as there are ways to optimize it further
+for smaller and larger meshes.
+
+All that is left is to define a scripted entity that implements the dynamic mesh
+and uses a `RplComponent` to render that mesh on all machines. I quickly
+modified the `BaseChunkEntity` from the **Procedural Worlds** mod to create a
+base class for these types of entities.
+
+> I do not guarantee that the code below is without error
+
+```cpp
+//!------------------------------------------------------------------------------------------------
+// Dynamic Mesh Entity -- extend from this and use it like `GenericEntity` when making a scripted entity.
+class LYS_DynamicMeshEntity : GenericEntity
+{	
+	[RplProp(onRplName: "OnMeshDataUpdate")]
+	ref LYS_RplMeshData m_MeshData = new LYS_RplMeshData(); // generated by server, replicated to clients
+	
+	
+	[RplProp(), Attribute("{D0126AF0E6A27141}Common/Materials/Colors/colorRed.emat", desc: "Mesh Material", uiwidget: UIWidgets.ResourcePickerThumbnail, params: "emat", category: "Material")]
+	protected ResourceName m_Material;
+	
+	[RplProp(), Attribute("{99CE88C5B1865216}Common/Materials/Physics/dirt.physmat", desc: "Physical Material", uiwidget: UIWidgets.ResourcePickerThumbnail, params: "physmat", category: "Material")]
+	protected ResourceName m_Physical;
+	
+	// event handler for on post-mesh generated
+	ref ScriptInvoker Event_OnMeshGenerated = new ScriptInvoker();
+	
+	//!------------------------------------------------------------------------------------------------
+	void LYS_DynamicMeshEntity(IEntitySource src, IEntity parent)
+	{
+		SetEventMask(EntityEvent.INIT); // on init we render the mesh
+	}
+	
+	//!------------------------------------------------------------------------------------------------
+	protected override void EOnInit(IEntity owner) 
+	{
+
+		RplComponent rpl = RplComponent.Cast(this.FindComponent(RplComponent));
+		if(rpl && rpl.Role() == RplRole.Authority)
+		{
+			DoGenerate();
+			DrawMesh();
+		}
+	}
+	
+	//!------------------------------------------------------------------------------------------------
+	// Generate member data and trigger events -- not intended to be overridden
+	void DoGenerate()
+	{
+		// intended to be called from authority!
+		RplComponent rpl = RplComponent.Cast(this.FindComponent(RplComponent));
+		if(!rpl || rpl.Role() != RplRole.Authority) return;
+		
+		// authority (server) runs this 
+		Generate();
+		Event_OnMeshGenerated.Invoke(m_MeshData);
+	}
+	
+	//!------------------------------------------------------------------------------------------------
+	protected void Generate()
+	{
+		// override this method
+		// generate and update data for m_MeshData
+	}
+
+	//!------------------------------------------------------------------------------------------------
+	// Draw the Mesh w/ existing member data
+	protected void DrawMesh()
+	{
+		//Print("DRAWING MESH");
+		// we may not have recieved all data at this point
+		if(m_MeshData.num_verts == 0 || m_MeshData.num_verts >= 1024/*10922*/ || m_MeshData.num_indices == 0 || m_MeshData.num_indices >= 6144/*32768*/ /*|| m_UVs.Count() == 0 || m_UVs.Count() >= 32768*/)
+		{
+			Print("invalid procedural entity verts", LogLevel.ERROR);
+			//Print(m_MeshData.num_verts);
+			//Print(m_MeshData.num_indices);
+			
+			this.SetObject(null,"");
+			Physics existing = this.GetPhysics();
+			if(existing)
+			{
+				existing.Destroy();
+			}
+			return;
+		}
+		
+		
+		int numVertices[] = {m_MeshData.num_verts};
+		int numIndices[] = {m_MeshData.num_indices};
+		string materials[] = {m_Material};
+		
+		
+		MeshObject meshObject = MeshObject.Create(1, numVertices, numIndices, materials, MeshObjectFlags.UPDATE_BOUNDBOX);
+		meshObject.UpdateVerts(0, m_MeshData.verts, m_MeshData.uvs);
+		meshObject.UpdateIndices(0, m_MeshData.indices);
+		
+		this.SetObject(meshObject,"");
+		
+		Physics existing = this.GetPhysics();
+		if(existing)
+		{
+			Print("physics exists!");
+			existing.Destroy();
+		}
+		
+		if(m_MeshData.collider)
+		{
+			ref PhysicsGeomDef geoms[1];
+			autoptr PhysicsGeomDef geom =  new PhysicsGeomDef("", 
+																PhysicsGeom.CreateTriMesh(m_MeshData.verts, m_MeshData.indices, m_MeshData.num_verts, m_MeshData.num_indices ), 
+																m_Physical, 
+																m_MeshData.layerMask);
+			geoms[0] = geom;
+			
+			Physics.CreateStaticEx(this, geoms);
+			
+		}
+		
+	}
+	
+	//!------------------------------------------------------------------------------------------------
+	// On change to mesh data (runs on clients)
+	void OnMeshDataUpdate()
+	{
+		DrawMesh();
+	}
+}
+```
+
+Any objects derived from this base class should override `Generate`
+and update `m_MeshData` with the mesh information. Once the routine completes,
+the mesh data will be replicated to all clients, and `OnMeshDataUpdate` will run
+to generate the `MeshObject` and `Physics` on every machine. Any entity derived
+from this class will need a `RplComponent` to operate.
+
+With this, the `Authority` can modify the mesh as it chooses, and all `Proxies`
+will receive the changes and rerender the mesh.
+
+---
+
+Anyway, that's pretty much it. As I said earlier, there are ways to optimize
+this to reduce network overhead and improve the replicated mesh quality.
+
+
+{/* reference links */}
+[Arma Reforger]: https://store.steampowered.com/app/1874880/Arma_Reforger/
+[Enfusion Engine]: https://enfusionengine.com/

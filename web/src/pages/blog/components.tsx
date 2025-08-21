@@ -164,6 +164,7 @@ const code = {
     // map short codes to full language name for monaco
     language = LanguageShortToFull[language] ?? language;
 
+    // TODO: _fullscreen_ button for editor so viewers can fullscreen the code box in a popup dialog or something
     return (
       <Editor
         readonly={true}
