@@ -9,6 +9,8 @@ export function BrowsePage() {
         { label: "blog.lystic.dev" },
     ];
 
+    // TODO: post tags, order by date, etc
+
     return (
         <>
             <Header breadcrumbItems={breadcrumbs} />
