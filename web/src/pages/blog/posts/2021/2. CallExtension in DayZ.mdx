@@ -1,0 +1,304 @@
+---
+title: CallExtension in DayZ 
+description: |
+    One of my least favorite changes between Arma 3 modding and 
+    DayZ modding is that the developers of DayZ...
+slug: callextension-in-dayz
+---
+
+# CallExtension in DayZ 
+
+One of my least favorite changes between Arma 3 modding and DayZ modding is that
+the developers of DayZ insist that the game only be modded in the way that
+they deem _correct_. One example of this is the removal, 
+and refusal to re-implement, the callExtension functionality that is so
+widely used in Arma 3. 
+
+Those who have played Arma, you'll know that many game
+modes exist that require a database, such as Life or KoTH. 
+These games are only possible in Arma thanks to the `callExtension` method 
+allowing modders to create database connection libraries. 
+[extDB3] is the extension that makes this possible. 
+
+One last example before moving on, [Task Force Arrowhead Radio] is a mod 
+that significantly improves the radio and voice communication in the game. 
+Military Ops and community use this mod heavily because of the massive improvement. 
+Once more, only possible with callExtension.
+
+[callExtension] is a scripting command in the Arma series of games. 
+It allows SQF, script, to run native C++ (or C#) from a custom created library. 
+This is extremely useful for adding functionality that the base game doesn't support. 
+Sadly, most extensions are blocked by BattlEye and therefore cannot run on the client 
+(TFAR being an exception to this rule). 
+
+---
+
+Anyway back on track. Since the developers of DayZ continued to not add this 
+vital functionality, I decided I would take the time to create an implementation myself. 
+
+I called it [Infinity] as with it you have infinite modding opportunities. 
+I want to walk you through how I created this.
+
+---
+
+In order for a native (c++) mod to function, we need a way to load custom code 
+into the server executable. For this, I originally chose to use the _BIDebugEngine_ trick.
+This trick is an artifact the devs used to leave in the DayZ production server and client executables. 
+ 
+The game would automatically load any library in the root folder called `BIDebugEngine`. 
+Here is the decompiled code from `DayZServer_x64.exe` that shows how it worked:
+
+![bidebugengine](https://ss.lystic.zip/2021-01-19/15-56-27/nBevHM0JWZbSY3na.png)
+
+> Note: shortly after releasing infinity, the developers of DayZ <b>removed</b> the code above. 
+> Infinity now includes a library loading executable to load `BIDebugEngine.dll` on the server.
+
+In order to add `callExtension` to the scripting framework, 
+I need to create a custom `proto native` command. 
+
+> If you want an example of a `proto native`, look at the `Print` function in DayZ. 
+
+So next step, we need to figure out how to register our own script functions. 
+We can achieve this by understanding how `DayZServer` initializes the games native methods. 
+Taking a look at that:
+
+![native init](https://ss.lystic.zip/2021-01-19/16-03-19/WH9ICucqFVeHVcjz.png)
+
+In the `InitModules` method, we can see a standard call to `RegisterFunction`. 
+This registers our script command with a native C++ method to execute when it's called. 
+There are, however, a few more complex ways to add script commands. 
+Here is an example of the Math library. 
+
+> Notice how we first register the class, 
+> then each function is registered with an argument being that class.
+
+![math lib](https://ss.lystic.zip/2021-01-19/16-04-39/msRl96ZKhqw22FtR.png)
+
+So, the best approach to registering functions I can see is to hook this 
+`InitModules` method and call register ourselves with our own custom functions.
+For this, I made use of [MinHook] which made hooking DayZ methods super simple.
+
+Here we are using minhook to hook initmodules:
+
+![minhook](https://ss.lystic.zip/2021-05-22/13-11-41/1AxMd8bIWjqoRKr5.png)
+
+Here we are registering our functions for `callExtension`:
+
+![registration](https://ss.lystic.zip/2021-05-22/13-13-20/AqEbMbK0Ia7BziiV.png)
+
+---
+
+> Wait! We need to go over how to replicate the `RVExtension` implementation!
+
+Now we need to develop the C++ functions that our `proto native` 
+definitions will be linked too. These functions need to have the same 
+limitations and the same scope of functionality as the Arma 3 script command does. 
+
+Here is the code I came up with to implement the `pre-v1.67` definition: 
+
+```cpp
+#include <stdexcept>
+#include <filesystem>
+
+#include "RVExtension.h"
+
+namespace fs = std::filesystem;
+
+
+HMODULE RVExt::GetExtension(const char* library)
+{
+	//1. get cannonical path to library
+	fs::path library_path = std::string(library) + ".dll"; //extension system doesn't include dll @ the end of the library name
+	fs::path canonical_path = fs::canonical(library_path);
+	fs::path filename = canonical_path.filename();
+
+	//2. if the library doesn't exist ignore
+	if (!fs::exists(canonical_path))
+		return NULL;
+
+	HMODULE hModule = GetModuleHandleW(filename.c_str());
+
+	if (!hModule)
+		hModule = LoadLibraryW(canonical_path.c_str());
+
+	return hModule;
+}
+char* RVExt::callExt_DZ(char* library, char* function, char* argument)
+{
+	HMODULE hLibrary = GetExtension(library);
+	if (!hLibrary)
+		return (char*)"Extension not found";
+
+	DZExtensionFunction DZExtension = (DZExtensionFunction)GetProcAddress(hLibrary, "DZExtension");
+	if (!DZExtension)
+		return (char*)"Extension does not contain DZExtension export";
+
+	printf("DZExtension Call\n\tLibrary: %s\n\tFunction: %s\n\tArgument: %s\n", library, function, argument);
+	return DZExtension(function, argument); //we expect that this extension will handle allocating memory properly
+	
+	
+}
+char* RVExt::callExt_RVArgs(char* library, char* function, const char*** args, int argsCount)
+{
+	// sanity check arguments
+	if (!args)
+		return (char*)"No argument array provided";
+	const char*** internal_structure = args + 0x5; //28 bytes off of base ptr ??? (0x5 * 0x8 = 0x28)
+	if (IsBadReadPtr(internal_structure, sizeof(void*)))
+		return (char*)"Invalid arguments array provided!";
+
+	const char** arg_arr = *internal_structure;
+
+	if (!arg_arr)
+		return (char*)"Invalid arguments array provided!";
+
+	HMODULE hLibrary = GetExtension(library);
+	if (!hLibrary)
+		return (char*)"Extension not found";
+	RVExtensionArgsFunction RVExtensionArgs = (RVExtensionArgsFunction)GetProcAddress(hLibrary, "RVExtensionArgs");
+	if (!RVExtensionArgs)
+		return (char*)"Extension does not contain RVExtensionArgs export";
+	
+	printf("RVExtensionArgs Call\n");
+	printf("\tLibrary: %s\n", library);
+	printf("\tFunction: %s\n", function);
+	for (int i = 0; i < argsCount; i++)
+		printf("\tArgument[%i]: %s\n", i, arg_arr[i]);
+
+	char* buffer = new char[MAX_BUFFER_SIZE];
+	RVExtensionArgs(buffer, MAX_BUFFER_SIZE, function, arg_arr, argsCount);
+	printf("\tResult: %s\n", buffer);
+
+	/*
+	in order to save memory usage, we'll copy the result from RVExtensionArgs into a new buffer that is just large enough
+	this will shrink our memory leak down from 10kb per call to whatever the resultant string size is
+	*/
+	size_t output_size = strlen(buffer);
+	char* result = new char[output_size+1];
+	if(output_size > 0) //only copy if we actually have data to copy
+		strcpy_s(result, output_size, buffer); 
+	delete[] buffer;
+	return result;
+}
+char* RVExt::callExt_RV(char* library, char* function)
+{
+	HMODULE hLibrary = GetExtension(library);
+	if (!hLibrary)
+		return (char*)"Extension not found";
+	RVExtensionFunction RVExtension = (RVExtensionFunction)GetProcAddress(hLibrary, "RVExtension");
+	if (!RVExtension)
+		return (char*)"Extension does not contain RVExtension export";
+
+	printf("RVExtension Call\n");
+	printf("\tLibrary: %s\n", library);
+	printf("\tFunction: %s\n", function);
+
+	char* buffer = new char[MAX_BUFFER_SIZE];
+	RVExtension(buffer, MAX_BUFFER_SIZE, function);
+	printf("\tResult: %s\n", buffer);
+
+	size_t output_size = strlen(buffer);
+	char* result = new char[output_size + 1];
+	if (output_size > 0) //only copy if we actually have data to copy
+		strcpy_s(result, output_size, buffer);
+	delete[] buffer;
+	return result;
+}
+char* RVExt::callExt_RVVer(char* library)
+{
+	HMODULE hLibrary = GetExtension(library);
+	if (!hLibrary)
+		return (char*)"Extension not found";
+	RVExtensionVersionFunction RVExtensionVersion = (RVExtensionVersionFunction)GetProcAddress(hLibrary, "RVExtensionVersion");
+	if (!RVExtensionVersion)
+		return (char*)"Extension does not contain RVExtensionVersion export";
+
+	char buffer[32] = "";
+	RVExtensionVersion(buffer, sizeof(buffer));
+	printf("\tResult: %s\n", buffer);
+
+	size_t output_size = strlen(buffer);
+	char* result = new char[output_size + 1];
+	if (output_size > 0) //only copy if we actually have data to copy
+		strcpy_s(result, output_size, buffer);
+
+	return result;
+}
+```
+
+One unique aspect here is reducing how much memory we leak on each `RVExtension` call. 
+Sadly, we can't destroy the buffer that stores our result until after we hand it back to Enforce. 
+So to keep the leak as small as possible, we copy the result from `RVExtension`
+back to a buffer that is just large enough to fit it. 
+
+Now I am going to skip the other neat parts of the [Infinity] library.
+I may end up doing a video just discussing it in more detail for those interested. 
+If/When I do that, it'll go on the following page. 
+For now, let us assume that we've successfully registered our script functions. 
+Let's take a look at the DayZ Mod that needs to go with it.
+
+```cpp
+class Extension
+{
+	protected string _Library;
+	
+	
+	void Extension(string Library)
+	{
+		_Library = Library;
+	}
+	
+	string CallExtensionDZ(string function, string argument)
+	{
+		return CallDZ(_Library,function, argument);
+	}
+	string CallExtensionRV(string function)
+	{
+		return CallRV(_Library, function);
+	}
+	string CallExtensionRVArgs(string function, notnull array<string> args)
+	{
+		return CallRVArgs(_Library, function, args, args.Count());
+	}
+	string GetVersion()
+	{
+		return CallRVVer(_Library);
+	}
+	
+
+};
+
+proto native string CallDZ(string library, string function, string arguments);
+proto native string CallRVVer(string library);
+proto native string CallRV(string library, string function);
+proto native string CallRVArgs(string library, string function, notnull array<string> args, int argsCount);
+```
+
+At the bottom, you can see our registered proto native functionality.
+I created this Extension class to help wrap up using these methods.
+Using this mod in conjunction with our BIDebugEngine library, 
+we can copy+paste Arma 3 extensions into DayZ and use their functionality for our own servers.
+
+---
+
+Seriously though, this is something I have been begging the DayZ 
+developers to implement. Obviously I have not heard anything back,
+but the developers going out of their way to **remove** BIDebugEngine.dll 
+from the game sends a strong message that they do not want to encourage 
+this style of modding. Actually, when I first worked on this library in 2018, 
+_Bohemia Interactive sent me a cease and desist letter_. 
+
+I really think they are taking the wrong approach in this aspect, 
+but I will continue to maintain the library and github as they have really
+no legal grounds to prevent me from distributing the source code.
+
+Just note that if you do decide to use [Infinity], BI probably won't want to
+monetize your server... though let's be honest they rarely do any diligence on
+who has monetization rights and who doesn't. 
+
+{/* reference links */}
+[extDB3]: https://github.com/SteezCram/extDB3
+[Task Force Arrowhead Radio]: http://makearmanotwar.com/entry/pMP8c7vSS4#.VroFiS7-qPn
+[callExtension]: https://community.bistudio.com/wiki/callExtension
+[Infinity]: https://github.com/KeganHollern/Infinity
+[MinHook]: https://github.com/TsudaKageyu/minhook

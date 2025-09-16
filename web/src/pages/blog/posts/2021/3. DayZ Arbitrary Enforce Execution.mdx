@@ -1,0 +1,285 @@
+---
+title: DayZ Arbitrary Enforce Execution
+description: |
+    So recently, I have been working with Fini on his Anticheat.
+    By "I have been working with", I mean that he has done most of the work...
+slug: dayz-arbitrary-enforce-execution
+---
+
+# DayZ Arbitrary Enforce Execution
+
+> In computer security, arbitrary code execution (ACE) is an attacker's ability 
+> to execute arbitrary commands or code on a target machine or in a target process. - [Wikipedia]
+
+So recently, I have been working with Fini on his Anticheat. 
+By "I have been working with", I mean that he has done most of the work, 
+and I solved this small little step here. 
+
+In order for his Anticheat to function effectively, 
+we need to do our best to "hide" code from clients. 
+It wouldn't be a great Anticheat, or easy to update, 
+if everyone had the Anticheat source code on their PCs. 
+
+We need to find a way to implement his Anticheat in a way 
+that allows us to run arbitrary code during gameplay, 
+so the server can tell the client "This is the Anticheat, run it".
+
+---
+
+The king of arbitrary execution is being able to load new script modules 
+into DayZ during runtime. But first, what is a script module? 
+
+Most of you will be familiar with DayZ's new concept of "Modules". 
+Everything in the game is included in one of 5 modules: 
+
+- 1_Core
+- 2_Gamelib
+- 3_Game
+- 4_World
+- 5_Mission 
+
+These modules are compiled at startup and have access to lower modules, 
+where 5_Mission can interact with types defined in 3_Game, but not so in reverse.
+
+---
+
+A script module wraps up classes, and other data structures, into a sort of ring.
+The higher up we go (think 5_Mission), 
+the more "Helper" code we have to make cool things and interact with the game.
+
+Thankfully, the developers of DayZ have left us a definition for these "Modules" in Enforce.
+Here is the definition found in `1_core/proto/enscript.c`. 
+Let's go through each entry in this object.
+
+```cpp
+//! Module containing compiled scripts.
+class ScriptModule
+{
+	private void ~ScriptModule();
+
+	/*!dynamic call of function
+	when inst == NULL, it's global function call, otherwise it's method of class
+	returns true, when success
+	The call creates new thread, so it's legal to use sleep/wait
+  */
+	proto volatile int Call(Class inst, string function, void parm);
+
+	/*!dynamic call of function
+	when inst == NULL, it's global function call, otherwise it's method of class
+	returns true, when success
+	The call do not create new thread!!!!
+  */
+	proto volatile int CallFunction(Class inst, string function, out void returnVal, void parm);
+	proto volatile int CallFunctionParams(Class inst, string function, out void returnVal, Class parms);
+	proto native void Release();
+	
+	/**
+	\brief Do load script and create ScriptModule for it
+		\param parentModule Module
+		\param scriptFile Script path
+		\param listing ??
+		\returns \p ScriptModule Loaded scripted module
+		@code
+			???
+		@endcode
+	*/
+	static proto native ScriptModule LoadScript(ScriptModule parentModule, string scriptFile, bool listing);
+};
+```
+
+First, we can see the deconstructor. This is marked as `private`. 
+In terms of enforce, this means we cannot delete Script Modules. 
+It also means we can't store them with the `ref` keyword. 
+
+Next, we have the `Call` method. This allows us to call a function on a new thread.
+Now comes `CallFunction` and `CallFunctionParams`. 
+These two methods allow us to call a function and retrieve its return value, 
+and because of this, they run on the same thread. 
+Then there is this `Release` method, which I assume is used to unload modules at shutdown.
+
+Finally we get to `LoadScript` which is a static function.
+
+---
+
+Looking over this, I am really interested in the `LoadScript` function. 
+If we take the description of this function at face value, 
+we should be able to use this to load our own script modules. 
+
+Of course, it's possible this is only functional at startup, 
+or that this isn't actually a stable function.
+We will ignore the possible issues and just give it a shot!
+
+The first parameter we need is a "parent" script module. 
+Luckily, defined in the game are two such objects! 
+
+There exists a pointer to the **3_Game** script module and the **5_Mission** script module. 
+Thinking back on how modules work, we want to have the highest possible script 
+module in order to interact with everything in-game. 
+So for this parameter, we'll want to use the 5_Mission module.
+
+The second parameter is a "path to script". 
+For this, I'll assume we need to point to a `script.c` file on disk.
+
+For the final parameter, no description is given, 
+and the parameter name is not really useful. 
+So we'll ignore this and default it to `false`.
+
+---
+
+So now we have an idea on how to use the `ScriptModule.LoadScript` method. 
+Let's design an interface around this.
+
+```cpp
+class ArbitraryExecutor {
+	private string s_Code; // code to compile 
+	private ScriptModule p_Module; // cannot be "ref" due to private deconstructor in ScriptModule class (plus these can't get destroyed)
+	private string s_EntryPoint; // list of functions in code to call (static functions)
+	
+	//options :)
+	private string s_Directory;
+    private string s_FileName;
+	
+	void ArbitraryExecutor(string directory = "arbexec", string filename = "run.c")
+	{
+		s_Directory = directory;
+		s_FileName = filename;
+	}
+	void SetCode(string code, string entry)
+	{
+		s_Code = code;
+		s_EntryPoint = entry;
+	}
+	ScriptModule GetModule()
+	{
+		return p_Module;
+	}
+	bool IsCompiled() { 
+		if(p_Module) 
+			return true;
+		else 
+			return false;
+	}
+	bool Compile()
+	{
+		//1. Extract mission script module
+		Mission mission = GetGame().GetMission();
+		if(!mission)
+		{
+			Error("Mission NULL! Cannot compile Script Module!");
+			return false;
+		}
+		ScriptModule mission_module = mission.MissionScript;
+		if(!mission)
+		{
+			Error("Mission Script Module NULL! Cannot compile Script Module!");
+			return false;
+		}
+		//2. write our code to disk
+		string dirpath = "$profile:" + s_Directory;
+		if(!FileExist(dirpath))
+		{
+			if(!MakeDirectory(dirpath))
+			{
+				Error("Failed to create directory! Cannot compile Script Module!");
+				return false; 
+			}
+		}
+		string filepath = dirpath + "\\" + s_FileName;
+		int hFile = OpenFile(filepath, FileMode.WRITE);
+		if(hFile == 0)
+		{
+			Error("Failed to open file handle! Cannot compile Script Module!");
+			return false;
+		}
+		FPrint(hFile, s_Code);
+		CloseFile(hFile);
+		//3. compile our code
+		bool success = true;
+		p_Module = ScriptModule.LoadScript(mission_module, filepath, false);
+		if(!p_Module)
+		{
+			Error("Failed to compile scripts!");
+			success = false;
+		}
+		//4. clean up our disk
+		if(!DeleteFile(filepath))
+		{
+			Error("Failed to delete file!");
+		}
+		if(!DeleteFile(dirpath))
+		{
+			Error("Failed to delete directory!");
+		}
+		return success;
+	}
+	void Run()
+	{
+		if(!p_Module)
+		{
+			Error("Cannot execute uncompiled code!");
+			return;
+		}
+		int result = p_Module.Call(NULL, s_EntryPoint, NULL);
+		Print(result);
+		if(result != 0)
+		{
+			Error("Failed to call entry point!");
+		}
+	}
+}
+```
+
+Read through the `Compile` method on line 31. This is the meat of our code. 
+
+First, we extract our 5_Mission script module. 
+Second, we write our code to disk. 
+Third, we compile this code on top of the parent module. 
+Lastly, we clean our code off the disk. 
+
+Given our code is valid, and has no errors, this should create a new module in DayZ.
+
+Line 84 is the start of our `Run` method. 
+This is going to use the `ScriptModule.Call` method to spin up a new thread 
+at the desired entry point. Unlike the description, this call method actually 
+returns **0** on success.
+
+To make use of our executor, we need to understand _how_ the `ScriptModule.Call`
+method works when `NULL` is provided in the first argument. 
+This should call a "global" function. 
+From my experience, this should mean we call a classless `static` function.
+
+Here is the code I want to execute: 
+
+`static void Entry() { Print("Working!!!"); }`
+
+> Note the "Entry" method is a `static void` without a class. This should be what we want.
+
+Here is how that can be executed using the ArbitraryExecuter class from the previous page:
+```cpp
+void TestExec()
+{
+	//test starting a new thread
+	ArbitraryExecutor executor = new ArbitraryExecutor("Executor","Test.c");
+	executor.SetCode("static void Entry() { Print(\"Working!!!\"); }","Entry");
+	if(executor.Compile())
+		executor.Run();
+}
+```
+
+---
+
+Tested, and it works! 
+So this is how to execute arbitrary payloads in DayZ. 
+This is a really powerful tool, 
+and can be great if a server needs to run code that changes, 
+or that clients shouldn't easily know. 
+
+On the same hand, while this is powerful for good, 
+it can also be used for not-so-good deeds...
+
+Do I think this should be changed? **No**. 
+This functionality will become crucial for more complex servers. 
+I expect this will become more common as larger and larger dev teams start building on DayZ.
+
+{/* reference links */}
+[Wikipedia]: https://en.wikipedia.org/wiki/Arbitrary_code_execution

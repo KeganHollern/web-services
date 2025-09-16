@@ -1,0 +1,302 @@
+---
+title: DMA Code Execution
+description: |
+    Hi everyone! It's been some time since my last post. 
+    In this one, I wanted to continue on the Direct Memory Access (DMA) train of thought 
+    and cover something much more complex than simple pointer swapping...
+slug: dma-code-execution
+---
+
+# DMA Code Execution
+
+> **NOTE: THIS ARTICLE IS INCOMPLETE AND NEEDS REVIEWED**
+
+Hi everyone! It's been some time since my last post. 
+In this one, I wanted to continue on the Direct Memory Access (DMA) 
+train of thought and cover something much more complex than simple pointer swapping.
+
+When using a DMA device, the attacker is limited to reading and writing memory, 
+and for most cases that is all we need. 
+However, there exists some circumstances where reading and writing memory 
+cannot achieve what we want. Two quick examples of this:
+
+- If we want to send a network message
+- In games using guarded pointers such as valorant. (see this post on [guarded regions])
+
+In these situations, a DMA card appears to be nearly useless.
+What we'd need is a way to execute code on the victim's machine and retrieve the result of that code.
+
+---
+
+To achieve this, I have come up with a solution that combines exploiting unused 
+`.text` and `.data` sections along with a simple hook on a function called every tick.
+
+Let's go through the requirements of my hack. First some terminology:
+
+1. **Attacker** - Attacker Machine. This is hooked up to our DMA card and runs the DMA application.
+2. **Victim** - Victim Machine. This machine has the DMA PCIe card plugged in and is what we are reading/writing to.
+3. **Victim Application** - Software running on the Victim Machine that we want to execute code inside of.
+4. **DMA Application** - Software running on the Attacker Machine that controls our DMA card.
+
+
+In order to execute code in a function, such as running `malloc`, we first need three things.
+
+1. unused `.data` section buffer that is `0x21` bytes in length or more
+2. unused or inaccessible `.text` section buffer that can fit our payload
+3. 5 byte call instruction in a function that runs every frame/tick or often
+
+I created an example application that meets these requirements.
+
+---
+
+First, we need to find a buffer in `.data` that is unused. 
+We want something that looks like this:
+
+![buffer example](https://ss.lystic.zip/2022-02-01/15-40-25/2LP69SFeD8HgZkZWWp87DJim.png)
+
+Between `data_140005018` and `data_140005048` there exists `0x28` unused bytes. 
+This is large enough to fit our `0x21` byte requirement.
+
+Next, we need to find a buffer in `.text` that is inaccessible or unused.
+This buffer needs to be fairly large, so we'll want to find some large code 
+segment behind an always failing if statement. If we go digging, we'll find this
+function's IF statement never passes and there exists `0x3AC` bytes in the 
+statement that we can use as a buffer:
+
+![code segment](https://ss.lystic.zip/2022-02-01/15-44-00/T9mhD8ZbkeXAg3DhXLNnVktW.png)
+
+Lastly, we need to find a 5-byte call instruction that is run often or every tick.
+Here is a thread that runs every ms with a call:
+
+![ticking thread](https://ss.lystic.zip/2022-02-01/15-47-40/AUXAXhNXdYjpEJy6CvXBw32F.png)
+
+Looking at the disassembly, we can happily say this call is 5 bytes in size:
+
+![5-byte call](https://ss.lystic.zip/2022-02-01/15-48-40/5FQTJR7PK8dBEN8VbLywetam.png)
+
+Now we need to figure out how to put together these unused sections to build code execution.
+
+---
+
+The first step, as I see it, is to hijack the call instruction and 
+change the program flow into our `.text` buffer.
+
+To do this, we overwrite the call instruction as a jmp instruction and 
+jump into our `.text` buffer:
+
+![before](https://ss.lystic.zip/2022-02-01/16-05-45/q4jSp6znTRjMXEDFJ4HD9fnt.png)
+
+becomes
+
+![after](https://ss.lystic.zip/2022-02-01/16-06-17/9CYmYir6thDGaKGzn3SzsaGR.png)
+
+Now, in our `.text` buffer, we recreate the call that was overwritten:
+
+![before 2](https://ss.lystic.zip/2022-02-01/16-06-56/adyjE2rwPx7SsJip7EgYqNjL.png)
+
+becomes
+
+![after 2](https://ss.lystic.zip/2022-02-01/16-07-15/vj4wv2i5LP9fuba9sTczd2cb.png)
+
+Lastly, we must jump back to the instruction proceeding the call that we overwrote:
+
+![jump](https://ss.lystic.zip/2022-02-01/16-09-00/xfkASLgb3nRJiVUrws8snejQ.png)
+
+Now we can test that by either patching our victim application or writing 
+those bytes with our DMA card. If we were successful, the victim application 
+should function no different and should not crash.
+
+---
+
+After learning how to hijack our call instruction, 
+we can start to build a payload of code to insert into the `.text` buffer 
+that enables arbitrary function calls.
+
+The first part of this is to determine what data the DMA card must provide in
+order to make an arbitrary call. I created a struct of `0x21` bytes that meets these requirements:
+
+```cpp
+#pragma pack(push, 1)
+struct run_struct {
+	bool do_exec;
+	uint64_t function_address;
+	uint64_t arguments_pointer; // points to single_arg_argument in the case of single argument function calls
+	uint64_t return_value;
+	// uint64_t single_arg_argument;
+};
+#pragma pack(pop)
+```
+
+First, we need a byte to act as a switch. 
+This way our target function only executes when our DMA card flips this value to TRUE.
+We need the absolute address of the function we want to call.
+We need a pointer to a structure containing all of our arguments.
+We need a buffer for the result to be written into.
+Lastly, we need 8 more bytes to use as buffer space for functions that require 1 argument.
+
+With this struct defined, we can start to build a payload for the `.text` section.
+We'll need to know some `x86_x64` assembly and the [x64 software conventions] on windows.
+
+The first thing we must do is store all of our [volatile registers] and other 
+registers we will use on the stack.
+
+![storing volatiles](https://ss.lystic.zip/2022-02-01/16-23-15/g3N52LFLen7pLxVAwvjCqRi8.png)
+
+Next, we will access the `.data` section and check if the boolean toggle is true. 
+If the value is `FALSE`, then we need to jump to the end of our `.text` buffer, 
+but before we restore the stack.
+
+![data access](https://ss.lystic.zip/2022-02-01/16-27-30/HRfgvzJ9iPBivuE9iAhMb6T7.png)
+
+Now, to be safe, we can check if the target function is `NULL`. 
+If it is, we can't run it, so we'll want to jump to the end of our `.text` buffer, just like before.
+
+![null check](https://ss.lystic.zip/2022-02-01/17-21-49/yugs9ZYAHYQryffeyChR3VvT.png)
+
+Finally, we'll move the function we want to execute onto the RAX register.
+
+![rax set](https://ss.lystic.zip/2022-02-01/17-23-17/39tfjZJJBkeCvaencbvGtvDi.png)
+
+> Note: At this point, we could call our function. 
+> However, we want to be able to run functions with arguments. 
+> So I'll continue as if we want to call a function with 5 arguments to showcase all of the steps necessary.
+
+To call a function with arguments, we need to understand the [x64 calling convention]. 
+In short: the first four arguments go onto the registers `rcx`, `rdx`, `r8`, and `r9` respectively, 
+while all subsequent arguments are pushed onto the stack in reverse order. 
+
+> Floating point values are handled differently and I decided not to cover them.
+
+The first step when calling a function with arguments is to ensure our pointer 
+to the argument structure is nonnull.
+
+![more null check](https://ss.lystic.zip/2022-02-01/17-50-54/RUnJJ8R7GP9aQmPFDuiaYqJS.png)
+
+Now we must push our first four arguments onto the correct registers.
+
+![arg registers](https://ss.lystic.zip/2022-02-01/17-51-35/9CDEtC7cQEghFBq3PuZmZgtt.png)
+
+For all remaining arguments, we'll want to load them into a register and 
+push their value onto the stack in reverse order. In our case, we only 
+have 1 more argument, so we only need to do this once for the value at `0x20`.
+
+![pushing to stack](https://ss.lystic.zip/2022-02-01/17-57-56/V4Kw54W2TZ5xB4jLv3XazvFx.png)
+
+Finally! We can call the function.
+
+![calling](https://ss.lystic.zip/2022-02-01/17-53-14/BGjv2LNjtbHFYcF3fkHkYLfg.png)
+
+After calling the function, we need to pop the arguments we pushed to the stack.
+
+![popping](https://ss.lystic.zip/2022-02-01/17-58-44/Fh7qeQLqZig8yb54KAgjuAEW.png)
+
+lastly, we push the return result to the `.data` structure and flip the boolean 
+toggle value back to false to prevent running this function a second time.
+
+![cleanup](https://ss.lystic.zip/2022-02-01/17-56-29/MPkdCYbQ6gn6zDxpE45D6YSC.png)
+
+Now we have a `.text` payload that can execute any function with 5 arguments! Here is the final assembly code:
+
+```asm
+140001713  e8e8ffffff         call    sub_140001700
+140001718  50                 push    rax {var_30}
+140001719  51                 push    rcx {var_38}
+14000171a  52                 push    rdx {var_40}
+14000171b  4150               push    r8 {var_48}
+14000171d  4151               push    r9 {var_50}
+14000171f  4152               push    r10 {var_58}
+140001721  4153               push    r11 {var_60}
+140001723  4c8d15f6380000     lea     r10, [rel data_140005020]
+14000172a  458a1a             mov     r11b, byte [r10]  {data_140005020}
+14000172d  4584db             test    r11b, r11b
+140001730  0f8447000000       je      0x14000177d  {"A[AZAYAXZYX"}
+
+140001736  4d8b5a01           mov     r11, qword [r10+0x1]  {data_140005021}
+14000173a  4983fb00           cmp     r11, 0x0
+14000173e  0f8439000000       je      0x14000177d  {"A[AZAYAXZYX"}
+
+140001744  4c89d8             mov     rax, r11
+140001747  4d8b5a09           mov     r11, qword [r10+0x9]  {data_140005029}
+14000174b  4983fb00           cmp     r11, 0x0
+14000174f  0f8428000000       je      0x14000177d  {"A[AZAYAXZYX"}
+
+140001755  498b0b             mov     rcx, qword [r11]
+140001758  498b5308           mov     rdx, qword [r11+0x8]
+14000175c  4d8b4310           mov     r8, qword [r11+0x10]
+140001760  4d8b4b18           mov     r9, qword [r11+0x18]
+140001764  4d8b5320           mov     r10, qword [r11+0x20]
+140001768  4152               push    r10 {var_68_1}
+14000176a  ffd0               call    rax
+14000176c  415a               pop     r10 {var_68}
+14000176e  4c8d15ab380000     lea     r10, [rel data_140005020]
+140001775  49894211           mov     qword [r10+0x11], rax  {data_140005031}
+140001779  41c60200           mov     byte [r10], 0x0  {data_140005020}
+
+14000177d  415b               pop     r11 {var_60}
+14000177f  415a               pop     r10 {var_58}
+140001781  4159               pop     r9
+140001783  4158               pop     r8
+140001785  5a                 pop     rdx
+140001786  59                 pop     rcx {var_38}
+140001787  58                 pop     rax {var_30}
+140001788  e935040000         jmp     0x140001bc2
+```
+
+---
+
+We have one more pressing concern. 
+How do we allocate memory to store all 5 arguments? 
+What if we need more than 5 arguments?
+
+To do this, I propose using a function like `malloc`. 
+This function takes one argument that is 8 bytes in length.
+This is why we need an extra 8 bytes at the end of our structure for functions 
+with 1 argument. When `malloc` is called, it is assumed that we have no 
+extra working memory, so we must use some buffer in `.data` for our argument.
+
+Now we need to start building our DMA application. 
+To start, we need to find the [RVA] values of the three requirements.
+We'll call these `dataAddress`, `callHijack`, and `textBuffer`.
+In our target application, these three values exist at the offsets 
+`0x5020`, `0x1bbd`, and `0x1713` respectively.
+
+So our DMA application will start to look something like this:
+
+![dma program](https://ss.lystic.zip/2022-02-01/15-54-52/BD9AYSH5mxXJ76FGAkUxxiu4.png)
+
+I have built a neat framework around my DMA application. 
+I don't expect this to be pertinent moving forward so you can take some of the code for granted.
+
+I created a class called `FunctionRunner`. 
+This will implement a very simple interface for executing code in the target application.
+That interface looks like:
+
+```cpp
+namespace LiquidPlumr {
+	class FunctionRunner {
+	public:
+		FunctionRunner(LiquidPlumr::RemoteProcess* pApplication, uint64_t dataAddress, uint64_t callAddress, uint64_t textAddress);
+
+		// allocate memory
+		uint64_t Malloc(size_t size);
+		// free memory allocated with Malloc
+		bool Free(uint64_t address);
+		// run a function that takes up to 15 arguments (non-float values only!)
+		uint64_t Run(uint64_t function, uint32_t count, ...);
+		// run a function that takes no arguments
+		uint64_t Run(uint64_t function);
+	};
+}
+```
+
+> I never got around to finishing this post
+
+Sorry for the abrupt end - I wanted to unlock this so new readers can learn a 
+bit about some more interesting uses for DMA. 
+
+{/* reference links */}
+[guarded regions]: https://www.unknowncheats.me/forum/valorant/457396-guarded-regions.html
+[x64 software conventions]: https://docs.microsoft.com/en-us/cpp/build/x64-software-conventions?view=msvc-170
+[volatile registers]: https://docs.microsoft.com/en-us/cpp/build/x64-software-conventions?view=msvc-170#register-volatility-and-preservation
+[x64 calling convention]: https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
+[RVA]: https://tech-zealots.com/malware-analysis/understanding-concepts-of-va-rva-and-offset/

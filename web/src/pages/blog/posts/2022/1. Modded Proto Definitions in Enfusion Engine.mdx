@@ -1,0 +1,333 @@
+---
+title: Modded Proto Definitions in Enfusion Engine
+description: |
+    Enfusion Engine's scripting language ships with Proto definitions.
+    These connect the C++ code in the engine to the scripting language...
+slug: modded-proto-definitions-in-enfusion-engine
+---
+
+# Modded Proto Definitions in Enfusion Engine 
+
+Enfusion Engine's scripting language ships with **Proto** definitions.
+These connect the C++ code in the engine to the scripting language.
+A clear example of this is the `KickCauseCodeAPI` class.
+
+```cpp
+sealed class KickCauseCodeAPI
+{
+	private void KickCauseCodeAPI();
+	private void ~KickCauseCodeAPI();
+	
+	static proto KickCauseCode NewCode(KickCauseGroup2 group, int reason);
+	static proto KickCauseGroup2 GetGroup(KickCauseCode code);
+	static proto int GetReason(KickCauseCode code);
+};
+```
+
+Adding C++ functionality via custom **proto** functions would be a
+powerful tool for complex mods. There exists a **closed-source** way of adding 
+these in [interceptAR]. I, of course, wanted to learn how intercept was
+achieving this, so I wanted to build my own! Before getting into the post,
+you can browse my **open-source** version of intercept called [Infinity] on Github.
+
+---
+
+I broke this challenge into a few steps. 
+I only want to cover a few of them in this post. 
+All of these steps are fully implemented in Infinity.
+
+
+- Load a library into the server at startup
+- Figure out how classes are registered
+- Register my own class
+- Register my own class functions
+- Build out a plugin system
+
+Enfusion Engine is nice enough to provide an easy way to load libraries 
+via [CVE-2016-480]. This exploit exists in libcurl and causes the game to load 
+**secur32.dll** from the game directory before looking in `c:\system32`.
+I used an open-source project [DLLProxyGenerator] to create a [Proxy Dll] of secur32. 
+This will let me build a library that loads into **ArmaReforgerServer** and
+**ArmaReforgerWorkbench** without much effort.
+
+That's step one. Now comes the hard part of learning how classes are registered.
+To do this, we'll pull open [IDA Pro] and start reversing Reforger.
+
+![IDA](https://ss.lystic.zip/2022-06-27/00-32-14/rZG6sdfAPxQadW9wKUTYEGrx.png)
+
+---
+
+I came across these routines that register `KickCauseCodeAPI` and its functions.
+The dream goal is to recreate this registration routine for our custom class definitions.
+
+```cpp
+char __fastcall KickCauseCodeScriptAPIRegistrator::Register(__int64 pRegistrator, __int64 pCScriptParser)
+{
+	__int64 v4; // rax
+	int v5; // edi
+	__int64 v6; // rbx
+
+	if ( (*(_DWORD *)(pCScriptParser + 24) & 0x10) == 0 )
+		return 1;
+	v4 = RegosterClass(*(_QWORD *)(pCScriptParser + 16), "KickCauseCodeAPI");
+	*(_QWORD *)(pRegistrator + 24) = v4;
+	v5 = v4;
+	if ( v4 )
+	{
+		v6 = *(_QWORD *)(pCScriptParser + 16);
+		RegisterClassFunction(v6, v4, (int)"NewCode", (int)sub_1401635B0, 0, 1);
+		RegisterClassFunction(v6, v5, (int)"GetGroup", (int)sub_140163500, 0, 1);
+		RegisterClassFunction(v6, v5, (int)"GetReason", (int)sub_140163550, 0, 1);
+	}
+	return 1;
+}
+```
+
+Going further, we'll find the virtual table that contains our routine.
+
+![VTABLE](https://ss.lystic.zip/2022-06-27/00-35-27/k3TXixM2yxF7hjPuRAx3FeuW.png)
+
+Following xrefs to `vftable_KickCauseCodeScriptAPIRegistrator` we get to the
+constructor for this object. With some cleanup, we learn about a global
+registration linked list. This routine pushes our registrator to the front of the list.
+
+```cpp
+struct registrator
+{
+  __int64 vftable;
+  const char *moduleName;
+  registrator *next;
+  void *scriptClass;
+}; 
+int KickCauseCodeScriptAPIRegistrator::Constructor()
+{
+	registrator **pHead; // rbx
+	registrator *pRegistrator; // rcx
+
+	g_KickCauseCodeScriptAPIRegistrator.moduleName = sModuleGame; // "ModuleGame" string
+	pHead = (registrator **)GetGlobalRegistratorTableHead();
+	pRegistrator = *pHead;
+	if ( *pHead )
+	{
+		(*(void (__fastcall **)(registrator *))(pRegistrator->vftable + 0x40))(pRegistrator);
+		pRegistrator = *pHead;
+	}
+	g_KickCauseCodeScriptAPIRegistrator.next = pRegistrator;
+	*pHead = &g_KickCauseCodeScriptAPIRegistrator;
+	g_KickCauseCodeScriptAPIRegistrator.scriptClass = 0i64;
+	g_KickCauseCodeScriptAPIRegistrator.vftable = (__int64)vftable__KickCauseCodeScriptAPIRegistrator;
+	return atexit(sub_14131F050);
+}
+```
+
+We can find other routines that add registrators to the end of the list.
+
+```cpp
+int PathVisualizerClassRegistrator::Constructor()
+{
+	registrator **GlobalRegistratorTableHead; // rbx
+	registrator *tableEntry; // rcx
+
+	g_PathVisualizerClassRegistrator.moduleName = sModuleGame;
+	GlobalRegistratorTableHead = (registrator **)GetGlobalRegistratorTableHead();
+	for ( tableEntry = *GlobalRegistratorTableHead; *GlobalRegistratorTableHead; tableEntry = *GlobalRegistratorTableHead )
+	{
+		if ( (*(unsigned int (__fastcall **)(registrator *))(tableEntry->vftable + 0x40))(tableEntry) >= 3 )
+			break;
+		GlobalRegistratorTableHead = &(*GlobalRegistratorTableHead)->next;
+	}
+	g_PathVisualizerClassRegistrator.next = *GlobalRegistratorTableHead;
+	*GlobalRegistratorTableHead = &g_PathVisualizerClassRegistrator;
+	g_PathVisualizerClassRegistrator.vftable = (__int64)&nm::tool::PathVisualizerClassRegistrator::`vftable';
+	return atexit(sub_14131E150);
+}
+```
+
+Exploring the global registration table xrefs, we come across the routine that
+runs our `register` method in the registration object.
+
+```cpp
+char __fastcall sub_140509C70(__int64 pCScriptParser, const char *targetModule)
+{
+	registrator *pHead; // rbx
+	char success; // di
+	registrator *tableEntry; // rbx
+	int v8; // ecx
+
+	pHead = g_ScriptRegistrationTableHead;
+	success = 1;
+	if ( g_ScriptRegistrationTableHead )
+	{
+		do
+		{
+			if ( pHead->moduleName == targetModule )
+				success &= (*(__int64 (__fastcall **)(registrator *, __int64))(pHead->vftable + 0x10))(pHead, pCScriptParser);
+			pHead = pHead->next;
+		}
+		while ( pHead );
+		if ( !success )
+			return 0;
+		for ( tableEntry = g_ScriptRegistrationTableHead; tableEntry; tableEntry = tableEntry->next )
+		{
+			if ( tableEntry->moduleName == targetModule )
+				success &= (*(__int64 (__fastcall **)(registrator *, __int64))(tableEntry->vftable + 0x18))(
+										 tableEntry,
+										 pCScriptParser);
+		}
+	}
+	v8 = *(_DWORD *)(pCScriptParser + 24);
+	if ( (v8 & 0x10) != 0 )
+	{
+		if ( success )
+		{
+			if ( (v8 & 2) != 0 )
+				sub_140A370C0(*(_QWORD *)(pCScriptParser + 8), *(_QWORD *)pCScriptParser);
+		}
+		else
+		{
+			sub_14050A8B0(*(_QWORD *)(pCScriptParser + 16), (__int64)targetModule);
+		}
+	}
+	return success;
+}
+```
+
+So far, we have learned that if we can insert our own objects into the 
+registration table, the engine will call our registration routine 
+automatically during script compilation. 
+This is likely very similar to the approach [interceptAR] takes.
+
+---
+
+It is time to build our own `registrator` object that can safely sit inside 
+the global table. I don't want to fill the page with much more code, 
+so I plan to cut it short. I highly recommend reading the implementation of the
+[script registrator] for [Infinity]. 
+Here are the class definitions for our custom `ScriptRegistrator`:
+
+```cpp
+class ScriptRegistrator {
+public:
+	// constructor
+	ScriptRegistrator();
+	// virtual table
+
+	virtual ~ScriptRegistrator();// 0
+	virtual __int64 unk0() { return false; } // 1
+	virtual __int64 Register(__int64 a2) { return true; } // 2
+	virtual __int64 unk1() { return true; } // 3 (must be true)
+	virtual __int64 unk2() { return false; }
+	virtual __int64 unk3() { return true; }
+	virtual __int64 unk4() { return false; }
+	virtual __int64 unk5() { return false; }
+	virtual __int64 unk6() { return false; }
+
+protected:
+	const char* pModuleName; // 0x8
+	ScriptRegistrator* pNext; // 0x10
+	void* pClass; // 0x18
+};
+
+class BaseScriptRegistrator : public ScriptRegistrator {
+public:
+	BaseScriptRegistrator();
+	virtual ~BaseScriptRegistrator() override;
+
+	__int64 Register(__int64 a2) override;
+protected:
+};
+```
+
+Please note that the virtual functions defined must be created to align with 
+the one shown for `KickCauseCodeScriptAPIRegistrator`. For derived registrators,
+we'll need to override the `Register` routine as `BaseScriptRegistrator` showcases.
+
+As well, we can now nearly copy+paste from IDA the registration routine.
+
+```cpp
+// note: a lot of this is psuedocode. I highly recommend viewing source in Infinity.
+
+typedef __int64 ScriptContext;
+typedef __int64 ClassInstance;
+typedef __int64 FunctionInstance;
+
+typedef __int64(__fastcall* Enscript__Function)(__int64* a1, __int64* a2);
+typedef ClassInstance*(__fastcall* Enscript__RegisterClass)(ScriptContext* scriptCtx, const char* className);
+typedef FunctionInstance*(__fastcall* Enscript__RegisterClassStaticFunction)(ScriptContext* scriptCtx, ClassInstance* classInst, const char* functionName, Enscript__Function scriptFunction, unsigned int zero , char one);
+
+
+Enscript__RegisterClass fRegisterClass = NULL;
+Enscript__RegisterClassStaticFunction fRegisterClassStaticFunction = NULL;
+
+// this is our enscript function
+void ExampleFunction(void* a1, void* a2)
+{
+
+	printf("working!");
+}
+
+// register method is called by engine
+// lots of this is copy+paste from IDA
+__int64 BaseScriptRegistrator::Register(__int64 a2)
+{
+	const char* classnamecstr = "TestClass";
+	
+	if ((*(uint32_t*)(a2 + 24) & 0x10) == 0)
+		return 1;
+
+	Debugln("Base registrator called.");
+
+	if(!fRegisterClass) return 1; // script engine not initialized? how did this function get called?!
+	if (!fRegisterClassStaticFunction) return 1; // ???
+
+	ScriptContext* pContext = *(ScriptContext**)(a2 + 16);
+	
+	Debugln("Registering class '%s'.", classnamecstr);
+	ClassInstance* pClass = fRegisterClass(pContext, classnamecstr);
+	
+	this->pClass = pClass; //*(ClassInstance**)(a1 + 24) = pClass;
+
+	if (pClass)
+	{
+		// register functions
+		pContext = *(ScriptContext**)(a2 + 16); // game shows us regrabbing this value so we'll do that to be safe
+
+		// lambda function so register calls registration method and takes in this context and class
+		auto registerFunc =  [&pContext, &pClass](const char* fName, void* fPtr) {
+			auto res = fRegisterClassStaticFunction(pContext, pClass, fName, (Enscript__Function)fPtr, 0, 1);
+			return (res != NULL);
+		};
+
+		registerFunc("ExampleFunction", TestRoutine); 
+	}
+
+	return 1;
+}
+```
+
+All that is left is constructing our `BaseScriptRegistrator` and sticking it
+into the global linked list. This is super simple, so I won't describe it 🙂.
+
+---
+
+That explains the _complex_ parts of registering custom script functions. 
+With the knowledge above, the registration of custom classes can be approached in numerous ways. 
+I think the way [Infinity] and [interceptAR] do this is the most intuitive.
+
+---
+
+> Update: [Infinity] has been deprecated.
+> [InfinityC] is the continuation of the project.
+
+> Update 2: For DayZ, [InfinityDayZ] is now being maintained by the community.
+
+{/* reference links */}
+[interceptAR]: https://github.com/intercept/interceptAR
+[Infinity]: https://github.com/KeganHollern/Infinity
+[CVE-2016-480]: https://curl.se/docs/CVE-2016-4802.html
+[DLLProxyGenerator]: https://github.com/nitrog0d/DLLProxyGenerator
+[Proxy Dll]: https://kevinalmansa.github.io/application%20security/DLL-Proxying/
+[IDA Pro]: https://hex-rays.com/ida-pro/
+[script registrator]: https://github.com/KeganHollern/Infinity/blob/b18b990c54fe6a9426d358dc50a82bfe57d48d50/InfinityHost/ScriptRegistrator.cpp
+[InfinityC]: https://github.com/EnfusionModders/InfinityC
+[InfinityDayZ]: https://github.com/EnfusionModders/InfinityDayZ

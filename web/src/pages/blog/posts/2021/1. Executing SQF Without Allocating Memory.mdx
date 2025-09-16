@@ -1,0 +1,378 @@
+---
+title: Executing SQF Without Allocating Memory
+description: |
+    So recently I purchased a Screamer PCIe from LambdaConcept. 
+    Personally, I would not recommend buying one of these as two…
+slug: executing-sqf-without-allocating-memory
+---
+
+# Executing SQF Without Allocating Memory
+
+> Here is a video I did on the topic. This provides a much more visual way of 
+> comprehending what I just wrote.
+
+<div class="flex justify-center items-center mt-6">
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/Na_HokQ6vYc?si=FxxQYx6Hf-u4_jJ7" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+</div>
+
+---
+
+So recently I purchased a [Screamer PCIe] from LambdaConcept. 
+Personally, I would not recommend buying one of these as two of the three cards
+I purchased were dead on arrival. However, thanks to the one device that did work,
+I have been given an opportunity to once again approach attacking the Arma 3
+engine from a C++ perspective.
+
+The first thing I wanted to do with it was arbitary SQF execution in Arma.
+This is a bit of a challenge, as I can't allocate any memory via DMA.
+So I had to come up with a unique way to execute an arbitrarily large script
+without allocating memory for the script code to go into.
+
+In order to execute SQF via memory, there are only a few approaches that are decent.
+[GameState::Execute] and [OnEachFrame] are my two favorite methods. 
+
+The first method requires we call the Execute virtual function in the GameState object.
+Doing this over DMA is tricky, as we can't create our own threads or allocate our own code.
+`OnEachFrame` is a lot simpler. 
+By writing a `GameDataString` (Or `GameDataCode`!) pointer to a global variable,
+the engine will execute our code every frame.
+
+So we'll be using `OnEachFrame` for our exploit. 
+However, this still begs the question, 
+how can we construct an object for our code to go into?
+
+---
+
+Well, there are actually a few ways to achieve this. 
+Here is one example, have the cheater open 3DEN and define their script like this:
+
+`MY_BAD_CODE = { hint 'bad code'; };`
+
+Now we can use our DMA device to find the `GameDataCode` pointer for that variable.
+By bumping its reference count by 1, we ensure it's not released when we leave 3DEN.
+Now we can join a server and simply push that pointer onto the onEachFrame value and walla!
+
+This works, but it requires user input. 
+I created a technique for executing arbitrary code without requiring any user input
+and a very limited scope for SQF based anti-cheats to detect.
+
+---
+
+First, we need a buffer to write our script into. 
+Thankfully any existing `GameDataCode` variable contains an `ArmaString` pointer
+to its value. So when I run `str(var)` this `ArmaString` is what we see in the output.
+
+As of Arma 2.04 that can be found here:
+![offset chain](https://ss.lystic.zip/2021-07-22/02-48-09/rHuHGUPAVqPU7LNfpnFfQp7F.png)
+
+Using a variable in the `uiNamespace` such as `BIS_fnc_diagWiki`, 
+we have a large buffer we can write with our script into. 
+This string, however, is not used for `GameDataCode` execution. 
+
+We can't simply modify this and stick the `GameDataCode` pointer into `onEachFrame`.
+So we need to find a `GameDataString` variable that can be used. 
+I will leave finding a string variable in the `uiNamespace` as an exercise for the reader.
+
+---
+
+Let's jump right into the C++ code for this and explain what is being done step by step.
+
+Step one is to find our target `GameDataCode` and `GameDataString` pointers in the `uiNamespace`.
+
+```cpp
+uint64_t uiNamespaceADDR = arma->GetBase() + Arma::Offsets::UINamespace;
+std::cout << "Finding variables in uiNamespace...";
+std::vector<std::string> variables = {
+    code_variable,
+    string_variable
+};
+std::map<std::string, uint64_t> results = FindScriptVariables(arma, uiNamespaceADDR, variables);
+uint64_t GameDataCode_FUNC = results[code_variable];
+uint64_t GameDataString_VAR = results[string_variable];
+std::cout << "Func 0x" << std::hex << GameDataCode_FUNC;
+std::cout << " | Var 0x" << std::hex << GameDataString_VAR << std::endl;
+if (!GameDataCode_FUNC)
+{
+    ERR("Failed to find code variable");
+    return;
+}
+if (!GameDataString_VAR)
+{
+    ERR("Failed to find string variable");
+    return;
+}
+```
+
+Second, we need to identify the internal `ArmaString` value pointers for these objects.
+One of these two values will be where our attacking sqf code is written to.
+
+```cpp
+std::cout << "Extracting armastring pointers...";
+uint64_t func_armastring = arma->Read<uint64_t>(GameDataCode_FUNC + Arma::Offsets::o_GameDataCodeValue, false);
+uint64_t var_armastring = arma->Read<uint64_t>(GameDataString_VAR + Arma::Offsets::o_GameDataCodeValue, false);
+std::cout << "Func 0x" << std::hex << func_armastring;
+std::cout << " | Var 0x" << std::hex << var_armastring << std::endl;
+if (!func_armastring)
+{
+    ERR("Failed to extract code armastring");
+    return;
+}
+if (!var_armastring)
+{
+    ERR("Failed to extract string armastring");
+    return;
+}
+```
+
+Next, we need to be on the safe side and ensure our `ArmaString` buffer is large
+enough for our script (otherwise we need to pick a new SQF variable).
+
+```cpp
+std::cout << "Checking if buffer is large enough..." << std::endl;
+uint32_t buffer_size = max(func_size, var_size);
+int extra_spaces = (buffer_size - injected_script.size()) - 1; //TODO: not sure if this -1 needs to be here or not!!!
+int minimum_extra_chars = std::string("comment\"\";").size();
+extra_spaces -= minimum_extra_chars;
+if (extra_spaces < 0)
+{
+    ERR("Variable Buffer Not Large Enough");
+    return;
+}
+```
+
+Now comes a very important step. When we write our attacking script we need to
+add "filler" sqf that will ensure our code **matches** the size of our original string.
+If we do not do this, Arma will automatically resize this string and bad things will happen in future steps.
+You may notice the `minimum_extra_chars` variable from above, this comes into use here.
+
+```cpp
+std::cout << "Generating payload..." << std::endl;
+injected_script += "comment\"";
+for (int i = 0; i < extra_spaces; i++)
+    injected_script += (char)0x32; 
+injected_script += "\";";
+```
+
+Above we assumed that our `GameDataCode` buffer would be larger, 
+but that may not always be the case. If our `GameDataString` is larger, we can just write to that.
+However, if our `GameDataCode` is larger we need to swap the internal `ArmaString` pointers. 
+This is like doing `stringvariable = str(codevariable);`.
+
+```cpp
+bool did_swap = false;
+if (func_size > var_size)
+{
+    did_swap = true;
+    std::cout << "Swapping internal string pointers..." << std::endl;
+
+    //swap our variables
+    if (!arma->Write(GameDataCode_FUNC + Arma::Offsets::o_GameDataCodeValue, var_armastring) ||
+        !arma->Write(GameDataString_VAR + Arma::Offsets::o_GameDataCodeValue, func_armastring))
+    {
+        ERR("Failed to swap variable armastring values");
+        return;
+    }
+
+    //update pointers so we don't get confused as to what values are where
+    uint32_t temp = func_size;
+    func_size = var_size;
+    var_size = temp;
+
+    uint64_t temp2 = func_armastring;
+    func_armastring = var_armastring;
+    var_armastring = temp2;
+}
+```
+
+Finally, we get to write our attacking SQF to the `GameDataString`'s (possibly new!) `ArmaString` pointer.
+We need to read out the original code for future steps here.
+
+```cpp
+char* original_code = new char[var_size];
+if (!arma->Read(var_armastring + Arma::Offsets::o_ArmaStringValue, original_code, var_size, false))
+{
+    ERR("Failed to read the original function code");
+    return;
+}
+
+std::cout << "Writing payload to variable..." << std::endl;
+char* payloadBuffer = new char[var_size];
+ZeroMemory(payloadBuffer, var_size);
+if (strcpy_s(payloadBuffer, var_size, injected_script.c_str()))
+{
+    ERR("Failed to copy injected script into payload buffer");
+    return;
+}
+if (injected_script.size() != (var_size - 1))
+{
+    ERR("Injected script wrong size. Cannot write payload.");
+    std::cout << injected_script.size() << " | " << var_size << std::endl;
+    return;
+}
+if (!arma->Write(var_armastring + Arma::Offsets::o_ArmaStringValue, payloadBuffer, var_size))
+{
+    ERR("Failed to write payload");
+    delete[] payloadBuffer;
+    return;
+}
+delete[] payloadBuffer;
+```
+
+---
+
+Okay! Time for a break. At this point we have a string in SQF that contains our
+attacking code without allocating any memory.
+We've achieved part of our goal. 
+Next we will execute this code using the `OnEachFrame` method Douggem outlined.
+
+Firstly, we will need the original `onEachFrame` value. 
+We'll reset this pointer when we're done to ensure we restore the game's state.
+
+```cpp
+std::cout << "Reading original onEachFrame value...";
+uint64_t old_value = arma->Read<uint64_t>(arma->GetBase() + Arma::Offsets::EachFrame, false);
+std::cout << " 0x" << std::hex << old_value << std::endl;
+```
+
+Lets discuss a bit about Arma reference counts. 
+Every `GameData` object has a count for the number of references to it. 
+When the game is done with the object it'll call the `Release()` virtual function.
+This will decrement the objects reference count, and if the count drops below 1,
+it will free the memory. When we change the value of `OnEachFrame`, 
+the previous value is Released as well. 
+
+So in order to keep our game from crashing if `OnEachFrame` is changed in the future,
+our custom value needs to have it's reference count incremented by 1.
+
+So our next job is to bump the refernce count of our `GameDataString` variable.
+This reference count is stored 8 bytes in.
+
+```cpp
+std::cout << "Incrementing variable refrence count..." << std::endl;
+uint32_t refcount = (arma->Read<uint32_t>(GameDataString_VAR + 0x8, false)) + 1;
+if (!arma->Write(GameDataString_VAR + 0x8, refcount))
+{
+    ERR("Failed to bump reference count");
+    return;
+}
+```
+
+Okay, now our `GameDataString` variable is ready to go into `OnEachFrame`!
+
+```cpp
+std::cout << "Injecting payload..." << std::endl;
+if (!arma->Write(arma->GetBase() + Arma::Offsets::EachFrame, GameDataString_VAR))
+{
+    ERR("Failed to write new eachframe value");
+    return;
+}
+```
+
+If you were paying close enough attention you'll have noticed I added something
+else into the injected payload. After our custom SQF executes, the code 
+`onEachFrame {};` is run. This will wipe out our custom `onEachFrame` code, 
+but most importantly it makes it so we can detect once our custom SQF has 
+completed execution (or if it has an error!). 
+By reading the `OnEachFrame` value's internal `ArmaString` pointer, we can see if `onEachFrame` was cleared.
+
+```cpp
+std::cout << "Waiting for payload execution..." << std::endl;
+bool success = true;
+ULONGLONG timeout = GetTickCount64() + 5000;
+do
+{
+    // when we run onEachFrame{}; it will create a gameDataCode with a null value pointer as the eachFrame object. We just need to check if it's null then we know our code ran.
+    uint64_t eachFrameGameDataCode = arma->Read<uint64_t>(arma->GetBase() + Arma::Offsets::EachFrame, false);
+    if (eachFrameGameDataCode)
+    {
+        uint64_t armastringValue = arma->Read<uint64_t>(eachFrameGameDataCode + Arma::Offsets::o_GameDataCodeValue, false);
+        if (!armastringValue)
+            break;
+    }
+    Sleep(10);
+
+    if (GetTickCount64() >= timeout)
+    {
+        success = false;
+        break;
+    }
+
+} while (true);
+if (!success)
+{
+    ERR("Failed to detect payload execution. Was there an SQF error?");
+}
+```
+
+---
+
+Awesome! At this point we know our sqf was injected and executed. 
+From here, we can go about restoring the game state such that no one 
+will have ever known we executed something. I am kinda tired of creating
+all these snippets, so here is that restoration code:
+
+```cpp
+if (old_value != 0)
+{
+    std::cout << "Restoring original onEachFrame..." << std::endl;
+    if (!arma->Write(arma->GetBase() + Arma::Offsets::EachFrame, old_value))
+    {
+        ERR("Failed to write new eachframe value");
+        return;
+    }
+}
+
+if (did_swap)
+{
+    std::cout << "Restoring internal string pointers..." << std::endl;
+
+    //swap our variables
+    if (!arma->Write(GameDataCode_FUNC + Arma::Offsets::o_GameDataCodeValue, var_armastring) ||
+        !arma->Write(GameDataString_VAR + Arma::Offsets::o_GameDataCodeValue, func_armastring))
+    {
+        ERR("Failed to swap variable armastring values");
+        return;
+    }
+
+    //update pointers so we don't get confused as to what values are where
+    uint32_t temp = func_size;
+    func_size = var_size;
+    var_size = temp;
+
+    uint64_t temp2 = func_armastring;
+    func_armastring = var_armastring;
+    var_armastring = temp2;
+}
+
+std::cout << "Restoring original function code..." << std::endl;
+if (!arma->Write(func_armastring + Arma::Offsets::o_ArmaStringValue, original_code, func_size))
+{
+    ERR("Failed to restore original function code");
+    return;
+}
+```
+
+---
+
+So now we've executed our custom sqf without allocating any memory! 
+Very cool. Finally I want to give my closing thoughts on detection vectors for this approach.
+
+By restoring our game state, we made it so there are no artifacts from executing our SQF.
+This makes it extremely difficult for sqf based anticheats to detect. 
+I think that detecting something like this really just isn't feasible,
+but it'd be possible to try and synchronize some variables between `onEachFrame`
+and MissionEventHandler "EachFrame" to see if they fall out of sync 
+(and thus detect that onEachFrame missed a frame or two of execution).
+
+In reality, I think the best way to detect something like this is by detecting 
+the SQF cheat being executed. You can't rely on BattlEye Filters because 
+the cheater who is using this execution method probably disabled those anyway.
+
+Anyway, I thought this was a neat trick as most people just allocate space for
+these things or use `gamestate::execute`. I am excited to showcase some more 
+things in the future like ways to bypass SQF no-recoil detection.
+
+{/* reference links */}
+[Screamer PCIe]: https://shop.lambdaconcept.com/home/48-screamer-usb-c-r04-jtag-serial-pack.html
+[GameState::Execute]: https://www.unknowncheats.me/forum/dayz-sa/137488-script-execution-gamestate-execute.html
+[OnEachFrame]: https://douggemhax.wordpress.com/2014/12/28/202/
