@@ -1,0 +1,12 @@
+<img class="alignright" src="https://i.gyazo.com/b323f99b7ec2a565edb3fc70a7ef08ef.png" width="295" height="381" />The worst nightmare for any anticheat developer is coming across a cheat that is nearly impossible to detect. Hint menus are one such cheat. There is no way to disable the "hint" command and no way to detect what is being displayed in the current hint. So how would an anticheat go about stopping people from using these cheats?
+
+The easiest and simplest way is to use strict BattlEye Filters. If the cheater can't run their menu then there is nothing to worry about.
+
+What if the anticheat wanted to not just kick, but also ban people for using a hint menu? How would that even be done? In order to even begin detecting these we need to use a mod. The ONLY way to detect what is in the contents of a hint is to modify the RscHint class located at
+<em>configFile &gt;&gt; "RscInGameUI" &gt;&gt; "RscHint"</em>
+and add
+<em>onLoad="uiNamespace setVariable ['displayhint',_this select 1]";
+</em>This will allow an anticheat to access the display for the hint dialog.
+
+In an anticheat, all that needs to be done in order to ban for this is to run the following code on the clients:
+<img class="aligncenter" src="https://i.gyazo.com/3b15eed8e1bf80fa5050704fc4f9552e.png" width="607" height="180" />

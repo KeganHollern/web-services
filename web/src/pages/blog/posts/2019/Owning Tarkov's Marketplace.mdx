@@ -1,0 +1,90 @@
+Escape From Tarkov is a first-person shooter in its alpha stage of development. It has an in-game economy with unique characteristics that help drive a very stable in-game marketplace. The marketplace allows players to buy and sell items they find while in game. Item prices each have a stable supply and demand which drives the market price to a stable price point. Some players list below market rate in order to sell their items as quickly as possible. This provided me with an opportunity, can I write software that will detect these listings and buy them up before anyone else? If so, I can turn a constant profit off the market place, providing a seemingly endless supply of cash. So that is what I did.
+
+To provide some more context, Tarkov uses a REST api for all marketplace and trading requests. Actually, a majority of the games requests, excluding those from gameplay, are done over this API. The one thing is this API requires an active session to be established prior to any requests being processed. When you log in through the launcher, this session is created and is subsequently passed off to the game application when you click play. Initially, the API was on the HTTP protocol, so as long as I had the session, I could send the request from just about anywhere. With the later updates, this was moved to TLS v1.0 and TLS v1.2, HTTPS. HTTPS forced me to take a different route, but that will come up down the line.
+
+With that intro out of the way, let's own the market.
+
+Initially, I needed to know what the requests for the market were. For this, I used <a href="https://www.wireshark.org/">Wireshark</a> and <a href="https://www.telerik.com/fiddler">Fiddler 4</a>, which provided me all the packet capturing needed to begin decoding the messages. Oh and one more issue, these packets are clearly packed or encrypted, here is what I noticed in Fiddler 4.<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/vWxYOlYH/LoSI72l1F7N5Wcc3.png" width="777" height="531" />
+
+Okay, so they are packed or encrypted, but with what? The request header does not have a tag signifying the Content-Encoding. So in the case that I found something useful, which I did not, I went into the Tarkov application to find where the requests are sent. For this, I used dnSpy, as Tarkov is a Unity-based game. After some time, here is one of a few web request modules I found.
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/5h0GI8TE/wyUVYDz0c4dR7uyl.png" width="1248" height="112" />
+
+Sweet! We can see the game uses SimpleZLib on a JSON formatted string. So now to take our Fiddler / Wireshark data and decompress with ZLib. For Fiddler, I followed this <a href="https://stackoverflow.com/questions/37830092/how-to-decode-response-with-zlib-in-fiddler">Stack Overflow</a> post w/ a few tweaks to automatically decode Tarkov requests. This lets me look at the request I sent, and the response I received both in JSON string format. For Wireshark, I created software to take the RAW TCP Stream data, and apply ZLib decompression to the content bodies. This works well, but Fiddler's is better, so here is the fiddler code snippet and an example.<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/5KyZNiLm/NveH72uQQ4ocSVCo.png" width="507" height="128" />
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/6GivlSJZ/OOydNMuqOZ3TU4XC.png" width="775" height="429" />
+
+Alright, so now I went ahead and decoded every packet required to view, buy, list, sell, and collect money, everything needed to automate the process.
+
+This all got a bit more complicated with the move to HTTPS, but with Fiddler 4's HTTPS support and a few other tweaks, you can still recover these packets and their data.
+
+Okay, so we have a bunch of packets, we just need to fire them off to Tarkov's API. This section will cover the two methods I created. This initial method worked for the HTTP endpoint but is no longer viable with the move to HTTPS. I have included it because it's cool.
+
+So we know the game has the session. So it must exist in memory. So we need to figure out where it is at. To do this, I first loaded up Tarkov and dumped all of the Unity objects from the GameObjectManager to know what objects are active at startup. Clearly, the session must be in an object here, because at this point we just fired off a bunch of requests to get character and profile data.
+
+I no longer have this list saved, so here is the one object that caught my eye: <em><strong>Application (Main)</strong></em>. This looked promising, maybe the session passes through here at some point. So I dug back into dnSpy and pulled up a class that looked like it could be what this references.
+
+Okay sweet, now look at that field, <em>_backend</em>, that looks even better. Doing some analysis we can see it is used here:
+<img class="alignnone" src="https://ss.lystic.zip/Legacy/QwtvoJvF/nDm4XFqI2V2VsXOc.png" alt="" width="727" height="93" />
+This is it, I think we are onto something, let's go into the backend class and see what we find.
+
+<img class="alignnone" src="https://ss.lystic.zip/Legacy/W5PPQmrA/iaVrRT9EQ1tA6fZn.png" alt="" width="458" height="254" />
+
+BAM, There is the session ID. Now it is stored a few layers deeper, but after 2 more offsets, we find the pointer to the PHPSESSID required to fire off requests. So now we have everything we need to start falsifying requests. Packets to send, headers, and our Session. Pack this all into some software and we are done!
+
+Well, we were done, but with HTTPS, this method is no longer viable. Even with the session ID, we do not have the HTTPS cert required to make requests. Sure we could dive into the in-game web client and rip it out, but that is just getting really complex. We could inject into the game and use the built-in network itself, but that puts us at more risk than just botting the network.
+
+So let's go even riskier. Lets fake the entire client. Login, Session, and Botting. Let's trick the API into thinking we have launched our game.
+
+So we need to fake a login, but I am not seeing any login requests from Fiddler 4. Is the login not over the web? That wouldn't make sense. No this is a Fiddler bug. It is hiding TLS v1.0 requests from us. I never managed to solve this, but that is okay, our good friends at Unknown Cheats can help us out with this thread, <a href="https://www.unknowncheats.me/forum/escape-from-tarkov/291434-fencekiller.html">FenceKiller</a>.
+
+One quick note before anyone opens that project, the games Anticheat does check Visual Studio project history, so it is very likely that opening FenceKiller in Visual Studio will result in a Ban. So we will open it in our favorite Notepad++.
+
+FenceKiller is quite mangled code, but it does have everything we need to fake a login request. The request body, the Keep-Alive request, and even some functionality for verifying hardware codes. With this, if I run my bot on an Alt Account, under a VPN or Proxy connection, I could prevent the game devs from cross-account banning me. So this is nice. Here are the request structures:
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/43fCDaVI/LyLPM4fmJk3mwM42.png" width="322" height="357" />
+But this login request requires a few things. Version Info, some other integrity checks, an MD5 encrypted password, and a hardware id. Breaking this down step by step.
+
+Version Info: You can grab this from the applications Manifest file. Pop EscapeFromTarkov.Exe into a resource viewer or editor and grab these from the version info.
+<img class="alignnone" src="https://ss.lystic.zip/Legacy/F1Wf48ow/kAtfE8hefWknaTQu.png" alt="" width="795" height="415" />
+Hardware Id: I don't want my real HWID, but I do want something close. So first I need to figure out what hardware code they send. I could look at a packet, or check the launcher config file for my last saved hardware id. The file is located in your appdata. I am not going to post mine as I do not want to be banned. But, FenceKiller proved you can send anything for this and it will not auto-ban your account.
+
+User/Password: The Email field is not really an email, it is the username tied to the account. You can get this by logging into your account on Tarkov's website and viewing the name under your profile details. The Password field is just the MD5 of your password, we can just do this on the fly inside our bot, so no big deal.
+
+Now the integrity checks are weird. Since the time I began this project, FenceKiller has had the correct values for this. However, they are stored in the unity application, so it is possible to dump these from the game resources. I have not figured this out, but I will update this post when I do.
+
+So we have all our fields, now we fake our login and go. Yes, but also no. After the first login, Tarkov will require us to verify our hardware Id by sending another request with the contents from our email. So we just need to check if Tarkov is requesting this, and ask our user for the code Tarkov automatically emails them. This is just a bit of logic, but our request is all there and we are good to go.
+
+So one key thing to note is how the Tarkov market works. With every sale, the game charges you a set fee. This is based on numerous factors and I have found it quite difficult to calculate. With that in mind, I am only going to run my bot on one market, where I know the fee and can make enough margins to profit. The in-game item Bitcoin is a relatively stable market. It fluctuates between 100k and 150k RUB. As well, it has a market fee around 7k. This provides ample room for profit.
+
+So first things first, we need some wrappers for how we will interact with the web API. For this, I created a wrapper around the <em>HttpClient</em> found in <em>System.Net.Http</em>. For this, we define the remote Uri we will be connecting to, <em>https://prod.escapefromtarkov.com</em>, and create functions for sending and receiving data.
+
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/OBKRhkhB/NaeZtewNAvzvYQku.png" width="504" height="645" />
+
+Okay, You can see from this, we also have a TarkovResponseMessages class. This collects all of the response data and applies decompression for us.  Here is the compression class, nothing special here.
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/BBG9VTN5/qea4iLeG9DGZcM5f.png" width="567" height="157" />
+
+Now, I have my web backend, but before I start my login process, I needed a way to quickly iterate on different methods of attacking the market for the greatest profit. For this, I broke down some of my first tests and created a base class for all methods to derive from. Here is the base class.
+<img class="alignnone" src="https://ss.lystic.zip/Legacy/qj3j7g59/yjTLV4GWvgDggwMJ.png" alt="" width="643" height="692" />
+So here we can see some virtual and abstract methods. As well, we have a lot of classes I haven't shown. Things like MarketOffer and InventoryItem are simple wrappers around the data received from requests. They store the information required for any of my bot methods.  You can also see some actions used for callbacks to the main class for the bot. The await methods are for waiting to quickly purchase an item. Oh ya, every market listing has a 60 second delay before it is available for sale. So with this, my bot will wait for the listing if it thinks it is a good enough deal, or at least that is an option.
+
+One key to the bot method was the ability to move cash from your mailbox back into the inventory. When an item is sold on the market, the money goes to your mailbox, and you can not spend that until you move it to your inventory. So the MailMessage stuff is covering that.
+
+So yeah, this class provides us all the core code to run our bot.
+
+Here is an example of how web requests are processed. This is from the BuyOffer(MarketOffer offer, InventoryItem[] Money_Items) method.
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/teAxeGc7/Ng7aDBsNwhfOjvHb.png" width="682" height="761" />
+
+Looking at an actual botting method, this is how simple it boils down to in the end.
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/pFixmAzo/ATxwMAz58oAM8PQ6.png" width="561" height="845" />
+
+So yeah, I basically program in "Do this, then this then that" and it just works.
+
+Onto the public and visible portion of the bots core, this allows my frontend to communicate with these backend classes. Here we can see the login process:
+<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/lO4F3Uds/GTSAYHkfFq1qe38B.png" width="838" height="790" />
+
+So here we can see I fire off a login request and, if the request fails in a specific way, we know a hardware activation is required, otherwise, we start up our login request. As well, I have a bit of legacy cookie extraction. Really anything collapsed is not required.
+
+I won't show Keep-Alive because its quite simple, but here is the hardware activation:
+<img class="alignnone" src="https://ss.lystic.zip/Legacy/pLU8y97q/VguotqhgTRof4trQ.png" alt="" width="934" height="249" />
+
+So that is the real meat of a tarkov market bot. Nothing really complex, but a lot of very interesting code and methods for reaching it.
+
+Thanks for reading this far lmao.

@@ -1,0 +1,89 @@
+Everyone who has played Arma for an extended period has come across TFAR, Task Force Arrowhead Radio. I am not going to go into how the mod works, you can <a href="http://radio.task-force.ru/en/" target="_blank" rel="noopener noreferrer">check it out here</a>.
+
+I am going to dive directly into the code that drives TFAR, and do my best at explaining a type of lazy eval code execution that is much more complex than the <a href="http://lystic.net/2020/06/17/lazy-eval-execution-exploit/" target="_blank" rel="noopener noreferrer">previous</a> exploit I covered. If you do not know what Lazy Evaluation is, I recommend reading that previous post to get a grasp on this style of exploit. To best explain my logic, I am going to take you down the path of how I figured out this exploit. It's going to be different than how I normally explain exploits. Hopefully, at the end of this, you'll understand how the TFAR exploit works, and how I created it from my initial thought.
+
+<hr />
+
+The way I find exploits is by opening up a mod and looking through all of its scripts for a few identifiers that could point to a vulnerability. This is what I did for TFAR. Opening up the script files, I was looking for any lazy eval exploits. One of the identifiers I use for lazy eval exploits is <em>A and B</em>, where B is a variable. If B is a variable, there is a possibility that I can change the value of it, thus allowing a lazy eval code execution. Very often this identifier leads to a dead end. Either the variable is hard-coded or I cannot manipulate it. While looking at TFAR's files, I came across <em>fn_onLRTangentReleasedHack.sqf</em> which contains 3 instances of this identifier. Let me show you the code.
+
+<script src="https://gist.github.com/KeganHollern/c23060283ed66e8cb6e2e4d343175fe1.js"></script>
+
+Here we can see the following identifiers:
+<ul>
+ 	<li>(_scancode == SHIFTL) and (_mods select 0)</li>
+ 	<li>(_scancode == CTRLL) and (_mods select 1)</li>
+ 	<li>(_scancode == ALTL) and (_mods select 2)</li>
+</ul>
+What this is telling me is that, if I can change the value of <em>_mods</em>, I can execute code through any of these fields. My next step is to figure out what SQF code determines the value of these fields.
+
+<script src="https://gist.github.com/KeganHollern/c23060283ed66e8cb6e2e4d343175fe1.js"></script>
+
+Looking again at the code, <em>_mods</em> comes from <em>_keybind</em>, and <em>_keybind</em> comes from <em>CBA_fnc_getKeybind</em>. So we have a clue. If we can control the output of CBA's <em>CBA_fnc_getKeybind </em>function, we can exploit this function! Let's take a look at <em>CBA_fnc_getKeybind</em>. Quick warning, you will see comments in the code. These comments describe how the exploit works, and I'll get into them towards the end.
+
+<script src="https://gist.github.com/KeganHollern/8a084edf346b60c35c893cc44b7bc4fa.js"></script>
+
+Looking back at <em>TFAR's</em> code, we can see that the item in index 5 is where <em>_mods</em> is derrived from. So the first thing I look at in <em>CBA_fnc_getKeybind </em>is the return value. Index 5 of this return value is <em>_oldKeybind</em>. Working backwards, <em>_oldKeybind</em> is index 0 of <em>_keybinds</em>. Quickly, checking out that line, we can see that param does not have a default type or any checks on the internal data types. Great, so now we just need to modify <em>_keybinds</em>. Looking at line #16, we can see <em>_keybinds </em>is at the 2nd index of <em>_actionInfo</em>.
+
+Finally, we come to the point at which the complexity of this exploit increases. <em>_actionInfo </em>is set by <em>GVAR(actions) getVariable _action</em>. <em>_action </em>is a string formatted by our input parameters. So we can conclude, <em>_action = "tfar$lrtransmit"</em> based on the input parameters of <em>CBA_fnc_getKeybind </em>(this is important and will be used later). But what is<em> GVAR(actions)</em>?
+
+If we can modify <em>GVAR(actions)</em>, then we can change the values of our specific actions keybind. To do so, we must take a look at CBA's <em>CBA_fnc_addKeybind </em>function. This is quite a large function, so I have provided a link to it on my <a href="https://haste.lystic.dev/woxujinime.cs" target="_blank" rel="noopener noreferrer">hastebin</a>. I will be using screenshots of snippets from <em>CBA_fnc_addKeybind </em>but will refer to line numbers. I recommend opening the hastebin to follow along. First off, let's take a look at line # 80, where GVAR(actions) is given a value.
+
+<script src="https://gist.github.com/KeganHollern/d641d6637f5c8c2c33d7a6efd63d4b3c.js"></script>
+
+From this, we can see that it is a common <em>namespace</em> that CBA likes to make. CBA does this thing where they use virtual <a href="https://community.bistudio.com/wiki/createLocation" target="_blank" rel="noopener noreferrer">location</a> objects to store variables like another namespace. I don't understand why, but it does the job they need it to.
+
+So 'actions' is a location object. From here we can take a few approaches, we could try to trick the game into pre-defining actions as another namespace (such as uiNamespace). This is difficult because locations and namespaces do not line up 1 to 1. We'll likely run into an issue. The approach I decided to take from here was to figure out what sets the value of keybinds in the 'actions' namespace.
+
+Take a look at line # 93 in <em>CBA_fnc_addKeybind</em>.
+
+<script src="https://gist.github.com/KeganHollern/378b9dddb929a4f11bf8284f648e668c.js"></script>
+
+Here we set the action, and give it some keybinds in index #2. So if we can somehow modify the incoming <em>_keybinds</em> variable, we can still exploit this. Looking farther up, we can see it being used. Note that this image contains a lot of the content discussed below.
+
+<script src="https://gist.github.com/KeganHollern/c608ede76f8df0fdd61b36ef2ef7e896.js"></script>
+
+<em>_keybinds</em> comes from CBA's <em>CBA_fnc_hashGet </em>method. It is then checked for default (or overwrite) and possibly overwritten. If the TFAR keybind is overwritten, this is game over, we can't exploit it. So before moving on, let's just make sure we're not overwriting the preset value from CBA. In TFAR, we can find the <em>CBA_fnc_addKeybind </em>call for LRTransmit in <em>fn_ClientInit.sqf</em>.
+
+<script src="https://gist.github.com/KeganHollern/e3b5f1c0af8ce2c3279a35dd0f3ac69c.js"></script>
+
+Looking here, it seems like only a few parameters are passed. Taking a look back at <em>CBA_fnc_addKeybind</em>, we can see <em>_overwrite</em> is defaulted to FALSE.
+
+<script src="https://gist.github.com/KeganHollern/7be36d687713f26cf79e6c5a930bbc69.js"></script>
+
+Okay, so as long as the <em>CBA_fnc_hashGet </em>returns a valid keybind, the data will be inserted &amp; we can exploit the lazy eval. Take a quick look at line # 69 in <em>CBA_fnc_addKeybind</em>, where <em>CBA_fnc_hashGet </em>is called. We can see two parameters passed in, <em>_registry </em>and <em>_action</em>. We already know _action is our action string, we can see so on line # 23, so lets look above where _registry is assigned a value.
+
+Line # 62 shows us that _registry comes directly from the <em>profilenamespace</em>! This is terrific. Any exploit that runs back into <em>profilenamespace </em>or <em>uinamespace </em>is one that we can really abuse! We can also see that if a value is not set, then a default is given (line # 64-67). Okay last thing to do is know how <em>CBA_fnc_hashGet </em>pulls our keybinds from the registry.
+
+<script src="https://gist.github.com/KeganHollern/95e4a652741bb7ec78b37fe63952986e.js"></script>
+
+In this, <em>_hash </em>refers to our registry (profilenamespace), and <em>_key </em>refers to our action name. So we start by finding our action within the registry. The list of action names is stored at index 1 (HASH_KEYS). If we sucessfully find the action in that list, then we go pick out our Keybinds from the list stored at index 2 (HASH_VALUES). This is all we care about. Take note that we return directly from the "select" command, which keeps a reference to the list. This will be important later on.
+
+Okay, the last bit was quite heavy, but now we know everything we need to successfully write exploitable code to the keybind data. Let me line out what we know in a more effective way:
+<ol>
+ 	<li>The data's source lies in the profilenamespace within the variable "<em>cba_keybinding_registry_v3</em>"</li>
+ 	<li>The action name is ""tfar$lrtransmit"</li>
+ 	<li>By finding the index at (_registry select 1) of our action, we can find the keybind data</li>
+ 	<li>The keybind data is stored in (_regsitry select 2)</li>
+ 	<li>This keybind data is then moved into <em>GVAR(actions) getVariable (action_name)</em> under index #2</li>
+ 	<li>The keybind data in <em>CBA_fnc_getKeybind </em>is 1 layer deep (select 0)</li>
+ 	<li>This keybind data is returned in <em>CBA_fnc_getKeybind </em>under index #5</li>
+ 	<li>The keybind data is structured as <em>[keycode,keymods]</em> where <em>keymods </em>is an array of boolean values</li>
+ 	<li>If a value of keymods is code, TFAR should lazy evaluate it as long as either SHIFT, CTRL, or ALT, is pressed.</li>
+</ol>
+So now that we know all of this, we can build an exploit.
+
+<script src="https://gist.github.com/KeganHollern/4fbd6cc7b40834d38129ea8886ce497e.js"></script>
+
+Our first step is to get the registry, or create a new one, for <em>cba_keybinding_registry_v3</em>. Next, we must find our action in the registry. If our item does exist, we must set the value in the registry for that index to an exploitable payload. Remember, the payload must be an array within an array as <em>CBA_fnc_getKeybind </em>accesses index 0 before returning. If our item does not exist, we just have to push it back into the registry.
+
+And that is it. Now if we load up a game with TFAR and press, in my example, SHIFT, it'll execute the payload.
+
+As always, the source for my exploit can be found on my hastebin <a href="https://haste.lystic.dev/pujaqecoxi.cs" target="_blank" rel="noopener noreferrer">here</a>.
+
+So one last thing I wanted to cover was a unique feature of this exploit. My comments throughout the screenshots have been alluding to this. The way that getKeybind and addKeybind interact with the keybind data array, the values in it are actually directly linked to the profilenamespace. I covered this a while ago with my <a href="http://lystic.net/2016/07/29/advanced-script-variable-hiding/" target="_blank" rel="noopener noreferrer">advanced variable hiding</a> post. What it allows you to do is create a single line of code for this entire exploit.
+
+This was shown to me by a friend, and I never actually wrote it, but here is a rough take that may or may not work.
+
+<script src="https://gist.github.com/KeganHollern/3971a5e7e58cbf184eb297951370a2d7.js"></script>
+
+In theory, setting the value retrieved here, should link directly back to the profile, and update the profile with the new exploit. Like I said, I didn't test this, I just know that somehow it is possible.

@@ -1,0 +1,49 @@
+There is a little-used feature in the ArmA 3 Multiplayer Server list that shows all of their "Official" servers. Currently, there are ~100 players on the official servers. These host games from Endgame to Zues. Stokes figured out how to override this list with the official servers for our mods. It involves a hack-ish way of breaking how ArmA's config access is supposed to work.
+
+[caption id="" align="aligncenter" width="1881"]<a href="https://ss.lystic.zip/Legacy/UXedNGyV/DPaFz3LRKRjgFlWP.png"><img class="size-medium" src="https://ss.lystic.zip/Legacy/UXedNGyV/DPaFz3LRKRjgFlWP.png" alt="Picture of default arma server list." width="1881" height="1047" /></a> Default Official Server List. (click to enlarge)[/caption]
+
+[caption id="" align="aligncenter" width="1877"]<a href="https://ss.lystic.zip/Legacy/vsyZP3Nw/uH3L6PDPaC77IAEQ.png"><img class="size-medium" src="https://ss.lystic.zip/Legacy/vsyZP3Nw/uH3L6PDPaC77IAEQ.png" alt="Picture of the modded official server list." width="1877" height="1036" /></a> Modded Official Server List (click to enlarge)[/caption]
+
+So to start off, I want to explain how the official server list is loaded in ArmA. There is a class in the Dta\Bin.pbo called OfficialServersArma. There are a few more, OfficialServersArgo, and MonetizedServers, but we will be focusing on ArmA's Official Servers as they have the most use to the modding community. Here is the class:
+
+<img src="https://ss.lystic.zip/Legacy/XoMFMMdb/6YnM3r0avvDlhFKp.png" width="627" height="182" class="alignnone size-medium" />
+
+To start, look at <em>access=2;</em>. Here is the definition of access from the BI Wiki:
+[caption width="1394" align="alignnone"]<a href="https://ss.lystic.zip/Legacy/PGHQ54j3/t5IgRWsYVPKYhL8M.png"><img src="https://ss.lystic.zip/Legacy/PGHQ54j3/t5IgRWsYVPKYhL8M.png" width="1394" height="206" alt="0 ReadAndWrite additional values can be added 1 ReadAndCreate only adding new class members is allowed 2 ReadOnly no modifications enabled 3 ReadOnlyVerified no modifications enabled, CRC test applied" class="size-medium" /></a> (click to enlarge)[/caption]
+
+Next we look at all of the remaining properties. Here is what I know about each:
+<ul>
+	<li>URL is the url reference to the JSON data containing a list of servers</li>
+	<li>updateInterval is the time in seconds between updates pulled from the URL and stored in the listFileName</li>
+	<li>listDirectory is the folder the data is stored in</li>
+	<li>listFileName is the file that stores the updated data from the URL</li>
+	<li>tmpListFileName I figure is where active updates are stored until game shutdown</li>
+</ul>
+
+Although I may be wrong about some of the properties, I am correct with how I edit them to work with mods, but onto the important matters...
+
+So, <em>access = 2;</em> means we can only read from this class, we can not modify this class. This <strong>should</strong> mean that we can't change any of the values right?
+
+Well arma configs have this neat feature called <em>delete</em>. This allows us to delete any classes we do not want. This is often used when modifying some of the Interfaces like RscDisplayMain. <em>access = 2;</em> does <strong>not</strong> prevent us from deleting the class entirely. So we should be able to delete the default arma class and recreate it.
+
+We do hit the problem in pboProject that prevents us from deleting a class and recreating the class in the same PBO. So in order to do this we need <strong>TWO</strong> PBOs. First we need to recognize the PBO load order in arma. Importantly, the fact that the PBOs in the DTA folder are always loaded first. This means that we do not need a field in requiredAddons for our first PBO.
+
+So our first PBO will look something like this:
+<img src="https://ss.lystic.zip/Legacy/gM8xrTXg/zE7EJqIdwrtnnWli.png" width="515" height="274" class="alignnone size-medium" />
+
+However, next we need to include our first pbo as a requiredAddon. We also need to structure our own OfficialServersArma class. Giving us something like the following:
+<img src="https://ss.lystic.zip/Legacy/L6h3RqQ8/cYGDRDUri252tOfZ.png" width="573" height="442" class="alignnone size-medium" />
+
+Before we finish, we need to setup the properties of our own OfficialServersArma class. 
+We need to setup a URL that contains our JSON data. This data has to be formatted like this:
+<img src="https://ss.lystic.zip/Legacy/rIvUwKUM/tho91kARy5ybqo1K.png" width="381" height="432" class="alignnone size-medium" />
+<a href="https://www.bistudio.com/export/servers/official" target="_blank" rel="noopener noreferrer">Click here to view the default server list.</a>
+
+Next, think of a unique name for <em>listFileName</em> and <em>tmpListFileName</em>. This is to prevent us from overriding the default arma list when our mod is not loaded.
+
+Finally, setup an update interval that is reasonable for how often you plan to update your server list. I never figured out if the update interval is in seconds or minutes. So the example I showed above is either 24 minutes or 24 hours. Either way I felt was reasonable. 
+
+Now include those PBOs in your mod and you should see your own official server list.
+
+
+On another note, I contacted BI and asked if we were allowed to do this and I never got a response... so if anyone gets an answer from them I would love to know. :P

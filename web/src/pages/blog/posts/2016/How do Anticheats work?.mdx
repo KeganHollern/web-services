@@ -1,0 +1,55 @@
+A lot of people don't understand how scripted anticheats like Infistar AntiHack work. The idea behind scripted anticheats is simple and effective. They rely on three key features.
+<ol>
+ 	<li>Randomizing variables</li>
+ 	<li>Using local variables effectively</li>
+ 	<li>Sending code to clients in a randomized heartbeat fashion</li>
+</ol>
+
+<hr />
+
+<strong>Randomizing Variables</strong>
+
+Any variables that can be accessed between threads can be modified. When making an anticheat the prevention of this is crucial to it's effectiveness. If a cheater can simply change your code then you can't stop them from running their own code. Most anticheats generate their variables with a random string function like the one below.
+
+&nbsp;
+
+<img class="aligncenter" src="https://i.gyazo.com/7920878a6f527b1d12d598fe6ee6da53.png" width="530" height="228" />
+
+So how does a random variable protect your code? Well in ArmA 2 it is impossible to find the names of all the variables without the aid of a memory cheat. If the scripter doesn't know what your variables are called then they can't tinker with them. In ArmA 3 however it is a different story. With the implementation of allVariables randomization has become relatively useless. The command compileFinal makes up for what allVariables takes away by making it impossible for a scripter to change the value of your variable without the aid of a memory cheat.
+
+It is even possible to take variable security to the next level by storing them inside a random object on the map using the setVariable and netId commands. I use the function below to select a random building from any map (default or modded) that the server is running.
+
+<img class="aligncenter" src="https://i.gyazo.com/27bdcde8c943b80e882366d6f6e36483.png" width="1004" height="309" />
+
+By using a random building and getting the buildings NetID I can have the server and clients communicate without using a variable the clients will be able to access. For example, this is the ban function I send to the clients. You can see that I use a randomized ban variable and the objects net id to communicate with the server.
+
+<img class="aligncenter" src="https://i.gyazo.com/3a0ac0d6ddf13df6219cca4e18f797b7.png" width="1147" height="95" />
+
+<hr />
+
+<strong>Using local variables effectively</strong>
+
+Another key to a well made anticheat is using local variables effectively. It is important to use variables that can not be modified by external threads as much as possible in order to prevent cheaters from modifying our code. Local variables are unique in that they pass up scopes and not down scopes. By using this to my advantage I can access variables defined in lower scopes in my higher scopes. For example, in my anticheat I create five local variables on the lowest scope and access them throughout my code.
+
+<img class="alignleft" src="https://i.gyazo.com/5275f6c038ad9625afef2383cda99a5d.png" width="373" height="112" />
+
+<em>(left) I create the variable _netID and _banvar in the lowest scope.</em><img class="alignleft" src="https://i.gyazo.com/385b370ca229d10b0dbe84ccd8cc305f.png" width="1254" height="391" />
+
+<em>(below) I access _netID and _banvar within my _buildPacket function that is called several scopes up from the variables
+</em>
+
+By using local variables I can say for certain that these values will never be modified from an external source.
+
+<hr />
+
+<strong>Sending code to clients in a randomized heartbeat fashion</strong>
+
+Probably the most effective tool an anticheat can use is a heartbeat system Every client who is not cheating will never try to stop your code from running, however if a client is cheating then they will most likely attempt to stop your code from running. A heartbeat can be used to make sure your code runs and to check if a client stops your code from running (and is therefore cheating).
+
+My heartbeat is relatively simple. I start a loop on the server that sends checks, such as "is this client using no recoil cheats", to the clients every 10 to 25 seconds. After we wait 10 to 25 seconds we check to see if any of the clients we sent our code to stopped our code and ban those that did.
+
+<img class="aligncenter" src="https://i.gyazo.com/18446483144937180e3b98990f695b0a.png" width="548" height="426" />
+
+As you can see I use entirely local variables. If you look at the _buildPacket function that was shown above you can see that I create a thread on the client and set a variable on our random object to let the server know the thread ID that should be running our code. We can then check this threadID to see if the thread was terminated and ban accordingly. The reason a heartbeat is so effective is because cheaters often kill every thread on the client in order to stop anticheat checks from looping. When a thread is killed the heartbeat can then go and ban those who terminated it.
+
+Overall anticheats are very simple. My entire system runs off of no more than 400 lines of code (with the admin menu included) and can compete with the security of major brands such as Infistar. I have also built my system to contain only 3 randomized variables and still maintain security on par with infistar's system. Creating an anticheat doesn't take a genius, just a little bit of ingenuity.

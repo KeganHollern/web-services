@@ -1,0 +1,30 @@
+I spent a good portion of time last year working with server extensions in arma 3. I wanted to create a simple way to interface the script and the extension and to make adding functions into the extension as simple as possible. I came up with Command Requests as a solution. I use the format "Command|Parameter1~Parameter2~Parameter3" to make requests in the extension. I simplified the RVExtension down to just 5 lines of code. I am taking this code from a project I am actively working on so some functions called are not described.
+
+<img class="aligncenter" src="https://i.gyazo.com/982cb73750d7797fd42fa66df6fbab21.png" width="906" height="205" />I created the CommandRequest and Command classes in order to simplify how the commands are handled. The CommandRequest class parses the string into its Command and Parameters. The Command class is a base class to every command that is added into the server extension (more on this down below)
+
+The CommandRequest class is very simple.
+
+<img class="aligncenter" src="https://i.gyazo.com/ade3a946d4edf3ebf78425589f4b9ff3.png" width="580" height="300" />
+
+The constructor splits the strings and formats the Parameters that are not blank into a string[]
+
+The Command class gets only a tiny bit more complicated.
+
+<img class="aligncenter" src="https://i.gyazo.com/ebb1204b533d63d3fc2cc215d0c0118d.png" width="437" height="358" />
+
+The static getCommand function returns the class that is represented by the command sent into the extension or it returns an empty command class.
+Execute however is a virtual function. This is so we can override that function inside of classes like UpdatePlayers (more info below).
+
+All that is left is to extend Command from our UpdatePlayers class and override the execute function.
+
+<img class="aligncenter" src="https://i.gyazo.com/bc509294020dc945bf1a12b03216eacf.png" width="614" height="317" />
+
+Now, when "UpdatePlayers|Player1" is sent to the extension via CallExtension, the function execute(string[] parts) inside of the UpdatePlayers class is called with the parameter {"Player1"}
+
+Most of my newer extensions inside arma run off of this method. I am by no means great at c# but I found this simple and easy to work with.
+
+&nbsp;
+
+<hr />
+
+I used the info from Maca134's github to create the base project (<a href="https://github.com/maca134/ARMAExtCS/tree/master">more info on that here</a>).

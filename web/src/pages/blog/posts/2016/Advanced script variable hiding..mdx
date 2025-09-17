@@ -1,0 +1,15 @@
+I needed to find a new way to hide global variables from being accessed (Or even found for that matter) from threads that are not created by me. This is useful for Anticheats as it allows them to access and modify values from multiple threads without subjecting those values to being accessed from any malicious threads.
+
+Now this code is a little complicated, I will do my best to explain it.
+<a href="https://i.gyazo.com/6e606c109fc46443a121972ece83b91f.png"><img class="aligncenter" src="https://i.gyazo.com/6e606c109fc46443a121972ece83b91f.png" width="497" height="835" /></a>So the key to this entire system is <strong>_GLOBAL_ARRAY</strong>. This variable stores the values of our "global variables" ( I will be referencing them as such as they essentially act in the same fashion ).
+
+now the <strong>_get </strong>and <strong>_set </strong>functions do all of the heavy lifting. These are what manipulate the <strong>_GLOBAL_ARRAY</strong> so that this system works.
+
+<strong></strong>the <strong>_get </strong>function is the simplest by far, so I will explain that first. We start off by finding the variable name in the global list and if the variable does not exist we return the default value passed in the <strong>_data</strong> parameter. If it is found we simply return the value from the global array.
+
+the <strong>_set </strong>function does the hardest work. It needs to modify the global value without creating a second instance of the array ( no copying, just modifying ). If the name isn't found within the value list we add the name to the name list and the value in the value list. If it is found, we use the <em>set</em> command to modify the value without creating a second instance.
+
+Below those functions I included the first test I ran on this code. Works perfectly, every second it flips the value of the variable <em>"test"</em> from true to false.
+
+
+I consider this some of my best work. A neat little function that is very useful for anticheats.

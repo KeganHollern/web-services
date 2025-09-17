@@ -1,0 +1,36 @@
+A big issue with most game modes in ArmA 3 is how they handle network messages. Most servers I have come across do nothing to protect publicVariableEventHandlers and remoteExec calls. Now before I get started I will mention that there are many different ways to secure network messages and I will only be showing one. I wanted to create a system that allowed for multiple calls to be made to the event at the same time. This created issues with variable combining and multiple events. I also wanted to make sure their was no simple way for someone to make direct calls to the underlying event.
+
+The idea can be broken down into a simple process
+<ol>
+ 	<li>Client sends a request to the server</li>
+ 	<li>The server asks the target of the request if they are the ones that made the call</li>
+ 	<li>The client verifies they sent the request and tells the server to go ahead</li>
+ 	<li>The server executes the event code</li>
+</ol>
+I will explain how it works at the end.
+
+This is the server side event handler
+
+<img class="aligncenter" src="https://i.gyazo.com/97f17842ae5957cbe3162632166adac7.png" width="534" height="226" />
+
+This is the client side event handler
+
+<img class="aligncenter" src="https://i.gyazo.com/01e3f5b102828a3e67e739a4aae1abfb.png" width="501" height="137" />
+
+This is how the client sends a request to kill themselves.
+
+<img class="aligncenter" src="https://i.gyazo.com/5761a7bae47e6204e1979994c7d4dac2.png" width="352" height="68" />
+
+Now this system works by creating a randomize event handler on the server that is only known by the targeted client.  To be more specific this is how it runs out step by step.
+<ol>
+ 	<li>On the client: Toggle AmSuiciding so the callback knows we did indeed mean to run this event</li>
+ 	<li>On the client: public variable Suicide to the server containing our unit</li>
+ 	<li>On the server (inside suicide event): Generate a random string to act as our randomized event handler</li>
+ 	<li>On the server (inside suicide event): Create an event handler attached to our randomized string that contains our actual event code within it</li>
+ 	<li>On the server (inside suicide event): Notify the targeted client of the randomized string</li>
+ 	<li>On the client (inside suicide2 event): If the variable AmSuiciding is true then we can run the code that notifies the callback on the server</li>
+ 	<li>On the client (inside suicide2 event, inside the if statement): We take the random string the server sent us and create a variable containing our unit object</li>
+ 	<li>On the client (inside suicide2 event, inside the if statement): We public variable that randomized string so that the actual event on the server is triggered</li>
+ 	<li>On the server (inside suicide, inside the created event handler): Kill the unit that ran suicide</li>
+</ol>
+This system prevents people from creating "Kill target" scripts using our suicide event. Obviously it is really dumb to use an event handler for suicide but the idea for protecting other functions (like admin menu items) is solid.

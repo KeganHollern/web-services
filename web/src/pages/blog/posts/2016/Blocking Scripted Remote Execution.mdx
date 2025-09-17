@@ -1,0 +1,15 @@
+Recently, there have been a lot of server file leaks. The way cheaters obtain server files has always been the same. Remote Execute some code up to the server that retrieves data and returns it back to the cheater's client. Upon receiving data the cheater writes it to their log file or profilenamespace or something similar.
+
+Well, after years of cheating, I figured out the most effective use of an RE is to install some sort of unloggable backdoor. Some way to get messages up to the server without being at the mercy of the Scripts.txt filter. This is where markers come into play.
+
+By setting the text of a marker, the cheater can send messages to all clients without having any filters to worry about.
+
+The cheater creates a thread on the server using some loggable Remote Execution (createUnit / addMPEventHandler / ect.) that looks for the text of a specific marker to change and executes the text within it.
+
+Without getting into gritty details of how the Remote Execution actually works, this is a way I came up with to block it. Look and then I will explain.
+
+<img class="aligncenter" src="https://i.gyazo.com/5c778df254574428b805f6c057671ba9.png" width="830" height="218" />
+
+So this loops through all markers. It checks if that marker is invisible and has blank text. It then sets the text of the marker to "RTEXT = true;". If this marker is being exploited for a remote execution then the code RTEXT = true; will execute. We wait one second and check to see if that code did in fact execute. It then deletes the marker to prevent further exploitation of the Remote Execution.
+
+Now this code is incomplete. It needs to reset the RTEXT variable and it needs a way to log when an Remote Execution has been detected.

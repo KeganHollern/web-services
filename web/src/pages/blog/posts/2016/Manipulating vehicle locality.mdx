@@ -1,0 +1,22 @@
+A while ago I was working on a system that would allow me to manipulate remote objects as if they were local to me.  In other words, I wanted to use commands like "setDamage" or "setVelocity" on objects that were created by the server. I found that vehicles were the easiest to manipulate the locality of. I remembered that vehicles change their locality when a player enters the driver seat in order to prevent rubber banding from occurring on the driver.
+
+So I spent some time messing around with vehicles and found that even if I entered the driver seat it still takes about 25 milliseconds to swap the vehicles locality. This is also the case for moving out of the driver seat, it takes ~25 milliseconds to register that there is no longer a driver of the vehicle.
+
+So, lets say we wanted to kick someone out of a driver seat and move ourselves into it. ArmA 3 has a great command called "moveOut" which lets us kick remote units out of vehicles. Moving yourself into the driver seat is just as easy with the "moveInDriver" command.
+
+In the end I came up with this code. It works like this:
+<ol>
+ 	<li>Kick out the current driver of the vehicle</li>
+ 	<li>Wait 25 milliseconds</li>
+ 	<li>Move yourself into the driver seat</li>
+ 	<li>Wait 25 milliseconds</li>
+ 	<li>Run the code inside _runOnAllVehicles</li>
+ 	<li>move yourself out of the vehicle</li>
+</ol>
+We do this for every vehicle and can use local commands like setVelocity on vehicles that are not (were not?) local.
+
+<img class="aligncenter" src="https://i.gyazo.com/5613646871c6f56f38f3fbc82012d6c5.png" width="456" height="333" />
+
+Manipulating vehicles locality should really never need to be used in this fashion. This is just a neat idea I came up with when exploring some bugs within the games networking.
+
+&nbsp;
