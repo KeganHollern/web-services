@@ -1,22 +1,80 @@
-Escape From Tarkov is a first-person shooter in its alpha stage of development. It has an in-game economy with unique characteristics that help drive a very stable in-game marketplace. The marketplace allows players to buy and sell items they find while in game. Item prices each have a stable supply and demand which drives the market price to a stable price point. Some players list below market rate in order to sell their items as quickly as possible. This provided me with an opportunity, can I write software that will detect these listings and buy them up before anyone else? If so, I can turn a constant profit off the market place, providing a seemingly endless supply of cash. So that is what I did.
+---
+title: Owning Tarkov's Marketplace
+description: |
+    Escape From Tarkov is a first-person shooter in its alpha stage of 
+    development. It has an in-game economy with unique characteristics...
+slug: owning-tarkovs-marketplace
+---
 
-To provide some more context, Tarkov uses a REST api for all marketplace and trading requests. Actually, a majority of the games requests, excluding those from gameplay, are done over this API. The one thing is this API requires an active session to be established prior to any requests being processed. When you log in through the launcher, this session is created and is subsequently passed off to the game application when you click play. Initially, the API was on the HTTP protocol, so as long as I had the session, I could send the request from just about anywhere. With the later updates, this was moved to TLS v1.0 and TLS v1.2, HTTPS. HTTPS forced me to take a different route, but that will come up down the line.
+# Owning Tarkov's Marketplace
+
+Escape From Tarkov is a first-person shooter in its alpha stage of development.
+It has an in-game economy with unique characteristics that help drive a very 
+stable in-game marketplace. The marketplace allows players to buy and sell 
+items they find while in game. Item prices each have a stable supply and 
+demand which drives the market price to a stable price point. Some players 
+list below market rate in order to sell their items as quickly as possible. 
+This provided me with an opportunity, can I write software that will detect 
+these listings and buy them up before anyone else? If so, I can turn a
+constant profit off the market place, providing a seemingly endless supply of
+cash. So that is what I did.
+
+To provide some more context, Tarkov uses a REST api for all marketplace
+and trading requests. Actually, a majority of the games requests,
+excluding those from gameplay, are done over this API.
+The one thing is this API requires an active session to be established prior
+to any requests being processed. When you log in through the launcher, this
+session is created and is subsequently passed off to the game application when
+you click play. Initially, the API was on the HTTP protocol, so as long as I
+had the session, I could send the request from just about anywhere. With the
+later updates, this was moved to TLS v1.0 and TLS v1.2, HTTPS. HTTPS forced me
+to take a different route, but that will come up down the line.
 
 With that intro out of the way, let's own the market.
 
-Initially, I needed to know what the requests for the market were. For this, I used <a href="https://www.wireshark.org/">Wireshark</a> and <a href="https://www.telerik.com/fiddler">Fiddler 4</a>, which provided me all the packet capturing needed to begin decoding the messages. Oh and one more issue, these packets are clearly packed or encrypted, here is what I noticed in Fiddler 4.<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/vWxYOlYH/LoSI72l1F7N5Wcc3.png" width="777" height="531" />
+---
 
-Okay, so they are packed or encrypted, but with what? The request header does not have a tag signifying the Content-Encoding. So in the case that I found something useful, which I did not, I went into the Tarkov application to find where the requests are sent. For this, I used dnSpy, as Tarkov is a Unity-based game. After some time, here is one of a few web request modules I found.
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/5h0GI8TE/wyUVYDz0c4dR7uyl.png" width="1248" height="112" />
+Initially, I needed to know what the requests for the market were.
+For this, I used [Wireshark] and [Fiddler 4], which provided me all the packet
+capturing needed to begin decoding the messages. Oh and one more issue, these
+packets are clearly packed or encrypted, here is what I noticed in Fiddler 4.
 
-Sweet! We can see the game uses SimpleZLib on a JSON formatted string. So now to take our Fiddler / Wireshark data and decompress with ZLib. For Fiddler, I followed this <a href="https://stackoverflow.com/questions/37830092/how-to-decode-response-with-zlib-in-fiddler">Stack Overflow</a> post w/ a few tweaks to automatically decode Tarkov requests. This lets me look at the request I sent, and the response I received both in JSON string format. For Wireshark, I created software to take the RAW TCP Stream data, and apply ZLib decompression to the content bodies. This works well, but Fiddler's is better, so here is the fiddler code snippet and an example.<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/5KyZNiLm/NveH72uQQ4ocSVCo.png" width="507" height="128" />
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/6GivlSJZ/OOydNMuqOZ3TU4XC.png" width="775" height="429" />
+![fiddler](https://ss.lystic.zip/Legacy/vWxYOlYH/LoSI72l1F7N5Wcc3.png)
 
-Alright, so now I went ahead and decoded every packet required to view, buy, list, sell, and collect money, everything needed to automate the process.
+Okay, so they are packed or encrypted, but with what?
+The request header does not have a tag signifying the Content-Encoding. 
+So in the case that I found something useful, which I did not, I went into the
+Tarkov application to find where the requests are sent. For this, I used [dnSpy],
+as Tarkov is a Unity-based game. After some time, here is one of a few web request modules I found.
 
-This all got a bit more complicated with the move to HTTPS, but with Fiddler 4's HTTPS support and a few other tweaks, you can still recover these packets and their data.
+![dnspy](https://ss.lystic.zip/Legacy/5h0GI8TE/wyUVYDz0c4dR7uyl.png)
 
-Okay, so we have a bunch of packets, we just need to fire them off to Tarkov's API. This section will cover the two methods I created. This initial method worked for the HTTP endpoint but is no longer viable with the move to HTTPS. I have included it because it's cool.
+Sweet! We can see the game uses **SimpleZLib** on a JSON formatted string.
+So now to take our Fiddler / Wireshark data and decompress with ZLib.
+For Fiddler, I followed this [StackOverflow] post w/ a few tweaks to
+automatically decode Tarkov requests. This lets me look at the request I sent,
+and the response I received both in JSON string format. For Wireshark,
+I created software to take the RAW TCP Stream data, and apply ZLib decompression
+to the content bodies. This works well, but Fiddler's is better, so here is the
+fiddler code snippet and an example.
+
+![code](https://ss.lystic.zip/Legacy/5KyZNiLm/NveH72uQQ4ocSVCo.png)
+
+![example](https://ss.lystic.zip/Legacy/6GivlSJZ/OOydNMuqOZ3TU4XC.png)
+
+Alright, so now I went ahead and decoded every packet required to view, buy,
+list, sell, and collect money, everything needed to automate the process.
+
+This all got a bit more complicated with the move to HTTPS, 
+but with Fiddler 4's HTTPS support and a few other tweaks, 
+you can still recover these packets and their data.
+
+---
+
+Okay, so we have a bunch of packets, we just need to fire them off to 
+Tarkov's API. This section will cover the two methods I created. 
+This initial method worked for the HTTP endpoint but is no longer viable
+with the move to HTTPS. I have included it because it's cool.
 
 So we know the game has the session. So it must exist in memory. So we need to figure out where it is at. To do this, I first loaded up Tarkov and dumped all of the Unity objects from the GameObjectManager to know what objects are active at startup. Clearly, the session must be in an object here, because at this point we just fired off a bunch of requests to get character and profile data.
 
@@ -88,3 +146,10 @@ I won't show Keep-Alive because its quite simple, but here is the hardware activ
 So that is the real meat of a tarkov market bot. Nothing really complex, but a lot of very interesting code and methods for reaching it.
 
 Thanks for reading this far lmao.
+
+{/* reference links */}
+
+[Wireshark]: https://www.wireshark.org/
+[Fiddler 4]: https://www.telerik.com/fiddler/fiddler-classic
+[dnSpy]: https://github.com/dnSpy/dnSpy
+[StackOverflow]: https://stackoverflow.com/questions/37830092/how-to-decode-response-with-zlib-in-fiddler
