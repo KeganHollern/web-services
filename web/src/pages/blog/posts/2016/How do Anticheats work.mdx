@@ -35,8 +35,7 @@ Another key to a well made anticheat is using local variables effectively. It is
 
 <em>(left) I create the variable _netID and _banvar in the lowest scope.</em><img class="alignleft" src="https://i.gyazo.com/385b370ca229d10b0dbe84ccd8cc305f.png" width="1254" height="391" />
 
-<em>(below) I access _netID and _banvar within my _buildPacket function that is called several scopes up from the variables
-</em>
+<em>(below) I access _netID and _banvar within my _buildPacket function that is called several scopes up from the variables</em>
 
 By using local variables I can say for certain that these values will never be modified from an external source.
 
