@@ -10,6 +10,8 @@ func Register(e *echo.Echo) {
 	api := e.Group("/api", catch)
 	api.Any("*", func(c echo.Context) error { return echo.ErrNotImplemented }) // any unimplemented api request
 
+	// TODO: rate limiter middleware on API requests
+
 	// register /api/secret
 	secret.Register(api)
 	upload.Register(api)
