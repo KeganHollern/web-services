@@ -12,9 +12,15 @@ Of the well-defined services, here are their "completion" progress:
 
 - [x] home: homepage
 - [ ] blog: personal blog
-- [ ] secret: zero-trust secret sharing service
+- [x] secret: zero-trust secret sharing service
 - [ ] edit: collaborative markdown editor
 - [ ] swap: fee-less uniswap frontend alternative
+- [ ] upload: password protected file uploader (maybe encrypted one day?)
+
+## Dependencies
+
+None yet. Soon maybe Mongo? I want to horizontally scale
+my website.
 
 ## Future Services
 
