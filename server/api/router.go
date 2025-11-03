@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/KeganHollern/web-services/server/api/secret"
+	"github.com/KeganHollern/web-services/server/api/upload"
 	"github.com/labstack/echo/v4"
 )
 
@@ -11,6 +12,7 @@ func Register(e *echo.Echo) {
 
 	// register /api/secret
 	secret.Register(api)
+	upload.Register(api)
 }
 
 // Echo Middleware.
