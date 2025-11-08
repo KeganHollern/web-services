@@ -10,19 +10,29 @@ import (
 )
 
 const (
-	dataPath       = "/data"
-	secretPassword = "kegan123"
+	dataPath = "/data"
 )
+
+type uploader struct {
+	password string
+}
 
 func Register(api *echo.Group) {
 	uploadGroup := api.Group("/upload")
 
-	uploadGroup.PUT("/", uploadHandler)
+	uploadGroup.PUT("/", uploader{
+		password: os.Getenv("upload_password"),
+	}.uploadHandler)
 }
 
-func uploadHandler(c echo.Context) error {
+func (u uploader) uploadHandler(c echo.Context) error {
+	if u.password == "" {
+		// if no password, upload is disabled
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid secret password")
+	}
+
 	password := c.Request().Header.Get("X-Secret-Password")
-	if password != secretPassword {
+	if password != u.password {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid secret password")
 	}
 
