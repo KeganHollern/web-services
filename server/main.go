@@ -17,6 +17,9 @@ func main() {
 	// Global Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+
+	// NOTE: nginx also restricts body size, this is just a second layer of protection
+	// to prevent large requests from hitting the server.
 	e.Use(middleware.BodyLimit("100M"))
 
 	// Serve react SPA
