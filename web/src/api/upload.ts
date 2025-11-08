@@ -11,6 +11,7 @@ export async function uploadFile(password: string, file: File): Promise<{ messag
                 'X-Secret-Password': password,
                 'Content-Type': 'multipart/form-data',
             },
+            timeout: 60000, // 60 seconds timeout
         });
         return response.data as { message: string; path: string };
     } catch (error: unknown) {

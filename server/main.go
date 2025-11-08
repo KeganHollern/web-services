@@ -17,6 +17,7 @@ func main() {
 	// Global Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.BodyLimit("100M"))
 
 	// Serve react SPA
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
