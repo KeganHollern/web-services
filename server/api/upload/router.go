@@ -51,7 +51,11 @@ func (u uploader) uploadHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	dstPath := filepath.Join(dataPath, file.Filename)
+	// ensure filename is safe to use
+	cleanedFilename := filepath.Base(file.Filename)
+	cleanedFilename = filepath.Clean(cleanedFilename)
+
+	dstPath := filepath.Join(dataPath, cleanedFilename)
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

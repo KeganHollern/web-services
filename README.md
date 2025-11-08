@@ -22,6 +22,11 @@ Of the well-defined services, here are their "completion" progress:
 None yet. Soon maybe Mongo? I want to horizontally scale
 my website.
 
+## Configuration
+
+See [server/README.md](server/README.md) for server configuration.
+See [client/README.md](client/README.md) for client configuration.
+
 ## Future Services
 
 - p2p screen sharing (using chrome api & p2p webrtc to avoid sending data to my server)
