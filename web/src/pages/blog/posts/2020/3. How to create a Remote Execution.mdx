@@ -1,3 +1,13 @@
+---
+title: How to create a Remote Execution
+description: |
+    Arma 3 Remote Execution is considered one of the few peaks
+    of script-based cheating. For server owners, cheaters...
+slug: how-to-create-a-remote-execution
+---
+
+# How to create a Remote Execution
+
 Arma 3 Remote Execution is considered one of the few peaks of script-based cheating. For server owners, cheaters with remote executions can be a real pain. It is important that every script developer understand how remote executions are created so they can avoid allowing these vulnerabilities to exist in the first place. Just as a heads up, this post will assume you have a pretty decent understanding of scripting in the <a href="https://community.bistudio.com/wiki/Multiplayer_Scripting" target="_blank" rel="noopener noreferrer">multiplayer context</a>.
 
 When I talk about Remote Execution, I am referring to the process of executing arbitrary SQF on a remote machine. Ideally, we want to execute this arbitrary code on the server, as we'll have more power over the state of the server from there, however, Remote Execution can also take place on a client to client basis, which also has it's own merits. Many of the most insidious scripted cheats have only been possible because of a remote execution vulnerability on the server. An example I would like to point out is the Kill All script. Yes, there are many ways to do it, but by far the most effective is to execute the following code on every client: <em>player setDamage 1;</em>.

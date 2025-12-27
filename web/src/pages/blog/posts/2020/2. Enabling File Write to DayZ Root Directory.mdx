@@ -1,3 +1,13 @@
+---
+title: Enabling File Write to DayZ Root Directory
+description: |
+    So my recent work on DayZ BR has lead to me creating my 
+    own ban management system. The idea is all server bans...
+slug: enabling-file-write-to-dayz-root-directory
+---
+
+# Enabling File Write to DayZ Root Directory
+
 So my recent work on <a href="https://dayzbr.dev/" rel="noopener noreferrer" target="_blank">DayZ BR</a> has lead to me creating my own ban management system. The idea is all server bans will be aggregated into a database and synced between all of my official servers. In order to sync bans, I opted to follow the same method infiSTAR and Fini use for their Arma 3 anticheat solutions by writing directly to the ban.txt file on the server. 
 
 Unlike in Arma 3, Extensions are not supported. So the solution infiSTAR and Fini came up with, using an extension to write to this file, won't work for us without creating an extension system ourselves. While this would be cool, it'd be impractical to maintain. Another solution could be using functionality similar to Arma 3's <em>serverCommand</em>. Sadly, the technology just isn't there yet for DayZ. So we can't directly interact with server commands. DayZ does have two systems that Arma does not. We can read and write to disk, and we can easily send and get results from Web Requests.
