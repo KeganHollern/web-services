@@ -25,7 +25,10 @@ jump through and assume you understand the basic structure and syntax of it.
 
 Setting off, the first thing I wanted to find were some examples of SHA256
 implementations in a few different languages. I found these two online that I
-found really easy to understand. The C# one can be <a href="https://www.programmingalgorithms.com/algorithm/sha256/" target="_blank" rel="noopener noreferrer">found here</a>. The C one can be <a href="https://github.com/itszero/librvm-course-impl/blob/master/sha256.c" target="_blank" rel="noopener noreferrer">found here</a>.
+found really easy to understand:
+
+- [C# SHA256 Example]
+- [C SHA256 Example]
 
 From these examples, we learn three important things. 
 
@@ -36,7 +39,7 @@ From these examples, we learn three important things.
 The reason I say "notably Xor" is because, although DayZ does have bitwise
 operators, it is lacking the xor operator. So the first thing we'll have to do
 is create our own Xor operation. I was in luck, this is a problem that has
-already been solved. I copied the xor implementation <a href="https://www.geeksforgeeks.org/find-xor-of-two-number-without-using-xor-operator/" target="_blank" rel="noopener noreferrer">from here</a>. 
+already been solved. I read this post to learn how to [XOR without XOR]. 
 
 Here is that Xor function in EnScript:
 
@@ -55,8 +58,8 @@ The goal of this function is to completely recreate a bitwise xor on the 32-bit
 integers supplied, flipping the bits as necessary. Thankfully, in DayZ, our
 bitwise operations work as expected, and so this function does exactly recreate xor.
 
-On to item number 2, unsigned integers. DayZ has absolutely nothing for handling
-unsigned integers. So we'll have to recreate the functionality ourselves.
+DayZ has absolutely nothing for handling unsigned integers. 
+So we'll have to recreate the functionality ourselves.
 Looking at the source code for SHA256, we can see there are only a few unsigned
 integer operations that we need to consider. Addition, Greater Than, and Right Shift.
 For Addition, I found a <a href="https://stackoverflow.com/questions/4068033/add-two-integers-using-only-bitwise-operators" rel="noopener noreferrer" target="_blank">Stack Overflow post</a> with the exact functionality I need. 
@@ -535,3 +538,6 @@ class SHA256
 
 {/* reference links */}
 [Wikipedia]: https://en.wikipedia.org/wiki/SHA-2
+[C# SHA256 Example]: https://www.programmingalgorithms.com/algorithm/sha256/
+[C SHA256 Example]: https://github.com/itszero/librvm-course-impl/blob/master/sha256.c
+[XOR without XOR]: https://www.geeksforgeeks.org/find-xor-of-two-number-without-using-xor-operator/
