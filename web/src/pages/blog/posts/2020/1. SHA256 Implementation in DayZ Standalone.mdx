@@ -1,0 +1,535 @@
+---
+title: SHA256 Implementation in DayZ Standalone 
+description: |
+    In the last few days, I decided to do something for no
+    reason other than the challenge. I decided I wanted...
+slug: sha256-implementation-in-dayz-standalone
+---
+
+> SHA-2 (Secure Hash Algorithm 2) is a set of cryptographic hash functions
+> designed by the United States National Security Agency (NSA) and first
+> published in 2001. - [Wikipedia]
+
+In the last few days, I decided to do something for no reason other than the challenge.
+I decided I wanted to implement SHA256 into DayZ Standalone using EnScript.
+At first, I imagined this wouldn't be much of a challenge, that it would be a
+great way for me to learn both SHA256 and more EnScript. However, there were a
+lot more moving parts than I anticipated. Sorry for being light on some of the
+bitwise operations, I really don't have much experience writing about them and
+don't feel like trying to describe how they work in this post.
+
+To start, I recommend you do get some exposure to DayZ modding. I am going to
+jump through and assume you understand the basic structure and syntax of it.
+
+Setting off, the first thing I wanted to find were some examples of SHA256
+implementations in a few different languages. I found these two online that I
+found really easy to understand. The C# one can be <a href="https://www.programmingalgorithms.com/algorithm/sha256/" target="_blank" rel="noopener noreferrer">found here</a>. The C one can be <a href="https://github.com/itszero/librvm-course-impl/blob/master/sha256.c" target="_blank" rel="noopener noreferrer">found here</a>.
+
+From these examples, we learn three important things. 
+
+1. SHA256 uses a lot of bitwise operations, notably Xor
+2. We need to use unsigned integers
+3. We need to use unsigned chars
+
+The reason I say "notably Xor" is because, although DayZ does have bitwise
+operators, it is lacking the xor operator. So the first thing we'll have to do
+is create our own Xor operation. I was in luck, this is a problem that has
+already been solved. I copied the xor implementation <a href="https://www.geeksforgeeks.org/find-xor-of-two-number-without-using-xor-operator/" target="_blank" rel="noopener noreferrer">from here</a>. 
+
+Here is that Xor function in EnScript:
+
+```c
+static int BITWISE_XOR(int x, int y)
+{
+    int a = (x | y);
+    int b = ~x;
+    int c = ~y;
+    int d = (b | c);
+    return (a & d);
+}
+```
+
+The goal of this function is to completely recreate a bitwise xor on the 32-bit
+integers supplied, flipping the bits as necessary. Thankfully, in DayZ, our
+bitwise operations work as expected, and so this function does exactly recreate xor.
+
+On to item number 2, unsigned integers. DayZ has absolutely nothing for handling
+unsigned integers. So we'll have to recreate the functionality ourselves.
+Looking at the source code for SHA256, we can see there are only a few unsigned
+integer operations that we need to consider. Addition, Greater Than, and Right Shift.
+For Addition, I found a <a href="https://stackoverflow.com/questions/4068033/add-two-integers-using-only-bitwise-operators" rel="noopener noreferrer" target="_blank">Stack Overflow post</a> with the exact functionality I need. 
+For Greater Than, I found a <a href="https://stackoverflow.com/questions/10096599/bitwise-operations-equivalent-of-greater-than-operator" rel="noopener noreferrer" target="_blank">Stack Overflow post</a> and borrowed just a small snippet of the example provided.
+
+For Right Shift, this method I came up with on my own. Let me try to describe
+this issue in a bit more detail. DayZ uses signed integers, with signed integers
+the last bit is a flag for the sign, a 1 bit represents a negative number.
+When right shifting signed integers, the sign is kept, meaning the last bit
+is always 1, and every shift to the right will shift more 1s. Here is a great
+diagram that helped me understand it.
+
+![img](https://ss.lystic.zip/Legacy/POHdaLHq/clncu0Yo8o2R8RlR.png) 
+
+In this image, the b7 bit is being duplicated and shifted. For unsigned integers,
+this right shift does not do this duplication step. Instead, a 0 is placed into
+the bit we shift away from, much like the left shift shown above. In order to
+recreate an unsigned right shift in DayZ, we need to undo this duplication step.
+To do this, we shift right once, and set the left most bit, our sign bit, to 0.
+From this point on, any further shifts to the right will place a 0 into the left
+bit, matching the functionality of unsigned integers. 
+
+Here is that functionality in DayZ:
+
+```c
+static uint ShiftRight(uint x, int amount)
+{
+    if(amount <= 0)
+        return x;
+
+    uint value = (x >> 1) & 0x7FFFFFFF;
+    uint extra_shifts = amount - 1;
+    if(extra_shifts > 0)
+        value = (value >> extra_shifts);
+
+    return value;
+}
+```
+
+After we shift right once, we use `& 0x7FFFFFFF` to flip only the very last bit
+to 0, every other bit will retain its value. From this point on, we shift right
+the remaining amount and return our value. 
+
+Here is the complete unsigned integer implementation. Note that you do see the
+usage of the byte object, I'll explain that next. You'll also see some of the
+functionality for SHA256, these you can find in the C# and C examples as well.
+
+```c
+//uint definition
+typedef int uint;
+class UInt32
+{
+    //A + B
+    static uint Add(uint a, uint b)
+    {
+        uint carry = a & b;
+        uint result = BITWISE_XOR(a, b);
+        while(carry != 0)
+        {
+            uint shiftedcarry = carry << 1;
+            carry = result & shiftedcarry;
+            result = BITWISE_XOR(result, shiftedcarry);
+        }
+        return result;
+    }
+    // A > B
+    static bool IsGt(uint a, uint b)
+    {
+        uint ltb = ~a & b;
+        uint gtb = a & ~b;
+        ltb |= UInt32.ShiftRight(ltb,1);
+        ltb |= UInt32.ShiftRight(ltb,2);
+        ltb |= UInt32.ShiftRight(ltb,4);
+        ltb |= UInt32.ShiftRight(ltb,8);
+        ltb |= UInt32.ShiftRight(ltb,16);
+        uint isGt = gtb & ~ltb;
+        return (isGt != 0); //non-zero if A > B
+    }
+    // A < B
+    static bool IsLt(uint a, uint b)
+    {
+        return UInt32.IsGt(b, a);
+    }
+    // X >> Amount
+    static uint ShiftRight(uint x, int amount)
+    {
+        if(amount <= 0)
+            return x;
+
+        uint value = (x >> 1) & 0x7FFFFFFF;
+        uint extra_shifts = amount - 1;
+        if(extra_shifts > 0)
+            value = (value >> extra_shifts);
+
+        return value;
+    }
+    //--- unsigned bitwise operations
+    static uint ROTLEFT(uint a, byte b)
+    {
+        b = UInt8.Convert(b);
+
+        uint y = (a << b);
+        uint x = (32 - b);
+        uint z = UInt32.ShiftRight(a,x);
+        return (y | z);
+    }
+    static uint ROTRIGHT(uint a, byte b)
+    {
+        b = UInt8.Convert(b); //ensure the byte value is clamped
+
+        uint y = UInt32.ShiftRight(a, b);
+        uint x = (32 - b);
+        uint z = (a << x); //left shift works on Unsigned Integers
+        return (y | z);
+    }
+    static uint CH(uint x, uint y, uint z)
+    {
+        uint a = (x & y);
+        uint b = ~x;
+        uint c = (b & z);
+        return BITWISE_XOR(a, c); // a ^ c
+    }
+    static uint MAJ(uint x, uint y, uint z)
+    {
+        uint a = x & y;
+        uint b = x & z;
+        uint c = y & z;
+        return BITWISE_XOR(a, BITWISE_XOR(b, c)); //a ^ b ^ c (left-right associativity)
+    }
+    static uint EP0(uint x)
+    {
+        uint a = UInt32.ROTRIGHT(x, 2);
+        uint b = UInt32.ROTRIGHT(x, 13);
+        uint c = UInt32.ROTRIGHT(x, 22);
+        return BITWISE_XOR(a, BITWISE_XOR(b, c)); //a ^ b ^ c
+    }
+    static uint EP1(uint x)
+    {
+        uint a = UInt32.ROTRIGHT(x, 6);
+        uint b = UInt32.ROTRIGHT(x, 11);
+        uint c = UInt32.ROTRIGHT(x, 25);
+        return BITWISE_XOR(a, BITWISE_XOR(b, c)); //a ^ b ^ c
+    }
+    static uint SIG0(uint x)
+    {
+        uint a = UInt32.ROTRIGHT(x, 7);
+        uint b = UInt32.ROTRIGHT(x, 18);
+        uint c = UInt32.ShiftRight(x, 3);
+        return BITWISE_XOR(a, BITWISE_XOR(b, c)); //a ^ b ^ c
+    }
+    static uint SIG1(uint x)
+    {
+        uint a = UInt32.ROTRIGHT(x, 17);
+        uint b = UInt32.ROTRIGHT(x, 19);
+        uint c = UInt32.ShiftRight(x, 10);
+        return BITWISE_XOR(a, BITWISE_XOR(b, c)); //a ^ b ^ c
+    }
+}
+```
+
+Lastly, we have to cover unsigned chars, or bytes. This one was rather simple,
+all we need to ensure when working with bytes is that we clamp the 32-bit integer
+to just 8 bits. The functionality below achieves this.
+
+```c
+//byte definition
+typedef int byte;
+class UInt8 
+{
+    static byte Convert(int value)
+    {
+        return (value & 255); //00000000000000000000000011111111 (only the first 8 bits will retain their value)
+    }
+}
+```
+
+Okay, now that the major problems with our data are resolved, we need to come up
+with functionality for our ASCII encoding. We need to convert ASCII to bytes,
+bytes back to ASCII, and even come up with a way to render the hex string so we
+can see that sweet hash text. 
+
+While DayZ does have a function called `ToAscii`, it doesn't work. Thankfully,
+the `Hash` method does exactly what we'd expect the other method to do. So if
+we take a character like "A" and run `Hash()` on it, we'll get the ASCII decimal
+value of that character. We can then use our byte class to convert that integer
+into a byte! So now that we can get a byte from a character, we can get a byte
+array by looping over a string. Now we have to come up with the reverse, we need
+to take a hex value, like `0xFF` and actually convert that to a string "FF".
+This is not implemented in DayZ, but we can easily handle this with some division,
+and a modulus. 
+
+Check out the Encoding Implementation to see the functions in detail:
+
+```c
+//encoding functionality
+class Encoding 
+{
+    static ref array<byte> GetBytes(string str)
+    {
+        ref array<byte> result = new array<byte>();
+        for(int i = 0; i < str.Length();i++)
+        {
+            string char = str.Get(i);
+            byte value = Encoding.GetByte(char);
+            result.Insert(value);
+        }
+        return result;
+    }
+    static byte GetByte(string character)
+    {
+        string element = character.Get(0); //if we send several, just use the first character
+        int ascii = element.Hash();
+        return UInt8.Convert(ascii);
+    }
+    static string ToHex(int ascii)
+    {
+        byte value = UInt8.Convert(ascii); //get our value as a byte
+        array<string> characters = {"0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F"};
+        int first = Math.Floor(ascii / 16);
+        int last = ascii % 16;
+        return (characters.Get(first) + characters.Get(last));
+    }
+    static string FromBytesHex(notnull ref array<byte> data)
+    {
+        string hexStr = "";
+        for(int i = 0; i < data.Count(); i++)
+        {
+            hexStr += Encoding.ToHex(data[i]);
+        }
+        return hexStr;
+    }
+}
+```
+
+Thankfully, now we can start writing our SHA256 implementation! We have all the
+arithmetic and bit logic that we need, and all of the string encoding that'll be
+necessary to hash strings. To start, we need a SHA256 Context object. This will
+contain all of our data that we're actually manipulating to calculate the hash.
+I added a constructor here to pre-initialize our arrays, to size, filled with 0s.
+
+```c
+class SHA256_CTX
+{
+    ref array<byte> data;
+    uint datalen;
+    ref array<uint> bitlen;
+    ref array<uint> state;
+
+    void SHA256_CTX()
+    {
+        int i;
+
+        datalen = 0;
+        data = new array<byte>();
+        bitlen = new array<uint>();
+        state = new array<uint>();
+        //pre-fill our arrays with 0s
+        for(i = 0; i < 64; i++) data.Insert(0);
+        for(i = 0; i < 2; i++) bitlen.Insert(0);
+        for(i = 0; i < 8; i++) state.Insert(0);
+    } 
+}
+```
+
+Now for the meat of the algorithm. I am not going to write up how SHA256 works,
+you can find another post for that level of detail. I would like to point out,
+scrolling to the bottom you can see the `static` functions that I wrote to act
+as a user-friendly front end for this implementation. 
+
+```c
+class SHA256
+{
+    private ref array<uint> k = {
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2     
+    };
+    private ref SHA256_CTX ctx;
+    private ref array<byte> hash;
+    private bool finished;
+
+
+    void SHA256()
+    {
+        this.ctx = new SHA256_CTX();
+        this.hash = new array<byte>();
+        for(int i = 0; i < 32; i++) this.hash.Insert(0);
+    }
+    ref array<byte> Compute(notnull ref array<byte> data, uint length)
+    {
+        if(finished)
+        {
+            Error("SHA256 Object Already Computed! Construct a new object to calculate a new hash! Use the static helper functions!")
+            return this.hash;
+        }
+
+        Init();
+        Update(data, length);
+        Final();
+
+        return this.hash;
+    }
+
+    private void Init()
+    {
+        ctx.datalen = 0;
+        ctx.bitlen[0] = 0;
+        ctx.bitlen[1] = 0;
+        ctx.state[0] = 0x6a09e667;
+        ctx.state[1] = 0xbb67ae85;
+        ctx.state[2] = 0x3c6ef372;
+        ctx.state[3] = 0xa54ff53a;
+        ctx.state[4] = 0x510e527f;
+        ctx.state[5] = 0x9b05688c;
+        ctx.state[6] = 0x1f83d9ab;
+        ctx.state[7] = 0x5be0cd19;
+    }
+    private void Update(notnull ref array<byte> data, uint len)
+    {
+        for (uint i = 0; i < len; ++i)
+        {
+            ctx.data[ctx.datalen] = data[i];
+            ctx.datalen++;
+
+            if (ctx.datalen == 64)
+            {
+                Transform(ctx.data);
+
+                array<uint> results = DBL_INT_ADD(ctx.bitlen[0], ctx.bitlen[1], 512);
+                ctx.bitlen[0] = results[0];
+                ctx.bitlen[1] = results[1];
+
+                ctx.datalen = 0;
+            }
+        }
+    }
+    private void Transform(notnull ref array<byte> data)
+    {
+        uint a, b, c, d, e, f, g, h, i, j, t1, t2;
+        //initialize M to be filled with 64 0s
+        ref array<uint> m = new array<uint>();
+        for(int m_itr = 0; m_itr < 64; m_itr++) m.Insert(0);
+
+        j = 0;
+        for (i = 0; i < 16; ++i)
+        {
+            uint l1_a = data[j] << 24;
+            uint l1_b = data[j + 1] << 16;
+            uint l1_c = data[j + 2] << 8;
+            uint l1_d = data[j + 3];
+            m[i] = (l1_a | l1_b | l1_c | l1_d);
+            j += 4
+        }
+        for (; i < 64; ++i)
+        {
+            uint l2_a = m[i - 2];
+            uint l2_b = UInt32.SIG1(l2_a);
+            uint l2_c = m[i - 7];
+            uint l2_d = m[i - 15];
+            uint l2_e = UInt32.SIG0(l2_d);
+            uint l2_f = m[i - 16];
+            m[i] = l2_b + l2_c + l2_e + l2_f;
+        }
+        a = ctx.state[0];
+        b = ctx.state[1];
+        c = ctx.state[2];
+        d = ctx.state[3];
+        e = ctx.state[4];
+        f = ctx.state[5];
+        g = ctx.state[6];
+        h = ctx.state[7];
+        for (i = 0; i < 64; ++i)
+        {
+            t1 = UInt32.Add(UInt32.Add(UInt32.Add(UInt32.Add(h, UInt32.EP1(e)), UInt32.CH(e, f, g)), k[i]), m[i]);//h + EP1(e) + CH(e, f, g) + k[i] + m[i];
+            t2 = UInt32.Add(UInt32.EP0(a), UInt32.MAJ(a, b, c));//EP0(a) + MAJ(a, b, c);
+            h = g;
+            g = f;
+            f = e;
+            e = UInt32.Add(d,t1);//d + t1;
+            d = c;
+            c = b;
+            b = a;
+            a = UInt32.Add(t1, t2);//t1 + t2;
+        }
+        ctx.state[0] = ctx.state[0] + a;
+        ctx.state[1] = ctx.state[1] + b;
+        ctx.state[2] = ctx.state[2] + c;
+        ctx.state[3] = ctx.state[3] + d;
+        ctx.state[4] = ctx.state[4] + e;
+        ctx.state[5] = ctx.state[5] + f;
+        ctx.state[6] = ctx.state[6] + g;
+        ctx.state[7] = ctx.state[7] + h;
+    }
+    private void Final()
+    {
+        uint i = ctx.datalen;
+        if (ctx.datalen < 56)
+        {
+            ctx.data[i++] = 0x80;
+
+            while (i < 56)
+                ctx.data[i++] = 0x00;
+        }
+        else
+        {
+            ctx.data[i++] = 0x80;
+
+            while (i < 64)
+                ctx.data[i++] = 0x00;
+
+            Transform(ctx.data);
+        }
+        array<uint> result = DBL_INT_ADD(ctx.bitlen[0], ctx.bitlen[1], ctx.datalen * 8);
+        ctx.bitlen[0] = result[0];
+        ctx.bitlen[1] = result[1];
+        ctx.data[63] = UInt8.Convert(ctx.bitlen[0]);
+        ctx.data[62] = UInt8.Convert(UInt32.ShiftRight(ctx.bitlen[0], 8));
+        ctx.data[61] = UInt8.Convert(UInt32.ShiftRight(ctx.bitlen[0], 16));
+        ctx.data[60] = UInt8.Convert(UInt32.ShiftRight(ctx.bitlen[0], 24));
+        ctx.data[59] = UInt8.Convert(ctx.bitlen[1]);
+        ctx.data[58] = UInt8.Convert(UInt32.ShiftRight(ctx.bitlen[1], 8));
+        ctx.data[57] = UInt8.Convert(UInt32.ShiftRight(ctx.bitlen[1], 16));
+        ctx.data[56] = UInt8.Convert(UInt32.ShiftRight(ctx.bitlen[1], 24));
+        Transform(ctx.data);
+        for (i = 0; i < 4; ++i)
+        {
+            int shift = 24 - (i * 8);
+            hash[i] = UInt8.Convert(UInt32.ShiftRight(ctx.state[0], shift));
+            hash[i + 4] = UInt8.Convert(UInt32.ShiftRight(ctx.state[1], shift));
+            hash[i + 8] = UInt8.Convert(UInt32.ShiftRight(ctx.state[2], shift));
+            hash[i + 12] = UInt8.Convert(UInt32.ShiftRight(ctx.state[3], shift));
+            hash[i + 16] = UInt8.Convert(UInt32.ShiftRight(ctx.state[4], shift));
+            hash[i + 20] = UInt8.Convert(UInt32.ShiftRight(ctx.state[5], shift));
+            hash[i + 24] = UInt8.Convert(UInt32.ShiftRight(ctx.state[6], shift));
+            hash[i + 28] = UInt8.Convert(UInt32.ShiftRight(ctx.state[7], shift));
+        }
+    }
+
+    //This function treats A and B as one 64bit unsigned integer and adds C to it
+    private array<uint> DBL_INT_ADD(uint a, uint b, uint c)
+    {
+        uint max_int = 0xffffffff;
+        uint test = max_int - c;
+        if(UInt32.IsGt(a, test)) //if a > test (unsigned comparison)
+        {
+            ++b;
+        }
+
+        a = UInt32.Add(a, c); // A + C using unsigned math
+
+        ref array<uint> results = new array<uint>();
+        results.Insert(a);
+        results.Insert(b);
+        return results;
+    }
+    
+
+    static ref array<byte> ComputeArray(notnull ref array<byte> data, uint length)
+    {
+        SHA256 crypto = new SHA256();
+        return crypto.Compute(data, length);
+    }
+    static string ComputeString(string data)
+    {
+        ref array<byte> data_array = Encoding.GetBytes(data);
+        ref array<byte> hash = SHA256.ComputeArray(data_array, data.Length());
+        return Encoding.FromBytesHex(hash);
+    }
+}
+```
+
+{/* reference links */}
+[Wikipedia]: https://en.wikipedia.org/wiki/SHA-2
