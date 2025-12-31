@@ -543,22 +543,38 @@ NOTE: GVAR(actions) == "keybinding_actions"
  */
 ```
 
-Our first step is to get the registry, or create a new one, for <em>cba_keybinding_registry_v3</em>. Next, we must find our action in the registry. If our item does exist, we must set the value in the registry for that index to an exploitable payload. Remember, the payload must be an array within an array as <em>CBA_fnc_getKeybind </em>accesses index 0 before returning. If our item does not exist, we just have to push it back into the registry.
+Our first step is to get the registry, or create a new one, for `cba_keybinding_registry_v3`. 
+Next, we must find our action in the registry. If our item does exist, we must set
+the value in the registry for that index to an exploitable payload. Remember,
+the payload must be an array within an array as `CBA_fnc_getKeybind` accesses
+index 0 before returning. If our item does not exist, we just have to push it
+back into the registry.
 
-And that is it. Now if we load up a game with TFAR and press, in my example, SHIFT, it'll execute the payload.
+And that is it. Now if we load up a game with TFAR and press, in my example,
+SHIFT, it'll execute the payload.
 
-As always, the source for my exploit can be found on my hastebin <a href="https://haste.lystic.dev/pujaqecoxi.cs" target="_blank" rel="noopener noreferrer">here</a>.
+---
 
-So one last thing I wanted to cover was a unique feature of this exploit. My comments throughout the screenshots have been alluding to this. The way that getKeybind and addKeybind interact with the keybind data array, the values in it are actually directly linked to the profilenamespace. I covered this a while ago with my <a href="http://lystic.net/2016/07/29/advanced-script-variable-hiding/" target="_blank" rel="noopener noreferrer">advanced variable hiding</a> post. What it allows you to do is create a single line of code for this entire exploit.
+So one last thing I wanted to cover was a unique feature of this exploit. My
+comments throughout the screenshots have been alluding to this. The way that
+getKeybind and addKeybind interact with the keybind data array, the values in
+it are actually directly linked to the profilenamespace. I covered this a while
+ago with my [advanced variable hiding] post. What it allows you to do is create
+a single line of code for this entire exploit.
 
-This was shown to me by a friend, and I never actually wrote it, but here is a rough take that may or may not work.
+This was shown to me by a friend, and I never actually wrote it, but here is a
+rough take that may or may not work.
 
-<script src="https://gist.github.com/KeganHollern/3971a5e7e58cbf184eb297951370a2d7.js"></script>
+```sqf
+((["TFAR", "LRTransmit"] call cba_fnc_getKeybind select 5) select 1) set [0,{systemChat '123';false;}]
+```
 
-In theory, setting the value retrieved here, should link directly back to the profile, and update the profile with the new exploit. Like I said, I didn't test this, I just know that somehow it is possible.
+In theory, setting the value retrieved here, should link directly back to the
+profile, and update the profile with the new exploit. Like I said, I didn't test
+this, I just know that somehow it is possible.
 
 {/* reference links */}
-
 [Task Force Arrowhead Radio]: http://radio.task-force.ru/en/
 [Lazy Eval Exploit]: https://blog.lystic.dev/lazy-eval-execution-exploit/
 [createLocation]: https://community.bistudio.com/wiki/createLocation
+[advanced variable hiding]: https://blog.lystic.dev/2016/07/29/advanced-script-variable-hiding/
