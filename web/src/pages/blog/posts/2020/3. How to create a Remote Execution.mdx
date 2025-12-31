@@ -8,59 +8,284 @@ slug: how-to-create-a-remote-execution
 
 # How to create a Remote Execution
 
-Arma 3 Remote Execution is considered one of the few peaks of script-based cheating. For server owners, cheaters with remote executions can be a real pain. It is important that every script developer understand how remote executions are created so they can avoid allowing these vulnerabilities to exist in the first place. Just as a heads up, this post will assume you have a pretty decent understanding of scripting in the <a href="https://community.bistudio.com/wiki/Multiplayer_Scripting" target="_blank" rel="noopener noreferrer">multiplayer context</a>.
+Arma 3 Remote Execution is considered one of the few peaks of script-based cheating.
+For server owners, cheaters with remote executions can be a real pain. It is important
+that every script developer understand how remote executions are created so they
+can avoid allowing these vulnerabilities to exist in the first place. Just as a
+heads up, this post will assume you have a pretty decent understanding of 
+[Multiplayer Scripting].
 
-When I talk about Remote Execution, I am referring to the process of executing arbitrary SQF on a remote machine. Ideally, we want to execute this arbitrary code on the server, as we'll have more power over the state of the server from there, however, Remote Execution can also take place on a client to client basis, which also has it's own merits. Many of the most insidious scripted cheats have only been possible because of a remote execution vulnerability on the server. An example I would like to point out is the Kill All script. Yes, there are many ways to do it, but by far the most effective is to execute the following code on every client: <em>player setDamage 1;</em>.
+When I talk about Remote Execution, I am referring to the process of executing
+arbitrary SQF on a remote machine. Ideally, we want to execute this arbitrary
+code on the server, as we'll have more power over the state of the server from
+there, however, Remote Execution can also take place on a client to client basis,
+which also has it's own merits. Many of the most insidious scripted cheats have
+only been possible because of a remote execution vulnerability on the server.
+An example I would like to point out is the Kill All script. Yes, there are many
+ways to do it, but by far the most effective is to execute the following code on
+every client: `player setDamage 1;`.
 
-Remote Execution opens up loads of possibilities to scripted cheats. Many objects on the server cannot be easily manipulated due to <a href="https://community.bistudio.com/wiki/Multiplayer_Scripting#Locality" target="_blank" rel="noopener noreferrer">locality</a>. Certain script commands require arguments that must be local or have effects that only take place on the local machine. For an example of a local argument script, look at <a href="https://community.bistudio.com/wiki/setVelocity" target="_blank" rel="noopener noreferrer">setVelocity</a>. For an example of a local effect script, look at <a href="https://community.bistudio.com/wiki/setFace" target="_blank" rel="noopener noreferrer">setFace</a>. There is another state that some script commands require, the Server Execution property. <a href="https://community.bistudio.com/wiki/Category:Commands_requiring_server_side_execution" target="_blank" rel="noopener noreferrer">These commands</a> will only function if executed on the server. So in order to make use of some of this functionality, either by changing other player's velocity, their faces, or even making them invisible, we'll need to remote execute some code on either the server or their machine.
+Remote Execution opens up loads of possibilities to scripted cheats. Many objects
+on the server cannot be easily manipulated due to [Locality]. Certain script commands
+require arguments that must be local or have effects that only take place on the
+local machine. For an example of a local argument script, look at [setVelocity].
+For an example of a local effect script, look at [setFace]. There is another state
+that some script commands require, the Server Execution property. 
+These [commands requiring server side execution] will only function if executed 
+on the server. So in order to make use of some of this functionality, either by
+changing other player's velocity, their faces, or even making them invisible, 
+we'll need to remote execute some code on either the server or their machine.
 
-<hr />
+---
 
-First, I want to walk you through some basic examples of remote execution. Most of you will be familiar with these functions, so if you skip through this part, that's fine.
+First, I want to walk you through some basic examples of remote execution. Most
+of you will be familiar with these functions, so if you skip through this part,
+that's fine.
 
-<script src="https://gist.github.com/KeganHollern/d7556ba1946fda5c988ccf2d9b2a51b1.js"></script>
+```sqf
+//execute the hint on everyone but the server
+[{ hint "Working!"; }] remoteExec ["call", -2];
+[{ hint "Working!"; }] remoteExec ["spawn", -2];
+[{ hint "Working!"; }, "A3\functions_f\MP\fn_call.sqf"] remoteExec ["BIS_fnc_execVM", -2];
+```
 
-Here, we use the <a href="https://community.bistudio.com/wiki/remoteExec" target="_blank" rel="noopener noreferrer">remoteExec</a> functionality to execute a hint on all clients. One thing I would like to point out is the usage of <em>BIS_fnc_execVM</em>. Often this script command is allowed through Battleye filters and can be used in combination with the <em>fn_call</em> script to execute a payload.
+Here, we use the [remoteExec] functionality to execute a hint on all clients.
+One thing I would like to point out is the usage of `BIS_fnc_execVM`. Often this
+script command is allowed through Battleye filters and can be used in combination
+with the `fn_call` script to execute a payload.
 
-<script src="https://gist.github.com/KeganHollern/7db94b62396d2a4c04eba9f560540b72.js"></script>
+```sqf
+//executes on everyone including the server
+"B_RangeMaster_F" createUnit [[0,0,0], createGroup east, "hint 'working';", 0, "PRIVATE"];
+```
 
-Here, <a href="https://community.bistudio.com/wiki/createUnit" target="_blank" rel="noopener noreferrer">createUnit</a> is used with its alternate syntax. The alternative syntax has an init field, which executes on every machine. This is often filtered pretty heavily, but some of the time you can sneak around Battleye filters with just this command and a smart init field. Note that the init field is a string, so you'll need to format your payload into a string as well.
+Here, [createUnit] is used with its alternate syntax. The alternative syntax has
+an init field, which executes on every machine. This is often filtered pretty
+heavily, but some of the time you can sneak around Battleye filters with just
+this command and a smart init field. Note that the init field is a string, so
+you'll need to format your payload into a string as well.
 
-<script src="https://gist.github.com/KeganHollern/f0950f1efc984db6417d529a3ae0238d.js"></script>
+```sqf
+//executes on everyone including the server
+_agent = createAgent ["B_Soldier_F", getPosATL player, [], 0, "FORM"];
+_agent addMPEventHandler ["MPKilled", { hint "working!"; }];
+_agent setDamage 1;
+deleteVehicle _agent;
+```
 
-Here, <a href="https://community.bistudio.com/wiki/addMPEventHandler" target="_blank" rel="noopener noreferrer">addMPEventHandler</a> is used with the MPKilled event. By creating an agent, attaching this event, and killing the agent, the payload is executed on every machine. Very often this style of execution is filtered, so it's not common to see anymore, but it is important to know it exists.
+Here, [addMPEventHandler] is used with the MPKilled event. By creating an agent,
+attaching this event, and killing the agent, the payload is executed on every machine.
+Very often this style of execution is filtered, so it's not common to see anymore,
+but it is important to know it exists.
 
-Many SQF functions have the capability to execute code on remote machines. Sometimes you have to get crafty in order to trigger execution, but never rule out a possible approach, even <a href="https://community.bistudio.com/wiki/addPublicVariableEventHandler" target="_blank" rel="noopener noreferrer">addPublicVariableEventHandler</a> could be exploited to execute your payload!
+Many SQF functions have the capability to execute code on remote machines.
+Sometimes you have to get crafty in order to trigger execution, but never rule
+out a possible approach, even [addPublicVariableEventHandler] could be exploited
+to execute your payload!
 
-Many people can write a basic execution using some of the commands I previously listed. It's not the most complex SQF. What really trips people up are BattlEye filters. Some server owners don't fully understand how they work and allow vulnerabilities, and some cheaters don't understand why they are getting flagged. As a disclaimer, I will note, it is <strong>extremely</strong> difficult to get around BattlEye filters for servers that the owners put time and effort into. At a certain point, you'll end up with more banned accounts trying to get passed the Remote Execution filters a server like GrandTheftArma has than it will be worth. The reason I say that is for 99% of the remote executions that are successful and do work, they are logged to the server. So once you start using a remote execution, it really only has a finite lifespan before many servers start flagging it. So you'll need to be crafty, and pick your targets well.
+---
 
-I like to start by targeting frameworks that are open source or have been leaked to the public. Often, this is <a href="https://github.com/AsYetUntitled/Framework" target="_blank" rel="noopener noreferrer">Altis Life</a> with a newer leak of infiSTAR's BattlEye filters for life. This way, I can see all the code I have available to me, and all of the limitations applied to me. I can see "Oh look this function buyHouse is allowed to be remote executed and look here is an exploit where I can force it to execute some of my code!". I think the difficulty of creating a remote execution is proportional to the amount of Code and BattlEye filters you have at your disposal, with the Code having the biggest impact on the challenge. The more code a server or mod runs, the more likely the developers are to make a mistake. One mistake, and you have a remote execution vulnerability. Let me try to clarify that point with a few examples.
+Many people can write a basic execution using some of the commands I previously
+listed. It's not the most complex SQF. What really trips people up are BattlEye
+filters. Some server owners don't fully understand how they work and allow
+vulnerabilities, and some cheaters don't understand why they are getting flagged.
+As a disclaimer, I will note, it is **extremely** difficult to get around BattlEye
+filters for servers that the owners put time and effort into. At a certain point,
+you'll end up with more banned accounts trying to get passed the Remote Execution
+filters a server like GrandTheftArma has than it will be worth. The reason I say
+that is for 99% of the remote executions that are successful and do work, they
+are logged to the server. So once you start using a remote execution, it really
+only has a finite lifespan before many servers start flagging it. So you'll need
+to be crafty, and pick your targets well.
 
-You want to create a remote execution for an Altis Life server. We can safely assume it's built off of the life framework, but it has been pretty heavily modified. We also know it runs infiSTAR's anticheat. So we have a ground floor to start from. We know the mission code is likely the same as the life framework, but it's obfuscated, so it's not that easy to understand. We also know the filters are likely similar to infiSTAR's. Creating a Remote Execution for this server will be slightly easier than creating one for say a Modded Life server, simply because that modded life is not open source, whereas this server is at least built off of an open source project.
+I like to start by targeting frameworks that are open source or have been leaked
+to the public. Often, this is [Altis Life] with a newer leak of infiSTAR's BattlEye
+filters for life. This way, I can see all the code I have available to me, and all
+of the limitations applied to me. I can see "Oh look this function `buyHouse` is
+allowed to be remote executed and look here is an exploit where I can force it to
+execute some of my code!". I think the difficulty of creating a remote execution
+is proportional to the amount of Code and BattlEye filters you have at your disposal,
+with the Code having the biggest impact on the challenge. The more code a server
+or mod runs, the more likely the developers are to make a mistake. One mistake,
+and you have a remote execution vulnerability. Let me try to clarify that point
+with a few examples.
 
-A great example I like to point out in Altis Life was my exploit for the <em>whoDoneIt</em> function. If we look at the MPEventHandler BattlEye filters <a href="https://github.com/AsYetUntitled/Framework/blob/v5.X.X/BEFilters/mpeventhandler.txt" target="_blank" rel="noopener noreferrer">here</a>, we see that the code <em>_this call fn_whoDoneIt</em> can be executed through the MPEventHandler functionality. My exploit was <strong>if I can set the value of the fn_whoDoneIt method on every machine, I can use MPEventHandler and this filter to execute it</strong>. We can see <a href="https://github.com/AsYetUntitled/Framework/blob/7569490dc2b5d68c966fa8a543b20933b6d21c38/life_server/init.sqf#L20" target="_blank" rel="noopener noreferrer">here</a>, on L20 of the server init script that the <em>fn_whoDoneIt</em> method is not compileFinaled, meaning we can overwrite it. So the challenge became, how can I set this value on remote machines. To figure that one out, I would look at existing methods (maybe a method exists that'll let me set the value of a variable on a remote machine?), and <a href="https://github.com/AsYetUntitled/Framework/tree/7569490dc2b5d68c966fa8a543b20933b6d21c38/BEFilters" target="_blank" rel="noopener noreferrer">BattlEye filters</a>. Just while writing this, I think I see a way to set the value, so I'll leave it as an exercise to the reader to identify a possible vulnerability and try it out.
+---
 
-Okay, so we know that BattlEye filters are the real bane of remote execution. Obviously sending our entire cheat through the filters just sounds like a bad idea. The server owner would have every single variable, and code snippet, of our entire cheat, and know for a fact it's us! As well, every time we remote execute, it'll create a new log! Spamming the filter log file is the quickest way to get banned from a server. So the next step in learning how to remotely execute is learning how to avoid detection.
+You want to create a remote execution for an Altis Life server. We can safely
+assume it's built off of the life framework, but it has been pretty heavily modified.
+We also know it runs infiSTAR's anticheat. So we have a ground floor to start from.
+We know the mission code is likely the same as the life framework, but it's obfuscated,
+so it's not that easy to understand. We also know the filters are likely similar
+to infiSTAR's. Creating a Remote Execution for this server will be slightly easier
+than creating one for say a Modded Life server, simply because that modded life
+is not open source, whereas this server is at least built off of an open source
+project.
 
-Like I said before, you will likely never create a remote execution that isn't logged in some way. The goal here is to reduce the total amount of code flagged by the BattlEye filters. This is where the term "Pro RE" came from. A professional remote execution is only different in that it protects the code that is being executed from logging to the server's remote execution filters.
+A great example I like to point out in Altis Life was my exploit for the `whoDoneIt`
+function. If we look at [the MPEventHandler BattlEye filters], we see that the
+code `_this call fn_whoDoneIt` can be executed through the MPEventHandler functionality.
+My exploit was: "if I can set the value of the `fn_whoDoneIt` method on every machine,
+I can use MPEventHandler and this filter to execute it". We can see in [life_server/init.sqf],
+on L20, that the `fn_whoDoneIt` method is not compiled with [compileFinal], meaning
+we can overwrite it. So the challenge became, how can I set this value on remote
+machines. To figure that one out, I would look at existing methods: "maybe a method
+exists that'll let me set the value of a variable on a remote machine?", and 
+[BattlEye Filters]. Just while writing this, I think I see a way to set the value,
+so I'll leave it as an exercise to the reader to identify a possible vulnerability
+and try it out.
 
-A Pro RE is split into ~3 main parts: The Remote Execution, The Installer, and the Executor.
-The Remote Execution we discussed. This is the exploit that gets our code from our machine onto a remote machine.
-The Installer's job is to use the remote execution to install an alternative form of remote communication, ideally onto the server.
-The Executor uses this new remote communication channel to pass our desired payload onto the destination and run it.
+---
 
-What is an alternative form of remote communication I hear you ask? Looking back at <a href="https://community.bistudio.com/wiki/Multiplayer_Scripting#Locality" target="_blank" rel="noopener noreferrer">locality</a>, we learn that some functionality has global arguments and global effects. Our goal here is to abuse these global functions to create a new way to pass data from my client to another. The simplest way for me to explain this is with an example.
+Okay, so we know that BattlEye filters are the real bane of remote execution.
+Obviously sending our entire cheat through the filters just sounds like a bad idea.
+The server owner would have every single variable, and code snippet, of our entire
+cheat, and know for a fact it's us! As well, every time we remote execute, it'll
+create a new log! Spamming the filter log file is the quickest way to get banned
+from a server. So the next step in learning how to remotely execute is learning
+how to avoid detection.
 
-<script src="https://gist.github.com/KeganHollern/aa6a2913ce7e1be52183ab01f887916a.js"></script>
+Like I said before, you will likely never create a remote execution that isn't
+logged in some way. The goal here is to reduce the total amount of code flagged
+by the BattlEye filters. This is where the term "Pro RE" came from. A professional
+remote execution is only different in that it protects the code that is being
+executed from logging to the server's remote execution filters.
 
-In this example, I left out the remote execution part as an exercise to the reader. Here we are using map markers as an alternative communication channel. This is by far my favorite as it's really easy to do and leaves no trace in BattlEye logs. The code flow actually starts at the bottom with <em>Executor</em> on line 40. First, we see if we already ran the installer, and if not, we run Installer. The installer method executes a payload on all clients. Let's look closely at this payload on line 17. First, we make sure our client knows the payload was installed. Next, we make sure only the server spins up a communication channel. This channel reads the value from our marker and waits for it to be non-blank. Once it is non-blank, we compile its value and execute it on all clients. Resetting its value back to blank. Anyway, back to the Executor method, once we've installed this communication channel, we simply format our code and put it into the marker text. The server handles the rest.
+A Pro RE is split into ~3 main parts: 
+
+1. The Remote Execution
+2. The Installer
+3. The Executor.
+
+The Remote Execution we discussed. This is the exploit that gets our code from our
+machine onto a remote machine. The Installer's job is to use the remote execution
+to install an alternative form of remote communication, ideally onto the server.
+The Executor uses this new remote communication channel to pass our desired payload
+onto the destination and run it.
+
+What is an alternative form of remote communication I hear you ask? 
+Looking back at [Locality], we learn that some functionality has global arguments
+and global effects. Our goal here is to abuse these global functions to create a
+new way to pass data from my client to another. The simplest way for me to explain
+this is with an example.
+
+```sqf
+Is_Installed = false;
+
+Remote_Execution = {
+	params["_code"];
+	//run the _code parameter on every client
+};
+Installer = {
+	//note that the position [0,0,0] is often checked and probably shouldn't be set
+	createMarker ["MARKER_NAME", [0,0,0]];
+	"MARKER_NAME" setMarkerType "hd_dot";
+	//note that markerAlpha is often checked and probably shouldn't be set
+	"MARKER_NAME" setMarkerAlpha 0; 
+	"MARKER_NAME" setMarkerText ""; 
+
+	_payload = {
+		Is_Installed = true; //let our own client know we've installed the payload
+		if(isServer) then
+		{
+			//only install the communication channel on the server
+			
+			while{true} do {
+				_text = markerText "MARKER_NAME";
+				if(_text != "") then
+				{
+					//compile and execute on all machines
+					[compile _text] remoteExec ["call", 0]; 
+					"MARKER_NAME" setMarkerText ""; //clear the text
+				}
+				else
+				{
+					uiSleep 0.1; //don't slow down the server
+				};
+			};
+		};
+	};
+	[_payload] call Remote_Execution; //install our payload on all clients!
+};
+Executor = {
+	params["_code"]; //code as {}
+	
+	if(!Is_Installed) then 
+	{
+		call Installer;
+		//wait for the installer to successfully execute on all machines
+		waitUntil{Is_Installed}; 
+	};
+	
+	//convert code to string so we can pass it to our marker
+	_str = str(_code);
+	_str = _str select[1, count(_str)-2]; //chop off leading and trailing {}
+	
+	//by setting the marker text, the server will read & excecute it
+	"MARKER_NAME" setMarkerText _str;
+	waitUntil{(markerText "MARKER_NAME") == ""}; //server will respond by making this blank again
+	//executed successfully!
+};
+```
+
+In this example, I left out the remote execution part as an exercise to the reader.
+Here we are using map markers as an alternative communication channel. This is by
+far my favorite as it's really easy to do and leaves no trace in BattlEye logs.
+The code flow actually starts at the bottom with `Executor` on line 40. First, 
+we see if we already ran the installer, and if not, we run Installer. The
+installer method executes a payload on all clients. Let's look closely at this
+payload on line 17. First, we make sure our client knows the payload was installed.
+Next, we make sure only the server spins up a communication channel.
+This channel reads the value from our marker and waits for it to be non-blank.
+Once it is non-blank, we compile its value and execute it on all clients.
+Resetting its value back to blank. Anyway, back to the Executor method, once we've
+installed this communication channel, we simply format our code and put it into
+the marker text. The server handles the rest.
 
 The flow of this is the following:
-Execution #1: Executor-&gt;Installer-&gt;Create Marker-&gt;Remote Execute ( install payload on server)-&gt;Set Marker Text-&gt;( back to server)Read marker text-&gt; Execute value on all machines
-All subsequent calls: Executor-&gt;SetMarkerText-&gt;(Server)Read Marker Text-&gt;Execute Value on All Machines
+First Execution:
+1. CreateMarker
+4. Remote Execute (install payload on server)
+5. SetMarkerText (trigger server read)
+6. (back to server) Read marker text
+7. Execute value on all machines
 
-So, our Remote Execution and the Installer are the only two features that are logged. Any script functionality we execute will not be logged. Letting us keep the majority of our SQF undetected for much longer.
+All subsequent calls:
+1. SetMarkerText (trigger server read)
+2. (back to server) Read marker text
+3. Execute value on all machines
 
-There are other ways of establishing a communication channel, this is my favorite, though it is somewhat easier to detect, you can get fancy with it. You'll often see the payload in string format, with some string function that compiles and executes it. This is because a lot of the functionality in my example would actually get flagged by remote execution BattlEye filters. The key to a good RE is a great exploit and a terrific installer payload. The better the payload, the less likely it is to get noticed in the log files.
+So, our Remote Execution and the Installer are the only two features that are
+logged. Any script functionality we execute will not be logged. Letting us keep
+the majority of our SQF undetected for much longer.
 
-I hope this post clarified a few questions about remote execution. It is a topic that takes some trial and error, and I am sorry I can't really contribute more examples. At a certain point, I would have to create my own remote executions to further explain in detail how they operate. Definitely take a look at old leaked cheats and their remote executions. Now that you understand the concept of how a Pro RE works, they should make a lot more sense to you.
+There are other ways of establishing a communication channel, this is my favorite,
+though it is somewhat easier to detect, you can get fancy with it. You'll often
+see the payload in string format, with some string function that compiles and
+executes it. This is because a lot of the functionality in my example would actually
+get flagged by remote execution BattlEye filters. The key to a good RE is a
+great exploit and a terrific installer payload. The better the payload, the
+less likely it is to get noticed in the log files.
+
+I hope this post clarified a few questions about remote execution. It is a
+topic that takes some trial and error, and I am sorry I can't really contribute
+more examples. At a certain point, I would have to create my own remote executions
+to further explain in detail how they operate. Definitely take a look at old leaked
+cheats and their remote executions. Now that you understand the concept of how a
+Pro RE works, they should make a lot more sense to you.
+
+{/* reference links */}
+[Multiplayer Scripting]: https://community.bistudio.com/wiki/Multiplayer_Scripting
+[Locality]: https://community.bistudio.com/wiki/Multiplayer_Scripting#Locality
+[setVelocity]: https://community.bistudio.com/wiki/setVelocity
+[setFace]: https://community.bistudio.com/wiki/setFace
+[commands requiring server side execution]: https://community.bistudio.com/wiki/Category:Commands_requiring_server_side_execution
+[remoteExec]: https://community.bistudio.com/wiki/remoteExec
+[createUnit]: https://community.bistudio.com/wiki/createUnit
+[addMPEventHandler]: https://community.bistudio.com/wiki/addMPEventHandler
+[addPublicVariableEventHandler]: https://community.bistudio.com/wiki/addPublicVariableEventHandler
+[Altis Life]: https://github.com/AsYetUntitled/Framework
+[the MPEventHandler BattlEye filters]: https://github.com/AsYetUntitled/Framework/blob/v5.X.X/BEFilters/mpeventhandler.txt
+[life_server/init.sqf]: https://github.com/AsYetUntitled/Framework/blob/7569490dc2b5d68c966fa8a543b20933b6d21c38/life_server/init.sqf#L20
+[compileFinal]: https://community.bistudio.com/wiki/compileFinal
+[BattlEye Filters]: https://github.com/AsYetUntitled/Framework/tree/7569490dc2b5d68c966fa8a543b20933b6d21c38/BEFilters
