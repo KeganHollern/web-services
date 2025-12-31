@@ -8,48 +8,210 @@ slug: enabling-file-write-to-dayz-root-directory
 
 # Enabling File Write to DayZ Root Directory
 
-So my recent work on <a href="https://dayzbr.dev/" rel="noopener noreferrer" target="_blank">DayZ BR</a> has lead to me creating my own ban management system. The idea is all server bans will be aggregated into a database and synced between all of my official servers. In order to sync bans, I opted to follow the same method infiSTAR and Fini use for their Arma 3 anticheat solutions by writing directly to the ban.txt file on the server. 
+So my recent work on [DayZBR] has lead to me creating my own ban management system.
+The idea is all server bans will be aggregated into a database and synced between
+all of my official servers. In order to sync bans, I opted to follow the same
+method [infiSTAR] and [Fini] use for their Arma 3 anticheat solutions by writing
+directly to the ban.txt file on the server. 
 
-Unlike in Arma 3, Extensions are not supported. So the solution infiSTAR and Fini came up with, using an extension to write to this file, won't work for us without creating an extension system ourselves. While this would be cool, it'd be impractical to maintain. Another solution could be using functionality similar to Arma 3's <em>serverCommand</em>. Sadly, the technology just isn't there yet for DayZ. So we can't directly interact with server commands. DayZ does have two systems that Arma does not. We can read and write to disk, and we can easily send and get results from Web Requests.
+Unlike in Arma 3, extensions are not supported. So the solution [infiSTAR] and [Fini]
+came up with, using an extension to write to this file, won't work for us without
+creating an extension system ourselves. While this would be cool, it'd be impractical
+to maintain. Another solution could be using functionality similar to Arma 3's
+`serverCommand`. Sadly, the technology just isn't there yet for DayZ. So we can't
+directly interact with server commands. DayZ does have two systems that Arma does
+not. We can read and write to disk, and we can easily send and get results from
+Web Requests.
 
-I imagined this would be the perfect solution. I would send a web request to my API, retrieve my ban list, and write that to the ban.txt file in the server root. Let me show some of the code I came up with to do that:
+I imagined this would be the perfect solution. I would send a web request to my
+API, retrieve my ban list, and write that to the ban.txt file in the server root.
+Let me show some of the code I came up with to do that:
 
-<script src="https://gist.github.com/KeganHollern/bf826df5cc8e67c3d62bf6973bf784fc.js"></script>
+```c
+void WriteBanlist()
+{
+    string banlist = BattleRoyaleAPI.GetAPI().GetBanlist();
 
-So here, we pull my bans from my API, open a handle to our ban.txt file in the root directory, and write our bans to disk. Pretty simple. But the end result is that, in typical Bohemia fashion, OpenFile is returning NULL. We can't open our ban.txt file! After a bit of debugging, I learned that we can open the ban.txt file, but only with FileMode.READ. It seems that we can only use FileMode.WRITE (and FileMode.APPEND) in the <em>$saves:</em> and <em>$profile:</em> directories. We can't open files in the root directory with WRITE. 
+    string filepath = "$CurrentDir:ban.txt";
+    int hBans = OpenFile( filepath, FileMode.WRITE );
+    if(hBans == 0)
+    {
+        Error("WriteBanlist() => Failed to open handle to ban.txt");
+        return;
+    }
+    
+    FPrint(hBans, banlist);
+    CloseFile(hBans);
 
-I would imagine Bohemia's goal here was to increase the security of their game. Imagine if someone managed to write binary data! In reality, I think they handicapped their own system. Instead of checking what path the server is writing to, I would recommend they limit writing by file extension. Just don't let the user write to executable files. 
+    Print("BANLIST UPDATED!");
+}
+```
 
-Anyway, we need to find a way around this. I am not going to write a ton more code just to bypass this, and I am definitely not going to use a Symlink between the $profile: and $CurrentDir: directories. To do so, I popped DayZServer_x64 open in Binary Ninja and looked for the string "OpenFile". Once found, I checked the x-refs for this value to find the Register Function table. The third parameter of the Register function is the native functionality for our enforce method. You can see I renamed it to "s_OpenFile". 
+So here, we pull my bans from my API, open a handle to our ban.txt file in the root
+directory, and write our bans to disk. Pretty simple. But the end result is that,
+in typical Bohemia fashion, `OpenFile` is returning NULL. We can't open our ban.txt
+file! 
 
-<a target="_blank" href="https://ss.lystic.zip/Legacy/3Hp6TGFs/95bm4z005l7513kX.png" rel="noopener noreferrer"><img src="https://ss.lystic.zip/Legacy/3Hp6TGFs/95bm4z005l7513kX.png" width="364" height="236" 
-class="alignnone size-medium" /></a>
-<a target="_blank" href="https://ss.lystic.zip/Legacy/uxGdNGpb/X4iE43raVc6GfIfa.png" rel="noopener noreferrer"><img src="https://ss.lystic.zip/Legacy/uxGdNGpb/X4iE43raVc6GfIfa.png" width="757" height="420" class="alignnone size-medium" /></a>
+After a bit of debugging, I learned that we can open the ban.txt file, but only
+with `FileMode.READ`. It seems that we can only use `FileMode.WRITE` (and `FileMode.APPEND`)
+in the `$saves:` and `$profile:` directories. We can't open files in the root directory
+with WRITE. 
 
-Here is s_OpenFile, I know it's a lot you may be unfamiliar with, but I'll explain the important parts.
+I would imagine Bohemia's goal here was to increase the security of their game.
+Imagine if someone managed to write binary data! In reality, I think they handicapped
+their own system. Instead of checking what path the server is writing to, I would
+recommend they limit writing by file extension. Just don't let the user write to
+executable files. 
 
-<a target="_blank" href="https://ss.lystic.zip/Legacy/n7Lmy5B2/wfYtaquRWoUOasAP.png" rel="noopener noreferrer"><img src="https://ss.lystic.zip/Legacy/n7Lmy5B2/wfYtaquRWoUOasAP.png" width="978" height="782" class="alignnone size-medium" /></a>
+Anyway, we need to find a way around this. I am not going to write a ton more code
+just to bypass this, and I am definitely not going to use a Symlink between the `$profile:`
+and `$CurrentDir:` directories. To do so, I popped DayZServer_x64 open in Binary
+Ninja and looked for the string "OpenFile". Once found, I checked the x-refs 
+for this value to find the Register Function table. The third parameter of the 
+Register function is the native functionality for our enforce method. 
+You can see I renamed it to `s_OpenFile`. 
 
-In s_OpenFile, there is a method that is run right away, I renamed this to "valid_path". This method can be found in pretty much every File accessor in Enforce. Another example you could look up is "FileExist", which checks if the path exists, agnostic of any READ/WRITE mode. The result of this valid_path method determines which branch we go down, true and we open a handle to the file, false and we return NULL. Anyway, the "valid_path" method is quite long, so here is the pseudocode generated by Binary Ninja:
+![img](https://ss.lystic.zip/Legacy/3Hp6TGFs/95bm4z005l7513kX.png)
+![img](https://ss.lystic.zip/Legacy/uxGdNGpb/X4iE43raVc6GfIfa.png)
 
-<script src="https://gist.github.com/KeganHollern/f0ac40d55ea59ae481d4e12fc5c73c1f.js"></script>
+Here is `s_OpenFile`, I know it's a lot you may be unfamiliar with, but I'll explain the important parts.
 
-This method is checking that the string passed is valid for windows and Linux, it takes into account the <em>$Prefix:</em> possibility, and if the MODE parameter is not 1, it only returns true if the prefix is either $saves or $profile. Take a look at line #47, this is the check that is tripping us up. Our mode is WRITE, which I assume is like 2, so we continue forward and pass this if statement and check our prefixes. 
+![img](https://ss.lystic.zip/Legacy/n7Lmy5B2/wfYtaquRWoUOasAP.png)
 
-In order to enable writing to <em>$CurrentDir:</em>, we need to force this verification method to return true. The easiest way to do this is to force this if statement to always run. This can be done in a few ways. We could NOP the if instruction and convert our JE instruction into a JMP. The approach I decided to go with is to change the value from 0x1 to something completely incorrect, like 0x78, and change the JE instruction into a JNE instruction. For those not accustomed to assembly, here is the if statement before and after my patch:
+In `s_OpenFile`, there is a method that is run right away, I renamed this to "valid_path". 
+This method can be found in pretty much every File accessor in Enforce. Another 
+example you could look up is `FileExist`, which checks if the path exists, agnostic
+of any READ/WRITE mode. The result of this valid_path method determines which branch
+we go down, true and we open a handle to the file, false and we return NULL. Anyway,
+the "valid_path" method is quite long, so here is the pseudocode generated by Binary Ninja:
 
-<script src="https://gist.github.com/KeganHollern/aaa699a428c5c9741833b92e322a5bc7.js"></script>
+```c
+char valid_path(char* string, int32_t mode)
+{
+	char* rbx = string
+	if (string != 0)
+		char rax = *string
+		//  if the first character is not $ or terminator
+		if (rax != 0 && rax != 0x24)
+			// if our first character is a .
+			if (rax == 0x2e)
+				return_false:
+				return 0
+			// if our first character is a /
+			if (rax == 0x2f)
+				goto return_false
+			// if our first character is a \
+			if (rax == 0x5c)
+				goto return_false
+			if (s_StrLen(string).d u>= 3)
+				if (*rbx == 0)
+					goto continue_checking
+				char* temp0_1
+				do
+					rax = *rbx
+					// null terminator reached
+					if (rax == 0)
+						break
+					// : reached
+					if (rax == 0x3a)
+						break
+					temp0_1 = rbx
+					rbx = rbx + 1
+				while (temp0_1 != -1)
+				// get character following our :
+				if (rax == 0)
+					goto continue_checking
+				rax = *(rbx + 1)
+				// if our following character is / or \ then return false
+				if (rax == 0x2f)
+					goto return_false
+				if (rax == 0x5c)
+					goto return_false
+				goto continue_checking
+			continue_checking:
+			rbx = string
+		if ((rbx != 0 && *rbx != 0) && strstr(rbx, data_140a0e208) != 0)
+			goto return_false  // checking if we have a "." in the path
+	if (mode == 1)
+		return_true:
+		return 1
+	char* rcx_1 = string
+	int32_t rbx_1 = 0
+	uint64_t rdi_1 = zx.q(s_StrLen("$profile:"))
+	int32_t rax_2
+	if (rcx_1 == 0)
+		rax_2 = 0
+	else
+		rax_2 = s_StrLen(rcx_1)
+		rcx_1 = string
+	if (rdi_1.d u<= rax_2)
+		if (strncmp(rcx_1, "$profile:", rdi_1).d == 0)
+			goto return_true
+		goto check_saves_prefix
+	check_saves_prefix:
+	char* rcx_2 = string
+	uint64_t rdi_2 = zx.q(s_StrLen("$saves:").d)
+	// string is non-null
+	if (rcx_2 != 0)
+		rcx_2 = string
+		rbx_1 = s_StrLen(rcx_2).d  // get input string length
+	if (rdi_2.d u> rbx_1)  // if input string is <= "$saves:" then we clearly can't have a valid path so return false
+		goto return_false
+	// if our string contains "$saves:" then return true, else false
+	if (strncmp(rcx_2, "$saves:", rdi_2).d == 0)
+		goto return_true
+	goto return_false
+}
+```
 
-With Binary Ninja, we can save the file contents as a new DayZServer_x64_patched.exe. Using this new executable, we can test writing to ban.txt
+This method is checking that the string passed is valid for windows and Linux,
+it takes into account the `$Prefix:` possibility, and if the MODE parameter is not
+1, it only returns true if the prefix is either `$saves` or `$profile`. Take a
+look at line 47, this is the check that is tripping us up. Our mode is WRITE, 
+which I assume is like 2, so we continue forward and pass this if statement and
+check our prefixes. 
 
-<a target="_blank" href="https://ss.lystic.zip/Legacy/ILBBSflO/0rjUu4N0NSue5A1Y.png" rel="noopener noreferrer"><img src="https://ss.lystic.zip/Legacy/ILBBSflO/0rjUu4N0NSue5A1Y.png" width="866" height="567" class="alignnone size-medium" /></a>
+In order to enable writing to `$CurrentDir:`, we need to force this verification
+method to return true. The easiest way to do this is to force this if statement
+to always run. This can be done in a few ways. We could NOP the if instruction
+and convert our JE instruction into a JMP. The approach I decided to go with is
+to change the value from 0x1 to something completely incorrect, like 0x78,
+and change the JE instruction into a JNE instruction. For those not accustomed
+to assembly, here is the if statement before and after my patch:
 
-And there we have it! In order to speed up our patching for future versions of DayZ, and even automate patching these two bytes, signatures should be made for these. 
+```c
+//before
+if (mode == 1)
+	return_true:
+	return 1
+//after	
+if (mode != 120)
+	return_true:
+	return 1
+```
+
+With Binary Ninja, we can save the file contents as a new `DayZServer_x64_patched.exe`.
+Using this new executable, we can test writing to ban.txt
+
+![img](https://ss.lystic.zip/Legacy/ILBBSflO/0rjUu4N0NSue5A1Y.png)
+
+And there we have it! In order to speed up our patching for future versions of DayZ,
+and even automate patching these two bytes, signatures should be made for these. 
 Here are two signatures I generated with Binary Ninja's SigMaker plugin:
 
-<em>CMP edi, 0x1</em>: <strong>83 FF 01 0F 84 95 00 00 00</strong> (patch is applied to the 3rd byte (0x01 to 0x78))
-<em>je 0x14022ef8a</em>: <strong>0F 84 95 00 00 00 48 8D 0D ? ? ? ?</strong> (patch is applied to the 2nd byte (0x84 to 0x85))
+- `CMP edi, 0x1`: `83 FF 01 0F 84 95 00 00 00` (patch is applied to the 3rd byte (0x01 to 0x78))
+- `je 0x14022ef8a`: `0F 84 95 00 00 00 48 8D 0D ? ? ? ?` (patch is applied to the 2nd byte (0x84 to 0x85))
 
-You'll likely need to create new signatures eventually, but hopefully, you'll have learned to find the bytes yourself and patch them!
+You'll likely need to create new signatures eventually, but hopefully, you'll
+have learned to find the bytes yourself and patch them!
 
-Update: I built a .NET Core application that can handle finding these style patterns and applying the patch to DayZ. The source code is available from the <a href="https://gitlab.desolationredux.com/DayZ/DayZBR-Mod/BattleRoyale/-/tree/master/Software/DayZServerPatcher" rel="noopener noreferrer" target="_blank">DayZBR Gitlab Here</a>!
+> Update:
+> I built a .NET Core application that can handle finding these style patterns and 
+> applying the patch to DayZ. The source code is available from the 
+> [DayZBR Source Code].
+
+{/* reference links */}
+[DayZBR]: https://dayzbr.dev
+[infiSTAR]: https://infiSTAR.de
+[Fini]: https://fini.ac
+[DayZBR Source Code]: https://github.com/EnfusionModders/DayZBR/tree/main/mod/BattleRoyale/Software/DayZServerPatcher
