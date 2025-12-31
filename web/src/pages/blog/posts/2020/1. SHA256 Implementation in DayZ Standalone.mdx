@@ -62,8 +62,9 @@ DayZ has absolutely nothing for handling unsigned integers.
 So we'll have to recreate the functionality ourselves.
 Looking at the source code for SHA256, we can see there are only a few unsigned
 integer operations that we need to consider. Addition, Greater Than, and Right Shift.
-For Addition, I found a <a href="https://stackoverflow.com/questions/4068033/add-two-integers-using-only-bitwise-operators" rel="noopener noreferrer" target="_blank">Stack Overflow post</a> with the exact functionality I need. 
-For Greater Than, I found a <a href="https://stackoverflow.com/questions/10096599/bitwise-operations-equivalent-of-greater-than-operator" rel="noopener noreferrer" target="_blank">Stack Overflow post</a> and borrowed just a small snippet of the example provided.
+For Addition, I found a StackOverflow post covering [Addition without Addition], 
+exactly what i needed. For Greater Than, I found another StackOverflow post covering
+[Greater Than without Greater Than], and borrowed a small snippet of the example.
 
 For Right Shift, this method I came up with on my own. Let me try to describe
 this issue in a bit more detail. DayZ uses signed integers, with signed integers
@@ -541,3 +542,5 @@ class SHA256
 [C# SHA256 Example]: https://www.programmingalgorithms.com/algorithm/sha256/
 [C SHA256 Example]: https://github.com/itszero/librvm-course-impl/blob/master/sha256.c
 [XOR without XOR]: https://www.geeksforgeeks.org/find-xor-of-two-number-without-using-xor-operator/
+[Addition without Addition]: https://stackoverflow.com/questions/4068033/add-two-integers-using-only-bitwise-operators
+[Greater Than without Greater Than]: https://stackoverflow.com/questions/10096599/bitwise-operations-equivalent-of-greater-than-operator
