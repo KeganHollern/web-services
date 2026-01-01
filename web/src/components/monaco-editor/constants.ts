@@ -183,7 +183,6 @@ export const flexokiThemeDark: editor.IStandaloneThemeData = {
     },
     "rules": [
         // sqf extra rules
-        // TODO: make these flexoki colors
         {
             "token": "variable.local",
             "foreground": "#DCDCAA",
@@ -194,7 +193,6 @@ export const flexokiThemeDark: editor.IStandaloneThemeData = {
             "fontStyle": "bold"
         },
         {
-            // TODO: not woring?
             "token": "keyword.logic",
             "foreground": "#C586C0",
             "fontStyle": "bold",
@@ -787,37 +785,36 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
         "activityBarBadge.foreground": "#FFFCF0"
     },
     "rules": [
-        // TODO: update these for flexioki light colors
+        // sqf extra rules
         {
             "token": "variable.local",
-            "foreground": "#DCDCAA",
+            "foreground": "#AD8301",
         },
         {
             "token": "constant",
-            "foreground": "#569CD6",
+            "foreground": "#5E409D",
             "fontStyle": "bold"
         },
         {
-            // TODO: not woring?
             "token": "keyword.logic",
-            "foreground": "#C586C0",
+            "foreground": "#A02F6F",
             "fontStyle": "bold",
         },
         {
             "token": "variable.global",
-            "foreground": "#9CDCFE",
+            "foreground": "#205EA6",
         },
         {
             "token": "variable.bis",
-            "foreground": "#4EC9B0",
+            "foreground": "#66800B",
         },
         {
             "token": "keyword.preprocessor",
-            "foreground": "#A020F0",
+            "foreground": "#A02F6F",
         },
         {
             "token": "number",
-            "foreground": "#B5CEA8",
+            "foreground": "#5E409D",
         },
 
         // generic rules
@@ -1251,22 +1248,59 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
     ],
 
     // General SQF Commands (Keywords)
-    // TODO: add remaining keywords for arma 3
     keywords: [
+        // Control Flow
         'if', 'then', 'else', 'switch', 'case', 'default', 'break', 'for', 'do', 'while', 'exitWith',
-        'private', 'public', 'protected', 'static', 'in',
-        'select', 'selectRandom', 'count', 'pushBack', 'popBack', 'insert', 'removeAt', 'clear',
-        'spawn', 'execVM', 'call', 'params', 'return', 'waitUntil', 'sleep', 'hint', 'titleText',
-        'diag_log', 'diag_logFormat', 'format', 'str', 'toString', 'toArray', 'toLower', 'toUpper',
-        'getText', 'setText', 'getNumber', 'setNumber', 'getVariable', 'setVariable', 'hasVariable',
-        'deleteVariable', 'isNil', 'typeOf', 'isClass', 'isKindOf', 'createVehicle', 'createUnit',
-        'createGroup', 'groupAddVehicle', 'groupAddUnit', 'leader', 'side', 'faction', 'rank',
-        'name', 'position', 'setPos', 'moveTo', 'moveInDriver', 'moveInGunner', 'addAction',
-        'removeAction', 'clearActions', 'getActions', 'uiNamespace', 'try', 'catch', 'throw',
-        'forEach', 'with', 'from', 'to', 'step', 'compile', 'isNull', 'terminate',
-        'comment', 'assert', 'preprocessFile', 'preprocessFileLineNumbers', 'loadFile', 'exec',
-        'find', 'findIf', 'apply', 'reverse', 'sort', 'resize', 'set', 'deleteAt', 'append',
-        'systemChat', 'player', 'vehicle', 'alive', 'damage', 'setDamage'
+        'try', 'catch', 'throw', 'forEach', 'with', 'from', 'to', 'step', 'waituntil',
+
+        // Scope & Variables
+        'private', 'public', 'protected', 'static', 'in', 'params', 'isNil', 'isNull',
+        'getVariable', 'setVariable', 'allVariables', 'uiNamespace', 'missionNamespace', 'parsingNamespace',
+        'profileNamespace', 'currentNamespace',
+
+        // Arrays & Collections
+        'select', 'selectRandom', 'count', 'pushBack', 'pushBackUnique', 'popBack', 'insert', 'removeAt',
+        'resize', 'reverse', 'apply', 'find', 'findIf', 'join', 'joinString', 'splitString', 'deleteAt',
+        'append', 'set', 'in', 'unique', 'common', 'deleteRange',
+
+        // Execution & Compilation
+        'spawn', 'execVM', 'call', 'return', 'sleep', 'compile', 'compileFinal', 'preprocessFile',
+        'preprocessFileLineNumbers', 'loadFile', 'exec', 'terminate', 'scriptDone',
+
+        // Math & Geometry
+        'round', 'floor', 'ceil', 'abs', 'sqrt', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
+        'deg', 'rad', 'min', 'max', 'random', 'bezierInterpolation', 'linearConversion', 'vectorAdd',
+        'vectorDiff', 'vectorMultiply', 'vectorDistance', 'vectorMagnitude', 'vectorNormalized',
+        'distance', 'distance2D', 'distanceSqr',
+
+        // Output & Logging
+        'hint', 'hintSilent', 'hintC', 'titleText', 'titleFadeOut', 'diag_log', 'diag_logFormat',
+        'systemChat', 'copyToClipboard', 'format', 'str', 'toString', 'toArray', 'toLower', 'toUpper',
+        'text', 'endl',
+
+        // Configs
+        'configFile', 'missionConfigFile', 'getText', 'getNumber', 'getArray', 'isArray', 'isText',
+        'isNumber', 'isClass', 'inheritsFrom', 'configName', 'configPath', 'selectMax',
+
+        // Entities & Actions
+        'typeOf', 'isKindOf', 'createVehicle', 'createUnit', 'createGroup', 'deleteVehicle', 'deleteGroup',
+        'createAgent', 'createMine', 'createSoundSource', 'addAction', 'removeAction', 'removeAllActions',
+        'getActions', 'alive', 'damage', 'setDamage', 'getDammage', 'health', 'setHit', 'setHitPointDamage',
+        'cursorObject', 'cursorTarget', 'laserTarget',
+
+        // Position & Movement
+        'position', 'getPos', 'getPosATL', 'getPosASL', 'setPos', 'setPosATL', 'setPosASL', 'moveTo',
+        'moveInDriver', 'moveInGunner', 'moveInCommander', 'moveInCargo', 'moveInTurret', 'velocity',
+        'setVelocity', 'setVelocityModelSpace', 'modelToWorld', 'worldToModel', 'attachTo', 'detach',
+
+        // Group & Sides
+        'leader', 'selectLeader', 'join', 'joinSilent', 'units', 'group', 'side', 'faction', 'rank',
+        'rating', 'addRating', 'west', 'east', 'resistance', 'civilian', 'sideLogic', 'sideEnemy',
+        'sideFriendly', 'player', 'vehicle', 'commandingMenu',
+
+        // Multiplayer
+        'publicVariable', 'publicVariableClient', 'publicVariableServer', 'isServer', 'isDedicated',
+        'hasInterface', 'remoteExec', 'remoteExecCall', 'owner', 'didJIP', 'getClientState'
     ],
 
     operators: [
@@ -1314,6 +1348,7 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
             // Operators
             [/@symbols/, {
                 cases: {
+                    '@logic': 'keyword.logic',
                     '@operators': 'operator',
                     '@default': ''
                 }
