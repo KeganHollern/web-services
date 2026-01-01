@@ -1300,7 +1300,10 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
 
         // Multiplayer
         'publicVariable', 'publicVariableClient', 'publicVariableServer', 'isServer', 'isDedicated',
-        'hasInterface', 'remoteExec', 'remoteExecCall', 'owner', 'didJIP', 'getClientState'
+        'hasInterface', 'remoteExec', 'remoteExecCall', 'owner', 'didJIP', 'getClientState',
+
+        // More that AI missed
+        'onEachFrame', 'isEqualTypeParams', 'isEqualTypeArray', 'isEqualType',
     ],
 
     operators: [
