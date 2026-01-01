@@ -182,6 +182,41 @@ export const flexokiThemeDark: editor.IStandaloneThemeData = {
         "activityBarBadge.foreground": "#100F0F"
     },
     "rules": [
+        // sqf extra rules
+        // TODO: make these flexoki colors
+        {
+            "token": "variable.local",
+            "foreground": "#DCDCAA",
+        },
+        {
+            "token": "constant",
+            "foreground": "#569CD6",
+            "fontStyle": "bold"
+        },
+        {
+            // TODO: not woring?
+            "token": "keyword.logic",
+            "foreground": "#C586C0",
+            "fontStyle": "bold",
+        },
+        {
+            "token": "variable.global",
+            "foreground": "#9CDCFE",
+        },
+        {
+            "token": "variable.bis",
+            "foreground": "#4EC9B0",
+        },
+        {
+            "token": "keyword.preprocessor",
+            "foreground": "#A020F0",
+        },
+        {
+            "token": "number",
+            "foreground": "#B5CEA8",
+        },
+
+        // generic rules
         {
             "foreground": "#CECDC3",
             "token": "source"
@@ -339,7 +374,8 @@ export const flexokiThemeDark: editor.IStandaloneThemeData = {
         },
         {
             "foreground": "#878580",
-            "token": "comment"
+            "token": "comment",
+            "fontStyle": "italic"
         },
         {
             "foreground": "#878580",
@@ -751,6 +787,40 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
         "activityBarBadge.foreground": "#FFFCF0"
     },
     "rules": [
+        // TODO: update these for flexioki light colors
+        {
+            "token": "variable.local",
+            "foreground": "#DCDCAA",
+        },
+        {
+            "token": "constant",
+            "foreground": "#569CD6",
+            "fontStyle": "bold"
+        },
+        {
+            // TODO: not woring?
+            "token": "keyword.logic",
+            "foreground": "#C586C0",
+            "fontStyle": "bold",
+        },
+        {
+            "token": "variable.global",
+            "foreground": "#9CDCFE",
+        },
+        {
+            "token": "variable.bis",
+            "foreground": "#4EC9B0",
+        },
+        {
+            "token": "keyword.preprocessor",
+            "foreground": "#A020F0",
+        },
+        {
+            "token": "number",
+            "foreground": "#B5CEA8",
+        },
+
+        // generic rules
         {
             "foreground": "#100F0F",
             "token": "source"
@@ -908,7 +978,8 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
         },
         {
             "foreground": "#6F6E69",
-            "token": "comment"
+            "token": "comment",
+            "fontStyle": "italic"
         },
         {
             "foreground": "#6F6E69",
@@ -1165,11 +1236,25 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
 export const SQFLanguageDefinition: languages.IMonarchLanguage = {
     defaultToken: '',
     tokenPostfix: '.sqf',
-    unicode: false,
+    ignoreCase: true, // SQF is case insensitive
 
+    // 3. Constants (true/false/nulls)
+    constants: [
+        'true', 'false', 'nil', 'objNull', 'grpNull', 'controlNull', 'displayNull',
+        'locationNull', 'taskNull', 'teamMemberNull', 'scriptNull', 'configNull',
+        'sideUnknown', 'west', 'east', 'resistance', 'civilian'
+    ],
+
+    // 4. Boolean/Logic operators (for distinct coloring)
+    logic: [
+        '!', '&&', '||', 'and', 'or', 'not'
+    ],
+
+    // General SQF Commands (Keywords)
+    // TODO: add remaining keywords for arma 3
     keywords: [
         'if', 'then', 'else', 'switch', 'case', 'default', 'break', 'for', 'do', 'while', 'exitWith',
-        'private', 'public', 'protected', 'static', 'nil', 'true', 'false', 'in', 'not', 'and', 'or',
+        'private', 'public', 'protected', 'static', 'in',
         'select', 'selectRandom', 'count', 'pushBack', 'popBack', 'insert', 'removeAt', 'clear',
         'spawn', 'execVM', 'call', 'params', 'return', 'waitUntil', 'sleep', 'hint', 'titleText',
         'diag_log', 'diag_logFormat', 'format', 'str', 'toString', 'toArray', 'toLower', 'toUpper',
@@ -1177,57 +1262,82 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
         'deleteVariable', 'isNil', 'typeOf', 'isClass', 'isKindOf', 'createVehicle', 'createUnit',
         'createGroup', 'groupAddVehicle', 'groupAddUnit', 'leader', 'side', 'faction', 'rank',
         'name', 'position', 'setPos', 'moveTo', 'moveInDriver', 'moveInGunner', 'addAction',
-        'removeAction', 'clearActions', 'getActions', 'uiNamespace'
+        'removeAction', 'clearActions', 'getActions', 'uiNamespace', 'try', 'catch', 'throw',
+        'forEach', 'with', 'from', 'to', 'step', 'compile', 'isNull', 'terminate',
+        'comment', 'assert', 'preprocessFile', 'preprocessFileLineNumbers', 'loadFile', 'exec',
+        'find', 'findIf', 'apply', 'reverse', 'sort', 'resize', 'set', 'deleteAt', 'append',
+        'systemChat', 'player', 'vehicle', 'alive', 'damage', 'setDamage'
     ],
 
     operators: [
         '=', '+=', '-=', '*=', '/=', '%=', '++', '--',
-        '+', '-', '*', '/', '%',
-        '==', '!=', '<', '<=', '>', '>='
+        '+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>='
     ],
 
-    symbols: /[=+\-*/%<>!]+/,
+    symbols: /[=+\-*/%<>!&|]+/,
 
     tokenizer: {
         root: [
-            // identifiers and keywords
-            [/[a-zA-Z_]\w*/, {
+            // 1. Comments (Prioritize these above operators!)
+            [/\/\/.*$/, 'comment'],
+            [/\/\*/, { token: 'comment', next: '@comment' }],
+
+            // Preprocessor
+            [/#\s*[a-zA-Z]\w*/, 'keyword.preprocessor'],
+
+            // 6. BIS Functions (Developer functions)
+            // Matches BIS_fnc_Something. 
+            [/bis_fnc_\w+/, 'variable.bis'],
+
+            // 2. Local Variables (Start with underscore)
+            [/_[a-zA-Z0-9]\w*/, 'variable.local'],
+
+            // 5. Global Variables & Keywords
+            [/[a-zA-Z]\w*/, {
                 cases: {
-                    '@keywords': 'keyword',
-                    '@default': 'identifier'
+                    '@constants': 'constant',      // true, false, objNull
+                    '@logic': 'keyword.logic',     // and, or, &&
+                    '@keywords': 'keyword',        // call, if, then
+                    '@default': 'variable.global'  // Any other text is a global var
                 }
             }],
 
-            // whitespace
-            { include: '@whitespace' },
+            // Numbers
+            [/\d*\.\d+([eE][-+]?\d+)?/, 'number.float'],
+            [/\d+/, 'number'],
+            [/0x[0-9a-fA-F]+/, 'number.hex'],
 
-            // operators
+            // Strings
+            [/"/, { token: 'string.quote', bracket: '@open', next: '@string_double' }],
+            [/'/, { token: 'string.quote', bracket: '@open', next: '@string_single' }],
+
+            // Operators
             [/@symbols/, {
                 cases: {
                     '@operators': 'operator',
                     '@default': ''
                 }
             }],
-
-            // numbers
-            [/\d+/, 'number'],
-
-            // strings
-            [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-terminated string
-            [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
-
-            // comments
-            [/\/\/.*$/, 'comment'],
         ],
 
-        whitespace: [
-            [/[ \t\r\n]+/, ''],
-        ],
-
-        string: [
-            [/[^\\"]+/, 'string'],
-            [/\\./, 'string.escape.invalid'],
+        // SQF Double Quoted String (handles "" escape)
+        string_double: [
+            [/[^"]+/, 'string'],
+            [/""/, 'string.escape'], // SQF escapes quotes by doubling them
             [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
         ],
-    },
+
+        // SQF Single Quoted String (handles '' escape)
+        string_single: [
+            [/[^']+/, 'string'],
+            [/''/, 'string.escape'],
+            [/'/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+        ],
+
+        comment: [
+            [/[^/*]+/, 'comment'],
+            [/\*\//, { token: 'comment', next: '@pop' }],
+            [/[/*]/, 'comment']
+        ]
+    }
 };
