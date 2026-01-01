@@ -26,18 +26,44 @@ Characters. So for this reason, a character will be an element within our "dna" 
 To start, we will need to generate random characters to create a random pool.
 So writing that function we get:
 
-![img 1](https://ss.lystic.zip/Legacy/g8mYjviw/zil4l8Ss5BjmqSFh.png)
+```sqf
+// since we are generating a string, we need a random character function
+rand_char = {(ToString[32+floor(random(95))])};    
+```
 
 Next, we'll need to actually generate our random population.
 So lets make this function:
 
-![img 2](https://ss.lystic.zip/Legacy/EmllAsFR/B1PUx7r6qMaLV3e0.png)
+```sqf
+rand_pop = {
+    _population = [];
+    for "_i" from 1 to Population_Size do {
+        _dna = [];
+        for "_j" from 1 to Dna_Size do {
+            _dna pushBack (call rand_char);
+        };
+        _population pushBack _dna;
+    };
+    _population;
+};
+```
 
 Wait, but what are the variables. 
 These are just settings for our algorithm that we can tweak down the road. 
 Here are all of them.
 
-![img 3](https://ss.lystic.zip/Legacy/Fxn6p2n3/oIpZb4QN5GHDO8Ke.png)
+```sqf
+// optimal string we are trying to reach
+Optimal_String = "I <3 Arma" splitString "";
+// Dna size is the length of our optimal string
+Dna_Size = count(Optimal_String);
+// population size is how many dna strands we have in each generation
+Population_Size = 100;
+// Maximum generations before we give up
+Generations = 5000;
+// mutation rate is the % chance each dna element has to mutate
+Mutation_Rate = 0.01;
+```
 
 Oh, in this post there will be lest text and more comments. 
 I am sure everyone can read comments.
@@ -46,7 +72,18 @@ So next, we will need some way to compare how accurate a random string
 is to our end goal. This is our fitness function. Mine is simple, but these
 can be much more complex, even for this scenario.
 
-![img 4](https://ss.lystic.zip/Legacy/KflcDU5j/7kUUgNySBXBpIZ60.png)
+```sqf
+fitness = {
+    params ["_dna"];
+    _score = 0;
+    for "_i" from 0 to (Dna_Size - 1) do {
+        if ((_dna select _i) isEqualTo (Optimal_String select _i)) then {
+            _score = _score + 1;
+        };
+    };
+    _score;
+};
+```
 
 Okay, before we get into the functions used for "reproduction".
 Lets cover how we will judge which "dna" strands can have children to begin with.
@@ -54,7 +91,38 @@ For this we need to compare each of their fitness values and pick the only the
 best to have kids. This is know as _Survival Of The Fittest_ and it lays the
 ground work for evolution and Playerunknown's Battlegrounds.
 
-![img 5](https://ss.lystic.zip/Legacy/VV0QZeRF/LeLbh9eFSDF3IwQN.png)
+```sqf
+weight_choice = {
+    params["_choices"];
+    private["_result"];
+
+    _result = [];
+
+    _total = 0;
+    {
+        _total = _total + (_x select 0); false
+    } count _choices;
+    _val = random(_total);
+
+    scopeName "main";
+    _count = 0;
+    for "_i" from 0 to count(_choices)-1 do {
+        _item = _choices select _i;
+        _weight = _item select 0;
+        _choice = _item select 1;
+
+        if(_val >= _count) then {
+            _count = _count + _weight;
+            if(_val < _count) then {
+                _result = _choice;
+                breakTo "main";   
+            };
+        };
+    };
+
+    _result;
+};
+```
 
 Covering this a bit more. I get the total value of all weights 
 (in this case the weights are the fitness values). I run a random on that
@@ -70,7 +138,22 @@ strands will be more likely to be selected.
 Okay, now that we covered this, lets go over "crossover". Where two parents
 come together and if they love each other enough...
 
-![img 6](https://ss.lystic.zip/Legacy/JnONUTnE/8JRLDW4LgZFxNdqo.png)
+```sqf
+crossover = {
+    params["_dna1", "_dna2"];
+
+    _newdna = [];
+    for "_i" from 0 to (Dna_Size - 1) do {
+        if ((random(1)) < 0.5) then {
+            _newdna pushBack (_dna1 select _i);
+        } else {
+            _newdna pushBack (_dna2 select _i);
+        };
+    };
+
+    _newdna;
+};
+```
 
 They can make a new DNA strand. The method I decided to go for was the 
 50/50 method. Each element in the DNA (characters in this case). 
@@ -80,7 +163,21 @@ two children will more than likely have differing DNA. No twins in this family.
 Okay so now we have our two children, but what about mutations? 
 How will we get the X-Men?
 
-![img 7](https://ss.lystic.zip/Legacy/cyr1HcfD/8gu7ulMgAxrRHGxz.png)
+```sqf
+mutate = {
+    params["_dna"];
+    
+    _newdna = +_dna; // copys data
+
+    for "_i" from 0 to (Dna_Size - 1) do {
+        if ((random(1)) <= Mutation_Rate) then {
+            _newdna set [_i, (call rand_char)];
+        };
+    };
+
+    _newdna;
+};
+```
 
 With this method we give each dna element a % chance to change to a
 completely random character. This will give us diversity in our group,
@@ -89,8 +186,10 @@ so characters not initially included in our DNA pull can be introduced.
 Lastly is the hunk of code that actually does the work. 
 Its so much I can't fit it on one screenshot.
 
+```sqf
+// TODO: rip the code from the screenshot below off our SSD
+```
 ![img 8](https://ss.lystic.zip/Legacy/kdC2JtQW/2hXJudmCtQKXcwdM.png)
-
 ![img 9](https://ss.lystic.zip/Legacy/a1OT0UUK/iIxdBVRKFIwjFB4V.png)
 
 ---

@@ -7,8 +7,52 @@ from any malicious threads.
 
 Now this code is a little complicated, so I will do my best to explain it.
 
-{/* TODO: add image to ss.lystic */}
-![img](https://i.gyazo.com/6e606c109fc46443a121972ece83b91f.png)
+```sqf
+_GLOBAL_ARRAY = [[], []];
+_get = {
+    params ["_GLOBAL_ARRAY", "_data"];
+    private ["_name", "_default", "_index"];
+    _name = _data select 0;
+    _default = _data select 1;
+    _index = (_GLOBAL_ARRAY select 0) find toLower(_name);
+    if (_index == -1) exitWith {_default};
+    (_GLOBAL_ARRAY select 1) select _index;
+};
+_set = {
+    params ["_GLOBAL_ARRAY", "_data"];
+    private ["_name", "_value", "_index"];
+    _name = _data select 0;
+    _value = _data select 1;
+    _index = (_GLOBAL_ARRAY select 0) find toLower(_name);
+    if (_index == -1) then {
+        (_GLOBAL_ARRAY select 0) pushBack toLower(_name);
+        (_GLOBAL_ARRAY select 1) pushBack _value;
+    } else {
+        (_GLOBAL_ARRAY select 1) set [_index, _value];
+    };
+};
+
+[_GLOBAL_ARRAY, ["test", true]] call _set;
+
+[_GLOBAL_ARRAY, _get, _set] spawn {
+    params ["_GLOBAL_ARRAY", "_get", "_set"];
+    while{true} do {
+        waitUntil{[_GLOBAL_ARRAY, ["test", false]] call _get};
+        systemchat "true";
+        uiSleep 1;
+        [_GLOBAL_ARRAY, ["test", false]] call _set;
+    };
+};
+[_GLOBAL_ARRAY, _get, _set] spawn {
+    params ["_GLOBAL_ARRAY", "_get", "_set"];
+    while{true} do {
+        waitUntil{!([_GLOBAL_ARRAY, ["test", true]] call _get)};
+        systemchat "false";
+        uiSleep 1;
+        [_GLOBAL_ARRAY, ["test", true]] call _set;
+    };
+};
+```
 
 So the key to this entire system is `_GLOBAL_ARRAY`. This variable stores the
 values of our "global variables". I will be referencing them as such as they

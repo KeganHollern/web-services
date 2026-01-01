@@ -13,11 +13,27 @@ To start off I will cover no recoil. InfiSTAR anticheat blocks this so any serve
 <img class="aligncenter" src="https://i.gyazo.com/825cb672b47330bd893b91cb0e77dd60.png" width="411" height="157" />Some mods, such as desolation mod, modify the units recoil to create a more realistic effect. Cheaters will use this to gain a very unfair edge on the other players in combat.
 
 Unlimited ammo is much more difficult to detect. InfiSTAR does a decent job of detecting it but with a slight delay added to the loop infiSTAR becomes ineffective.
-<img class="aligncenter" src="https://i.gyazo.com/28a10ee25d86777e26ec566510f803e9.png" width="457" height="83" />In my personal opinion, using scripts.txt is the most effective way to ban for this. Adding the line "5 setVehicleAmmo" would detect a majority of the cheats currently available.
+
+```sqf
+while{true} do {
+    (vehicle player) setVehicleAmmo 1;
+    uiSleep 2;
+};
+```
+
+In my personal opinion, using scripts.txt is the most effective way to ban for this. Adding the line "5 setVehicleAmmo" would detect a majority of the cheats currently available.
 
 God mode is something that is also very difficult to detect. There are many ways to do it. Here is a few ordered  from most effective to least effective.
 
-<img class="aligncenter" src="https://i.gyazo.com/27fa01217ad3a28e433fb1d9ae288c3b.png" width="446" height="144" />
+```sqf
+player allowDamage false;
+
+player addEventHandler ["HandleDamage", {false}];
+
+while{true} do {
+    player setDamage 0;
+};
+```
 
 all of these really have no easy way to detect. The most effective method for banning is, once again, a scripts.txt filter.
 
@@ -29,13 +45,23 @@ These are still pretty basic, but the goal of these is to mess with other player
 
 Teleport all is quite common and can be achieved several ways. I use the following method to teleport everyone.
 
-<img class="aligncenter" src="https://i.gyazo.com/5a5f2511d3b5883fca0a153b2c8797f7.png" width="289" height="97" />
+```sqf
+{
+    _x setPos (getPos player);
+    uiSleep 0.1;
+} forEach allPlayers;
+```
 
 BattlEye hoped that the implementation of the setpos count restriction would stop these kind of scripts. They were wrong. the line "uiSleep 0.1;" solves all issues with the restriction. Once again it is the servers job to stop this. Teleport all is pretty detrimental to the community. If this keeps happening to a server players will eventually just stop playing on the server.
 
 Explode all can also be achieved multiple ways. There are a lot of explosive objects and arma has this <em>wonderful </em>networking bug that causes local explosions to damage remote units. Here is an example of an explode all.
 
-<img class="aligncenter" src="https://i.gyazo.com/e243295113728856d904992637a25d8b.png" width="543" height="78" />
+```sqf
+{
+    "HelicopterExploSmall" createVehicleLocal (getPos _x);
+    uiSleep 0.1;
+} forEach allPlayers;
+```
 
 This is actually so dumb on Bohemia Interactive's part. This is not logged by createVehicle.txt and therefore the best measure against this is, once again, scripts.txt
 

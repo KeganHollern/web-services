@@ -213,6 +213,10 @@ export const flexokiThemeDark: editor.IStandaloneThemeData = {
             "token": "number",
             "foreground": "#B5CEA8",
         },
+        {
+            "token": "number.hex",
+            "foreground": "#B5CEA8",
+        },
 
         // generic rules
         {
@@ -816,6 +820,10 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
             "token": "number",
             "foreground": "#5E409D",
         },
+        {
+            "token": "number.hex",
+            "foreground": "#5E409D",
+        },
 
         // generic rules
         {
@@ -1256,7 +1264,7 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
         // Scope & Variables
         'private', 'public', 'protected', 'static', 'in', 'params', 'isNil', 'isNull',
         'getVariable', 'setVariable', 'allVariables', 'uiNamespace', 'missionNamespace', 'parsingNamespace',
-        'profileNamespace', 'currentNamespace',
+        'profileNamespace', 'currentNamespace', 'saveProfileNamespace',
 
         // Arrays & Collections
         'select', 'selectRandom', 'count', 'pushBack', 'pushBackUnique', 'popBack', 'insert', 'removeAt',
@@ -1303,7 +1311,8 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
         'hasInterface', 'remoteExec', 'remoteExecCall', 'owner', 'didJIP', 'getClientState',
 
         // More that AI missed
-        'onEachFrame', 'isEqualTypeParams', 'isEqualTypeArray', 'isEqualType',
+        'onEachFrame', 'isEqualTypeParams', 'isEqualTypeArray', 'isEqualType', 'param', 'canSuspend',
+        'isNotEqualTo', 'breakTo', 'scopeName',
     ],
 
     operators: [
@@ -1342,7 +1351,7 @@ export const SQFLanguageDefinition: languages.IMonarchLanguage = {
             // Numbers
             [/\d*\.\d+([eE][-+]?\d+)?/, 'number.float'],
             [/\d+/, 'number'],
-            [/0x[0-9a-fA-F]+/, 'number.hex'],
+            [/0x[0-9a-fA-F]+/, 'number.hex'], // TODO: not working?
 
             // Strings
             [/"/, { token: 'string.quote', bracket: '@open', next: '@string_double' }],
