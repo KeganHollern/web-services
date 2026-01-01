@@ -14,10 +14,27 @@ have made strides to block unlogged and unfiltered remote execution, and they ha
 come a long way since Arma 3 Alpha. This post covers an exploit that has existed
 in the Real Virtuality engine since RV3, Arma 2.
 
-If you haven't read my last post, <a href="http://lystic.net/2019/10/19/breaking-the-sqf-firewall/" target="_blank" rel="noopener noreferrer">Breaking the SQF Firewall</a>. You should do so now. Piggybacking on this last post, there is a vulnerability in how the game processes network messages prior to the Firewall killing sqf threads. Specifically, the publicVariable and setVariable network messages can be sent to the server prior to the firewall killing our existing sqf loops. I am going to cover the vulnerability first and finish up with a series of exploits I have created that use the vulnerability to take advantage of other aspects of the game.
+If you haven't read my last post, [Breaking the SQF Firewall]. You should do so
+now. Piggybacking on this last post, there is a vulnerability in how the game processes
+network messages prior to the Firewall killing sqf threads. Specifically, the 
+`publicVariable` and `setVariable` network messages can be sent to the server prior
+to the firewall killing our existing sqf loops. I am going to cover the vulnerability
+first and finish up with a series of exploits I have created that use the vulnerability
+to take advantage of other aspects of the game.
 
-Just as an introduction, here is an example of how the vulnerability operates. For all examples in this post, clicking the image will open the code in a new tab.
-<a href="https://haste.lystic.dev/anawadihex.bash" target="_blank" rel="noopener noreferrer"><img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/riBznQFb/C71ecOKNKXyVMHpd.png" width="861" height="219" /></a>
+Just as an introduction, here is an example of how the vulnerability operates:
+
+
+```sqf
+uiNamespace setVariable ["xd2", {
+	if(getClientState == "LOGGED IN") then {
+		Some_Global_Variable = "Some Value";
+		missionNamespace setVariable["Some_Global_variable", Some_Global_Variable, true];
+		publicVariable "Some_Global_variable";
+	};
+}];
+onEachFrame (uiNamespace getVariable "xd2");
+```
 
 This script operates by using the onEachFrame command at the main menu. Using onEachFrame in this way will carry our code all the way into the server. Terminating at the SQF Firewall. The exploit exists within the if statement on Line 2. By defining a variable and then publishing it over the network, we can distribute data onto all machines loaded into the server, including the server itself. Lines 5 and 6 show the two commands we can use to distribute our data. Both work, however, I found that setVariable is often the command server owners leave the least protected.
 
@@ -58,3 +75,4 @@ In order to protect your server, you need to understand two simple facts.
 If your client functions are protected with compileFinal, there is no way this exploit can overwrite them. As well, this exploit is entirely logged by publicVariable, setVariable, and setVariableVal filters. By having strong filters and protected client functions, your server will be perfectly safe from this exploit.
 
 {/* reference links */}
+[Breaking the SQF Firewall]: https://blog.lystic.dev/2019/10/19/breaking-the-sqf-firewall/

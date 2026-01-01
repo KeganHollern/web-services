@@ -1,4 +1,4 @@
-import type { editor } from 'monaco-editor';
+import type { editor, languages } from 'monaco-editor';
 
 export const DEFAULT_CONTENT = `# Secret Title
 
@@ -1160,4 +1160,74 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
         }
     ],
     "encodedTokensColors": []
+};
+
+export const SQFLanguageDefinition: languages.IMonarchLanguage = {
+    defaultToken: '',
+    tokenPostfix: '.sqf',
+    unicode: false,
+
+    keywords: [
+        'if', 'then', 'else', 'switch', 'case', 'default', 'break', 'for', 'do', 'while', 'exitWith',
+        'private', 'public', 'protected', 'static', 'nil', 'true', 'false', 'in', 'not', 'and', 'or',
+        'select', 'selectRandom', 'count', 'pushBack', 'popBack', 'insert', 'removeAt', 'clear',
+        'spawn', 'execVM', 'call', 'params', 'return', 'waitUntil', 'sleep', 'hint', 'titleText',
+        'diag_log', 'diag_logFormat', 'format', 'str', 'toString', 'toArray', 'toLower', 'toUpper',
+        'getText', 'setText', 'getNumber', 'setNumber', 'getVariable', 'setVariable', 'hasVariable',
+        'deleteVariable', 'isNil', 'typeOf', 'isClass', 'isKindOf', 'createVehicle', 'createUnit',
+        'createGroup', 'groupAddVehicle', 'groupAddUnit', 'leader', 'side', 'faction', 'rank',
+        'name', 'position', 'setPos', 'moveTo', 'moveInDriver', 'moveInGunner', 'addAction',
+        'removeAction', 'clearActions', 'getActions', 'uiNamespace'
+    ],
+
+    operators: [
+        '=', '+=', '-=', '*=', '/=', '%=', '++', '--',
+        '+', '-', '*', '/', '%',
+        '==', '!=', '<', '<=', '>', '>='
+    ],
+
+    symbols: /[=+\-*/%<>!]+/,
+
+    tokenizer: {
+        root: [
+            // identifiers and keywords
+            [/[a-zA-Z_]\w*/, {
+                cases: {
+                    '@keywords': 'keyword',
+                    '@default': 'identifier'
+                }
+            }],
+
+            // whitespace
+            { include: '@whitespace' },
+
+            // operators
+            [/@symbols/, {
+                cases: {
+                    '@operators': 'operator',
+                    '@default': ''
+                }
+            }],
+
+            // numbers
+            [/\d+/, 'number'],
+
+            // strings
+            [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-terminated string
+            [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
+
+            // comments
+            [/\/\/.*$/, 'comment'],
+        ],
+
+        whitespace: [
+            [/[ \t\r\n]+/, ''],
+        ],
+
+        string: [
+            [/[^\\"]+/, 'string'],
+            [/\\./, 'string.escape.invalid'],
+            [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+        ],
+    },
 };

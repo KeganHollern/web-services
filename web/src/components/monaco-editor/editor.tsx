@@ -1,5 +1,5 @@
 import { DarkTheme, LightTheme, SystemTheme, useTheme } from '@/context/theme-provider';
-import { Editor as MonacoEditor, type Monaco } from '@monaco-editor/react';
+import { loader, Editor as MonacoEditor, type Monaco } from '@monaco-editor/react';
 import { Loader } from 'lucide-react';
 import type { editor } from 'monaco-editor';
 import { useEffect, useRef } from 'react';
@@ -19,6 +19,11 @@ type EditorProps = {
     wordwrap?: boolean
     fontSize?: number
 }
+
+loader.init().then((monacoInstance) => {
+    monacoInstance.languages.register({ id: 'sqf' });
+    monacoInstance.languages.setMonarchTokensProvider('sqf', constants.SQFLanguageDefinition);
+});
 
 export function Editor({
     ref,
