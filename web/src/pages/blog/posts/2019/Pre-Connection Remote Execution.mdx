@@ -1,4 +1,18 @@
-I have covered remote execution in the past. Everyone by now knows that any remote execution cheat is brutal to the security of game servers in Arma. The developers have made strides to block unlogged and unfiltered remote execution, and they have come a long way since Arma 3 Alpha. This post covers an exploit that has existed in the Real Virtuality engine since RV3, Arma 2.
+---
+title: Pre-Connection Remote Execution
+description: |
+    I have covered remote execution in the past. Everyone by now knows that
+    any remote execution cheat is brutal to the security of game servers...
+slug: pre-connection-remote-execution
+---
+
+# Pre-Connection Remote Execution
+
+I have covered remote execution in the past. Everyone by now knows that any remote
+execution cheat is brutal to the security of game servers in Arma. The developers
+have made strides to block unlogged and unfiltered remote execution, and they have
+come a long way since Arma 3 Alpha. This post covers an exploit that has existed
+in the Real Virtuality engine since RV3, Arma 2.
 
 If you haven't read my last post, <a href="http://lystic.net/2019/10/19/breaking-the-sqf-firewall/" target="_blank" rel="noopener noreferrer">Breaking the SQF Firewall</a>. You should do so now. Piggybacking on this last post, there is a vulnerability in how the game processes network messages prior to the Firewall killing sqf threads. Specifically, the publicVariable and setVariable network messages can be sent to the server prior to the firewall killing our existing sqf loops. I am going to cover the vulnerability first and finish up with a series of exploits I have created that use the vulnerability to take advantage of other aspects of the game.
 
@@ -37,8 +51,10 @@ As you can see from just these three examples, there are a lot of nasty things t
 
 <strong>Now, how about server protection?</strong>
 In order to protect your server, you need to understand two simple facts.
-<ol>
- 	<li>Always protect your functions with compileFinal</li>
- 	<li>Have strong BattlEye filters</li>
-</ol>
+
+1. Always protect your functions with [compileFinal]
+2. Have strong BattlEye filters
+
 If your client functions are protected with compileFinal, there is no way this exploit can overwrite them. As well, this exploit is entirely logged by publicVariable, setVariable, and setVariableVal filters. By having strong filters and protected client functions, your server will be perfectly safe from this exploit.
+
+{/* reference links */}
