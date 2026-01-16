@@ -34,7 +34,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/copilotkit': {
-        target: "http://localhost:4000/copilotkit",
+        target: "http://localhost:4000",
         changeOrigin: true,
       },
     }

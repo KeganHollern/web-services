@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 export function SubdomainSelector() {
     const { subdomain, setSubdomain } = useSubdomain();
 
+    console.log("tool register");
     useFrontendTool({
         name: "set_page",
         description:
