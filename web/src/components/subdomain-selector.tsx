@@ -7,15 +7,35 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useFrontendTool } from "@copilotkit/react-core";
 
 import { Label } from "@/components/ui/label";
 
 export function SubdomainSelector() {
     const { subdomain, setSubdomain } = useSubdomain();
 
+    useFrontendTool({
+        name: "set_page",
+        description:
+            "Change the users page to the desired one.",
+        parameters: [
+            {
+                name: "page",
+                type: "string",
+                description: "The page. Valid pages are: main, blog, secret, edit, upload, swap, not-found.",
+            },
+        ],
+        handler: ({ page }) => {
+            setSubdomain(page);
+            return {
+                status: "success",
+                message: `Subdomain changed to ${subdomain}`,
+            };
+        }
+    });
+
     const isDev = process.env.NODE_ENV === "development";
     if (!isDev) return null;
-
 
     return (
         <div className="flex items-center gap-2">

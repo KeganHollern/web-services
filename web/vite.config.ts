@@ -32,7 +32,11 @@ export default defineConfig({
       '/api': {
         target: "http://localhost",
         changeOrigin: true,
-      }
+      },
+      '/copilotkit': {
+        target: "http://localhost:4000/copilotkit",
+        changeOrigin: true,
+      },
     }
   }
 })
