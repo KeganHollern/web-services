@@ -30,7 +30,7 @@ export function SubdomainSelector() {
             setSubdomain(page);
             return {
                 status: "success",
-                message: `Subdomain changed to ${subdomain}`,
+                message: `Subdomain changed to ${page}`,
             };
         }
     });
