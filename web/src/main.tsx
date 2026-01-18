@@ -1,4 +1,5 @@
 import '@/styles/globals.css';
+import "@copilotkit/react-ui/styles.css";
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -10,6 +11,8 @@ import { LinkShareProvider } from '@/context/linkshare-provider';
 import { ThemeProvider } from "@/context/theme-provider";
 import { getItem } from '@/lib/state';
 import { DomainRouter } from "@/pages/domain-router";
+import { CopilotKit } from "@copilotkit/react-core";
+import { CopilotSidebar } from "@copilotkit/react-ui";
 import { BrowserRouter } from "react-router";
 import ScrollToTop from './hooks/scroll';
 
@@ -17,18 +20,21 @@ const open = (getItem('sidebar_state') ?? "true") === "true";
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
-      <LinkShareProvider>
-        <SidebarProvider defaultOpen={open}>
-          <Sidebar>
-            <BrowserRouter>
-              <ScrollToTop />
-              <DomainRouter />
-            </BrowserRouter>
-          </Sidebar>
-        </SidebarProvider>
-        <Toaster />
-      </LinkShareProvider>
-    </ThemeProvider>
+    <CopilotKit agent='my_agent' runtimeUrl='/copilotkit'>
+      <ThemeProvider>
+        <LinkShareProvider>
+          <SidebarProvider defaultOpen={open}>
+            <Sidebar>
+              <BrowserRouter>
+                <ScrollToTop />
+                <DomainRouter />
+              </BrowserRouter>
+            </Sidebar>
+            <CopilotSidebar />
+          </SidebarProvider>
+          <Toaster />
+        </LinkShareProvider>
+      </ThemeProvider>
+    </CopilotKit>
   </StrictMode>,
 )

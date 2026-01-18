@@ -1,4 +1,6 @@
+
 import { Header } from "@/components/page-header";
+import { useCopilotReadable } from "@copilotkit/react-core";
 import { MDXProvider } from "@mdx-js/react";
 import { ArrowLeft, Loader } from "lucide-react";
 import { Suspense } from "react";
@@ -19,6 +21,11 @@ export function Post({ children, title }: BlogPostProps) {
 
     // TODO: inject SEO metadata like title, and description, for
     // discord and search engines to utilize
+
+    useCopilotReadable({
+        description: `Current blog post title.`,
+        value: title,
+    })
 
     return (
         <>
