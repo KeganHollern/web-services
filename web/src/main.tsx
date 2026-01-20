@@ -20,7 +20,12 @@ const open = (getItem('sidebar_state') ?? "true") === "true";
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <CopilotKit agent='my_agent' runtimeUrl='/copilotkit'>
+    <CopilotKit 
+      agent='aika'
+      runtimeUrl='/copilotkit'
+      showDevConsole={false}
+      enableInspector={process.env.NODE_ENV === "development"}
+    >
       <ThemeProvider>
         <LinkShareProvider>
           <SidebarProvider defaultOpen={open}>

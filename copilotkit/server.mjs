@@ -11,7 +11,7 @@ const serviceAdapter = new EmptyAdapter();
 
 const runtime = new CopilotRuntime({
     agents: {
-        my_agent: new HttpAgent({ url: "http://localhost:8000/" }),
+        aika: new HttpAgent({ url: "http://localhost:8000/" }),
     }
 });
 

@@ -27,6 +27,12 @@ export function SubdomainSelector() {
             },
         ],
         handler: ({ page }) => {
+            // NOTE: if we're not in dev, this should change us
+            // to a different subdomain...
+            // but that probably breaks the copilotkit session
+            // ... so we need to think of something else... maybe a cookie
+            // for session or local storage so it persists between domains?
+            
             setSubdomain(page);
             return {
                 status: "success",
