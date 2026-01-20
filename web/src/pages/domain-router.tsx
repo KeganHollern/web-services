@@ -7,9 +7,7 @@ import { HomeRouter } from "@/pages/home/router";
 import { SecretRouter } from "@/pages/secret/router";
 import { SwapRouter } from "@/pages/swap/router";
 import { UploadRouter } from "@/pages/upload/router";
-
 import { PageNotFound } from "@/pages/404/page";
-
 
 function GetPageRouter(subdomain: string): React.FC {
     switch (subdomain) {

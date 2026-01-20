@@ -99,6 +99,13 @@ const flavor = {
   img: ({ ...props }: {} & React.HTMLAttributes<HTMLImageElement>) => (
     <img className={cn(props.className)} {...props} />
   ),
+  video: ({ ...props }: React.VideoHTMLAttributes<HTMLVideoElement>) => (
+    <video
+      controls
+      className={cn("my-6 w-full rounded-lg border-2 border-muted shadow-sm", props.className)}
+      {...props}
+    />
+  ),
 }
 
 const code = {

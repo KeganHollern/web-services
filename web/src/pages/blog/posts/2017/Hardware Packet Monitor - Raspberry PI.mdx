@@ -5,21 +5,21 @@ The first step is to enable SSH and connect your Pi to wifi. <a href="https://ww
 
 Next you will need to connect over <a href="http://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html">Putty</a>, The default login is: pi / raspberry
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/H1ZjfkCw/T8mQqLvQ06YaFldX.png" width="661" height="419" />
+![img](https://ss.lystic.zip/Legacy/H1ZjfkCw/T8mQqLvQ06YaFldX.png)
 
 Once connected, you'll need to navigate to /etc
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/w7w7e6HW/7Hfn1STV0gLr1hh2.png" width="252" height="40" />
+![img](https://ss.lystic.zip/Legacy/w7w7e6HW/7Hfn1STV0gLr1hh2.png)
 
 Now, you'll need to edit the rc.local file using nano.
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/jFT5voNY/aX21zJ07Im9oH3Ho.png" width="347" height="14" />
+![img](https://ss.lystic.zip/Legacy/jFT5voNY/aX21zJ07Im9oH3Ho.png)
 
 You'll need to add the following to the file.
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/hJxhhDo8/A8LfMyKgMflH7icz.png" width="307" height="99" />
+![img](https://ss.lystic.zip/Legacy/hJxhhDo8/A8LfMyKgMflH7icz.png)
 
 I added a bit more when playing around. The new file should look like this.
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/nfc3Bp18/wxfLDXHLEX8GP1BP.png" width="655" height="590" />
+![img](https://ss.lystic.zip/Legacy/nfc3Bp18/wxfLDXHLEX8GP1BP.png)
 
 Good now you can save that file with Ctrl+O and exit with Ctrl+X
 
@@ -27,7 +27,7 @@ Now you can shutdown your Pi using sudo shutdown.
 
 <strong>Hardware setup time!</strong>
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/hnhjEyl2/photo_2017-03-04_16-01-29.jpg" width="960" height="1280" />
+![img](https://ss.lystic.zip/Legacy/hnhjEyl2/photo_2017-03-04_16-01-29.jpg)
 
 The red X's are unneeded for this build, I was using them during initial setup and never removed them.
 The yellow circle represents the eth1 interface, this connects to your router/switch/ect.
@@ -40,18 +40,18 @@ Once all of this is connected, You should be able to boot your pi and use your i
 
 For this example, I will be using TCPDump, you can install this with <em>sudo apt-get install tcpdump</em>
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/Oy6qX7yu/FNfiKX4pUc5JeGzw.png" width="743" height="260" />
+![img](https://ss.lystic.zip/Legacy/Oy6qX7yu/FNfiKX4pUc5JeGzw.png)
 
 First verify that your bridge is setup. (You wouldn't have internet on your PC if it wasn't)
 For this I used ifconfig, however it can be done many ways.
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/3QQHpbKd/KQDIYbcDZsWJq09k.png" width="626" height="161" />
+![img](https://ss.lystic.zip/Legacy/3QQHpbKd/KQDIYbcDZsWJq09k.png)
 
 Now you can start monitoring packets
 
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/ce4rUDXX/tNFSZp6KgJseVFRU.png" width="515" height="67" />
+![img](https://ss.lystic.zip/Legacy/ce4rUDXX/tNFSZp6KgJseVFRU.png)
 
-[embed]https://ss.lystic.zip/Legacy/7NExONS1/1WsVzqT3eyWdY2Xf.mp4[/embed]
+<video src="https://ss.lystic.zip/Legacy/7NExONS1/1WsVzqT3eyWdY2Xf.mp4" />
 
 You can cancel the packet capture with Ctrl+C
 
@@ -60,10 +60,6 @@ So if your internet is faster than 100Mbps the raspberry pi may not be your best
 
 I plan to continue this project with a Raspberry Pi Zero, <a href="http://lifehacker.com/power-a-raspberry-pi-zero-over-ethernet-1752284809">Power over Ethernet</a>, and <a href="http://libtins.github.io/">libtins</a>.
 
-&nbsp;
+---
 
-&nbsp;
-
-I captured all these screenshots and videos with my custom Gyazo tool. <a href="http://lystic.net/2017/02/09/how-to-host-your-own-gyazo-server/">You can read about that here.</a>
-
-<img class="alignnone size-medium" src="https://ss.lystic.zip/Legacy/snLIjLYA/photo_2017-03-04_16-01-09.jpg" width="960" height="1280" />
+![img](https://ss.lystic.zip/Legacy/snLIjLYA/photo_2017-03-04_16-01-09.jpg)
