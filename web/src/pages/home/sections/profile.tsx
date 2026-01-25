@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export function Profile() {
     // TODO: can we make these icons?
     const socialLinks = [
-        { label: "X", href: "https://x.com/_lystic" },
+        { label: "X", href: "https://x.com/lystic" },
         { label: "Telegram", href: "https://t.me/lmaokegan" },
         { label: "GitHub", href: "https://github.com/KeganHollern" },
         { label: "LinkedIn", href: "https://www.linkedin.com/in/kegan-hollern" },
