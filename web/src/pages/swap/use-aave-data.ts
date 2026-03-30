@@ -64,6 +64,7 @@ export interface LendPosition {
     depositedAmount: string;
     depositedAmountUSD: string;
     supplyAPY: string;
+    decimals: number;
 }
 
 export interface AvailableAsset {
@@ -71,8 +72,10 @@ export interface AvailableAsset {
     symbol: string;
     logoURI: string;
     walletBalance: string;
+    walletBalanceRaw: string;  // raw uint256 as decimal string
     walletBalanceUSD: string;
     supplyAPY: string;
+    decimals: number;
 }
 
 export interface AaveData {
@@ -154,6 +157,7 @@ export function useAaveData(): AaveData {
                     depositedAmount: parseFloat(r.underlyingBalance).toFixed(6),
                     depositedAmountUSD: parseFloat(r.underlyingBalanceUSD).toFixed(2),
                     supplyAPY: pctAPY(fr?.supplyAPY ?? "0"),
+                    decimals: r.reserve.decimals,
                 } satisfies LendPosition;
             });
     }, [userReserveData, formattedReserves, baseCurrencyData, currentTimestamp]);
@@ -211,8 +215,10 @@ export function useAaveData(): AaveData {
                         symbol: r.symbol,
                         logoURI: assetLogo(r.symbol),
                         walletBalance: bal.toFixed(6),
+                        walletBalanceRaw: raw.toString(),
                         walletBalanceUSD: (bal * priceUSD).toFixed(2),
                         supplyAPY: pctAPY(r.supplyAPY),
+                        decimals: r.decimals,
                     } satisfies AvailableAsset,
                 ];
             })

@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAaveData, type LendPosition, type AvailableAsset } from "./use-aave-data";
+import { DepositModal } from "./aave-deposit-modal";
+import { WithdrawModal } from "./aave-withdraw-modal";
 
 // ---------------------------------------------------------------------------
 // Shared sub-components
@@ -47,9 +50,11 @@ function SkeletonRows({ count, cols }: { count: number; cols: number }) {
 function PositionsTable({
     positions,
     loading,
+    onWithdraw,
 }: {
     positions: LendPosition[];
     loading: boolean;
+    onWithdraw: (pos: LendPosition) => void;
 }) {
     return (
         <section>
@@ -94,7 +99,11 @@ function PositionsTable({
                                         {pos.supplyAPY}%
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <Button variant="outline" size="sm">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => onWithdraw(pos)}
+                                        >
                                             Withdraw
                                         </Button>
                                     </td>
@@ -115,9 +124,11 @@ function PositionsTable({
 function AvailableTable({
     assets,
     loading,
+    onDeposit,
 }: {
     assets: AvailableAsset[];
     loading: boolean;
+    onDeposit: (asset: AvailableAsset) => void;
 }) {
     return (
         <section>
@@ -168,7 +179,11 @@ function AvailableTable({
                                         {a.supplyAPY}%
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <Button variant="outline" size="sm">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => onDeposit(a)}
+                                        >
                                             Deposit
                                         </Button>
                                     </td>
@@ -190,6 +205,9 @@ export function LendTab() {
     const { address } = useAccount();
     const { userPositions, availableToDeposit, loading, error } = useAaveData();
 
+    const [depositAsset, setDepositAsset] = useState<AvailableAsset | null>(null);
+    const [withdrawPosition, setWithdrawPosition] = useState<LendPosition | null>(null);
+
     if (!address) {
         return (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 mt-16">
@@ -210,11 +228,37 @@ export function LendTab() {
     }
 
     return (
-        <div className="w-full max-w-2xl mx-auto mt-8 flex flex-col gap-6 pb-8">
-            {(loading || userPositions.length > 0) && (
-                <PositionsTable positions={userPositions} loading={loading} />
+        <>
+            <div className="w-full max-w-2xl mx-auto mt-8 flex flex-col gap-6 pb-8">
+                {(loading || userPositions.length > 0) && (
+                    <PositionsTable
+                        positions={userPositions}
+                        loading={loading}
+                        onWithdraw={setWithdrawPosition}
+                    />
+                )}
+                <AvailableTable
+                    assets={availableToDeposit}
+                    loading={loading}
+                    onDeposit={setDepositAsset}
+                />
+            </div>
+
+            {depositAsset && (
+                <DepositModal
+                    open={!!depositAsset}
+                    onOpenChange={(v) => { if (!v) setDepositAsset(null); }}
+                    asset={depositAsset}
+                />
             )}
-            <AvailableTable assets={availableToDeposit} loading={loading} />
-        </div>
+
+            {withdrawPosition && (
+                <WithdrawModal
+                    open={!!withdrawPosition}
+                    onOpenChange={(v) => { if (!v) setWithdrawPosition(null); }}
+                    position={withdrawPosition}
+                />
+            )}
+        </>
     );
 }
