@@ -185,7 +185,7 @@ export function useSwap() {
                                 address: PERMIT2_ADDRESS,
                                 abi: PERMIT2_ABI,
                                 functionName: "approve",
-                                args: [currencyIn as `0x${string}`, UNIVERSAL_ROUTER_ADDRESS, MAX_UINT160, MAX_UINT48],
+                                args: [currencyIn as `0x${string}`, UNIVERSAL_ROUTER_ADDRESS, MAX_UINT160, Number(MAX_UINT48)],
                             });
                             toast.loading("Waiting for Permit2 approval…", { id });
                             await publicClient.waitForTransactionReceipt({ hash: tx });
