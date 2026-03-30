@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TokenSelectorModal, type Token } from "./token-selector-modal";
 import { useQuote } from "./use-quote";
 import { LendTab } from "./lend-tab";
+import { useSwap } from "./use-swap";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -265,6 +266,7 @@ function SwapTab() {
         fromAmount,
         slippageBps,
     );
+    const { executeSwap, isSwapping } = useSwap();
 
     const prices = useTokenPrices([fromToken, toToken]);
     const fromUnitPrice = fromToken ? prices[fromToken.address.toLowerCase()] : undefined;
@@ -303,7 +305,7 @@ function SwapTab() {
         setFromAmount(quote?.amountOut.replace(/,/g, "") ?? "");
     }
 
-    const swapDisabled = !isConnected || !quote || quoteLoading;
+    const swapDisabled = !isConnected || !quote || quoteLoading || isSwapping;
 
     return (
         <>
@@ -402,9 +404,18 @@ function SwapTab() {
                     className="w-full mt-1"
                     size="lg"
                     disabled={swapDisabled}
+                    onClick={() => {
+                        if (fromToken && toToken && quote && fromAmount) {
+                            executeSwap(fromToken, toToken, fromAmount, quote, () => {
+                                setFromAmount("");
+                            });
+                        }
+                    }}
                 >
                     {!isConnected
                         ? "Connect wallet to swap"
+                        : isSwapping
+                        ? "Swapping…"
                         : quoteLoading
                         ? "Getting quote…"
                         : quoteError

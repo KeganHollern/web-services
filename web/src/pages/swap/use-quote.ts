@@ -93,13 +93,20 @@ function formatAmount(raw: string): string {
     return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+interface QuoterTierResult {
+    amountOut: bigint;
+    fee: number;
+    tickSpacing: number;
+    zeroForOne: boolean;
+}
+
 async function callQuoter(
     addrIn: `0x${string}`,
     addrOut: `0x${string}`,
     amountInRaw: bigint,
     fee: number,
     tickSpacing: number,
-): Promise<bigint> {
+): Promise<QuoterTierResult> {
     const zeroForOne = BigInt(addrIn) < BigInt(addrOut);
     const [currency0, currency1] = zeroForOne
         ? [addrIn, addrOut]
@@ -119,7 +126,7 @@ async function callQuoter(
         ],
     });
 
-    return result[0]; // amountOut (uint256)
+    return { amountOut: result[0], fee, tickSpacing, zeroForOne };
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +139,10 @@ export interface QuoteResult {
     minimumReceived: string;    // slippage-adjusted, formatted
     minimumReceivedRaw: bigint;
     gasEstimate: string;
+    // Winning pool params needed for swap execution
+    fee: number;
+    tickSpacing: number;
+    zeroForOne: boolean;
 }
 
 export interface QuoteState {
@@ -178,9 +189,9 @@ export function useQuote(
                     )
                 );
 
-                let best: bigint | null = null;
+                let best: QuoterTierResult | null = null;
                 for (const r of settled) {
-                    if (r.status === "fulfilled" && (best === null || r.value > best)) {
+                    if (r.status === "fulfilled" && (best === null || r.value.amountOut > best.amountOut)) {
                         best = r.value;
                     }
                 }
@@ -190,17 +201,20 @@ export function useQuote(
                     return;
                 }
 
-                const formattedOut = formatUnits(best, tokenOut.decimals);
-                const minRaw = (best * BigInt(10000 - slippageBps)) / BigInt(10000);
+                const formattedOut = formatUnits(best.amountOut, tokenOut.decimals);
+                const minRaw = (best.amountOut * BigInt(10000 - slippageBps)) / BigInt(10000);
                 const formattedMin = formatUnits(minRaw, tokenOut.decimals);
 
                 setState({
                     result: {
                         amountOut: formatAmount(formattedOut),
-                        amountOutRaw: best,
+                        amountOutRaw: best.amountOut,
                         minimumReceived: formatAmount(formattedMin),
                         minimumReceivedRaw: minRaw,
                         gasEstimate: "~$2–5",
+                        fee: best.fee,
+                        tickSpacing: best.tickSpacing,
+                        zeroForOne: best.zeroForOne,
                     },
                     loading: false,
                     error: null,
