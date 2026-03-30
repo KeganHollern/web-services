@@ -6,6 +6,7 @@ import { Header } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { TokenSelectorModal, type Token } from "./token-selector-modal";
 import { useQuote } from "./use-quote";
+import { LendTab } from "./lend-tab";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -422,17 +423,6 @@ function SwapTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Lend tab
-// ---------------------------------------------------------------------------
-
-function LendTab() {
-    return (
-        <div className="flex flex-1 justify-center items-center text-sm text-muted-foreground mt-16">
-            Lending coming soon
-        </div>
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Tab navigation
 // ---------------------------------------------------------------------------
