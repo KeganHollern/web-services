@@ -7,9 +7,8 @@ export const wagmiConfig = createConfig({
     transports: {
         [mainnet.id]: fallback([
             unstable_connector(injected),
-            http("https://cloudflare-eth.com"),
-            http("https://rpc.ankr.com/eth"),
             http("https://ethereum.publicnode.com"),
+            http("https://cloudflare-eth.com"),
         ]),
     },
 });

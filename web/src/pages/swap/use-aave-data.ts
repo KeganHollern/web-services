@@ -11,29 +11,15 @@ import { useAccount, useReadContracts } from "wagmi";
 // ---------------------------------------------------------------------------
 
 const AAVE_V3 = {
-    uiPoolDataProvider: "0x91c0eA31b49B69Ea18607702c5d9aC360bf3dE7d",
+    uiPoolDataProvider: "0x56b7A1012765C285afAC8b8F25C69Bf10ccfE978",
     poolAddressesProvider: "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
 };
-
-const MAINNET_RPCS = [
-    "https://cloudflare-eth.com",
-    "https://rpc.ankr.com/eth",
-    "https://ethereum.publicnode.com",
-];
 
 // ---------------------------------------------------------------------------
 // Data fetchers (run outside React, called from React Query)
 // ---------------------------------------------------------------------------
 
-function makeContract() {
-    const provider = new ethers.providers.FallbackProvider(
-        MAINNET_RPCS.map((url, i) => ({
-            provider: new ethers.providers.JsonRpcProvider(url, 1),
-            priority: i + 1,
-            stallTimeout: 2000,
-        })),
-        1
-    );
+function makeContract(provider: ethers.providers.Provider) {
     return new UiPoolDataProvider({
         uiPoolDataProviderAddress: AAVE_V3.uiPoolDataProvider,
         provider,
@@ -41,8 +27,8 @@ function makeContract() {
     });
 }
 
-async function fetchAaveReserves() {
-    const contract = makeContract();
+async function fetchAaveReserves(provider: ethers.providers.Provider) {
+    const contract = makeContract(provider);
     const { reservesData, baseCurrencyData } = await contract.getReservesHumanized({
         lendingPoolAddressProvider: AAVE_V3.poolAddressesProvider,
     });
@@ -56,8 +42,8 @@ async function fetchAaveReserves() {
     return { formattedReserves, baseCurrencyData, currentTimestamp };
 }
 
-async function fetchUserReserves(user: string) {
-    const contract = makeContract();
+async function fetchUserReserves(provider: ethers.providers.Provider, user: string) {
+    const contract = makeContract(provider);
     return contract.getUserReservesHumanized({
         lendingPoolAddressProvider: AAVE_V3.poolAddressesProvider,
         user,
@@ -116,27 +102,32 @@ function pctAPY(apy: string) {
 export function useAaveData(): AaveData {
     const { address } = useAccount();
 
+    const provider = useMemo(
+        () => new ethers.providers.JsonRpcProvider("https://ethereum.publicnode.com", 1),
+        []
+    );
+
     const {
         data: reserveData,
         isLoading: reserveLoading,
         error: reserveError,
     } = useQuery({
         queryKey: ["aave-reserves"],
-        queryFn: fetchAaveReserves,
+        queryFn: () => fetchAaveReserves(provider),
         staleTime: 30_000,
         gcTime: 60_000,
     });
 
     const { data: userReserveData, isLoading: userLoading } = useQuery({
         queryKey: ["aave-user-reserves", address],
-        queryFn: () => fetchUserReserves(address!),
+        queryFn: () => fetchUserReserves(provider, address!),
         enabled: !!address,
         staleTime: 15_000,
         gcTime: 30_000,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const formattedReserves: any[] = reserveData?.formattedReserves ?? [];
+    const formattedReserves = useMemo<any[]>(() => reserveData?.formattedReserves ?? [], [reserveData]);
     const baseCurrencyData = reserveData?.baseCurrencyData;
     const currentTimestamp = reserveData?.currentTimestamp ?? Math.floor(Date.now() / 1000);
 
