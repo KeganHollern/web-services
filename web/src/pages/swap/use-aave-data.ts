@@ -1,10 +1,10 @@
-import { useMemo } from "react";
-import { useAccount, useReadContracts } from "wagmi";
-import { useQuery } from "@tanstack/react-query";
 import { UiPoolDataProvider } from "@aave/contract-helpers";
 import { formatReserves, formatUserSummary } from "@aave/math-utils";
+import { useQuery } from "@tanstack/react-query";
 import { ethers } from "ethers";
+import { useMemo } from "react";
 import { erc20Abi, formatUnits } from "viem";
+import { useAccount, useReadContracts } from "wagmi";
 
 // ---------------------------------------------------------------------------
 // Aave v3 Ethereum Mainnet contract addresses
@@ -15,14 +15,25 @@ const AAVE_V3 = {
     poolAddressesProvider: "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
 };
 
-const MAINNET_RPC = "https://eth.llamarpc.com";
+const MAINNET_RPCS = [
+    "https://cloudflare-eth.com",
+    "https://rpc.ankr.com/eth",
+    "https://ethereum.publicnode.com",
+];
 
 // ---------------------------------------------------------------------------
 // Data fetchers (run outside React, called from React Query)
 // ---------------------------------------------------------------------------
 
 function makeContract() {
-    const provider = new ethers.providers.JsonRpcProvider(MAINNET_RPC, 1);
+    const provider = new ethers.providers.FallbackProvider(
+        MAINNET_RPCS.map((url, i) => ({
+            provider: new ethers.providers.JsonRpcProvider(url, 1),
+            priority: i + 1,
+            stallTimeout: 2000,
+        })),
+        1
+    );
     return new UiPoolDataProvider({
         uiPoolDataProviderAddress: AAVE_V3.uiPoolDataProvider,
         provider,
@@ -207,7 +218,7 @@ export function useAaveData(): AaveData {
                     typeof r.priceInUSD === "string"
                         ? parseFloat(r.priceInUSD)
                         : parseFloat(r.formattedPriceInMarketReferenceCurrency ?? "0") *
-                          ethPriceUSD;
+                        ethPriceUSD;
 
                 return [
                     {
