@@ -204,7 +204,11 @@ export function useAaveData(): AaveData {
 
         const assets = formattedReserves
             .map((r, i) => ({ r, i }))
-            .filter(({ r }) => !depositedSet.has(r.underlyingAsset.toLowerCase()))
+            .filter(({ r }) => {
+                const isWeth = r.underlyingAsset.toLowerCase() === WETH_ADDRESS;
+                // Always show ETH (even if WETH is already deposited), skip other already-deposited assets
+                return isWeth || !depositedSet.has(r.underlyingAsset.toLowerCase());
+            })
             .flatMap(({ r, i }) => {
                 const isWeth = r.underlyingAsset.toLowerCase() === WETH_ADDRESS;
 
