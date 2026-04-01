@@ -4,16 +4,19 @@ import { useQuery } from "@tanstack/react-query";
 import { ethers } from "ethers";
 import { useMemo } from "react";
 import { erc20Abi, formatUnits } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount, useBalance, useReadContracts } from "wagmi";
 
 // ---------------------------------------------------------------------------
 // Aave v3 Ethereum Mainnet contract addresses
 // ---------------------------------------------------------------------------
 
+// https://aave.com/docs/resources/addresses
 const AAVE_V3 = {
     uiPoolDataProvider: "0x56b7A1012765C285afAC8b8F25C69Bf10ccfE978",
     poolAddressesProvider: "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e",
 };
+
+export const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".toLowerCase();
 
 // ---------------------------------------------------------------------------
 // Data fetchers (run outside React, called from React Query)
@@ -185,6 +188,12 @@ export function useAaveData(): AaveData {
         [userPositions]
     );
 
+    // Native ETH balance (for the WETH reserve)
+    const { data: ethBalanceData } = useBalance({
+        address,
+        query: { enabled: !!address },
+    });
+
     // Available to deposit: reserves not already deposited, with wallet balance > 0
     const availableToDeposit = useMemo<AvailableAsset[]>(() => {
         if (!address || !formattedReserves.length || !balanceData) return [];
@@ -193,14 +202,21 @@ export function useAaveData(): AaveData {
         const ethPriceUSD =
             parseFloat(baseCurrencyData?.networkBaseTokenPriceInUsd ?? "0") / 1e8;
 
-        return formattedReserves
+        const assets = formattedReserves
             .map((r, i) => ({ r, i }))
             .filter(({ r }) => !depositedSet.has(r.underlyingAsset.toLowerCase()))
             .flatMap(({ r, i }) => {
-                const result = balanceData[i];
-                if (!result || result.status !== "success") return [];
+                const isWeth = r.underlyingAsset.toLowerCase() === WETH_ADDRESS;
 
-                const raw = result.result as bigint;
+                // For WETH reserve, use native ETH balance instead of WETH ERC-20 balance
+                const raw = isWeth
+                    ? (ethBalanceData?.value ?? 0n)
+                    : (() => {
+                        const result = balanceData[i];
+                        if (!result || result.status !== "success") return 0n;
+                        return result.result as bigint;
+                    })();
+
                 const bal = parseFloat(formatUnits(raw, r.decimals));
                 if (bal <= 0) return [];
 
@@ -214,8 +230,8 @@ export function useAaveData(): AaveData {
                 return [
                     {
                         underlyingAsset: r.underlyingAsset,
-                        symbol: r.symbol,
-                        logoURI: assetLogo(r.symbol),
+                        symbol: isWeth ? "ETH" : r.symbol,
+                        logoURI: assetLogo(isWeth ? "eth" : r.symbol),
                         walletBalance: bal.toFixed(6),
                         walletBalanceRaw: raw.toString(),
                         walletBalanceUSD: (bal * priceUSD).toFixed(2),
@@ -225,7 +241,9 @@ export function useAaveData(): AaveData {
                 ];
             })
             .sort((a, b) => parseFloat(b.walletBalanceUSD) - parseFloat(a.walletBalanceUSD));
-    }, [address, formattedReserves, balanceData, depositedSet, baseCurrencyData]);
+
+        return assets;
+    }, [address, formattedReserves, balanceData, depositedSet, baseCurrencyData, ethBalanceData]);
 
     return {
         userPositions,

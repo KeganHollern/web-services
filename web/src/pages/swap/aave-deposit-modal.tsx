@@ -1,13 +1,16 @@
-import { useState, useMemo } from "react";
-import { useAccount, useWriteContract, useReadContract, usePublicClient } from "wagmi";
-import { erc20Abi, parseUnits } from "viem";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { erc20Abi, parseUnits } from "viem";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import type { AvailableAsset } from "./use-aave-data";
+import { WETH_ADDRESS } from "./use-aave-data";
 
+// https://aave.com/docs/resources/addresses
 const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2" as const;
+const WETH_GATEWAY = "0xd01607c3C5eCABa394D8be377a08590149325722" as const;
 
 const POOL_ABI = [
     {
@@ -21,6 +24,20 @@ const POOL_ABI = [
         ],
         outputs: [],
         stateMutability: "nonpayable",
+    },
+] as const;
+
+const GATEWAY_ABI = [
+    {
+        name: "depositETH",
+        type: "function",
+        inputs: [
+            { name: "", type: "address" },
+            { name: "onBehalfOf", type: "address" },
+            { name: "referralCode", type: "uint16" },
+        ],
+        outputs: [],
+        stateMutability: "payable",
     },
 ] as const;
 
@@ -60,15 +77,17 @@ export function DepositModal({ open, onOpenChange, asset }: Props) {
         setAmount(asset.walletBalance);
     }
 
+    const isETH = asset.underlyingAsset.toLowerCase() === WETH_ADDRESS;
+
     const { data: allowance, refetch: refetchAllowance } = useReadContract({
         address: asset.underlyingAsset as `0x${string}`,
         abi: erc20Abi,
         functionName: "allowance",
         args: [address!, AAVE_POOL],
-        query: { enabled: !!address && open },
+        query: { enabled: !!address && open && !isETH },
     });
 
-    const needsApproval = rawAmount > 0n && (allowance ?? 0n) < rawAmount;
+    const needsApproval = !isETH && rawAmount > 0n && (allowance ?? 0n) < rawAmount;
 
     const usdValue = useMemo(() => {
         const n = parseFloat(amount);
@@ -90,36 +109,50 @@ export function DepositModal({ open, onOpenChange, asset }: Props) {
         const toastId = toast.loading("Confirm in wallet…");
 
         try {
-            if (needsApproval) {
-                const approveHash = await writeContractAsync({
-                    address: asset.underlyingAsset as `0x${string}`,
-                    abi: erc20Abi,
-                    functionName: "approve",
-                    args: [AAVE_POOL, rawAmount],
-                });
-                toast.loading(`Approving ${asset.symbol}…`, {
-                    id: toastId,
-                    action: {
-                        label: "View",
-                        onClick: () => window.open(`https://etherscan.io/tx/${approveHash}`, "_blank"),
-                    },
-                });
-                const approveReceipt = await publicClient!.waitForTransactionReceipt({ hash: approveHash });
-                if (approveReceipt.status !== "success") {
-                    toast.error("Approval failed", { id: toastId });
-                    setBusy(false);
-                    return;
-                }
-                await refetchAllowance();
-                toast.loading("Confirm deposit in wallet…", { id: toastId });
-            }
+            let hash: `0x${string}`;
 
-            const hash = await writeContractAsync({
-                address: AAVE_POOL,
-                abi: POOL_ABI,
-                functionName: "supply",
-                args: [asset.underlyingAsset as `0x${string}`, rawAmount, address, 0],
-            });
+            if (isETH) {
+                // Native ETH: use WETH Gateway (wraps + deposits in one tx)
+                hash = await writeContractAsync({
+                    address: WETH_GATEWAY,
+                    abi: GATEWAY_ABI,
+                    functionName: "depositETH",
+                    args: [AAVE_POOL, address, 0],
+                    value: rawAmount,
+                });
+            } else {
+                // ERC-20: approve if needed, then supply
+                if (needsApproval) {
+                    const approveHash = await writeContractAsync({
+                        address: asset.underlyingAsset as `0x${string}`,
+                        abi: erc20Abi,
+                        functionName: "approve",
+                        args: [AAVE_POOL, rawAmount],
+                    });
+                    toast.loading(`Approving ${asset.symbol}…`, {
+                        id: toastId,
+                        action: {
+                            label: "View",
+                            onClick: () => window.open(`https://etherscan.io/tx/${approveHash}`, "_blank"),
+                        },
+                    });
+                    const approveReceipt = await publicClient!.waitForTransactionReceipt({ hash: approveHash });
+                    if (approveReceipt.status !== "success") {
+                        toast.error("Approval failed", { id: toastId });
+                        setBusy(false);
+                        return;
+                    }
+                    await refetchAllowance();
+                    toast.loading("Confirm deposit in wallet…", { id: toastId });
+                }
+
+                hash = await writeContractAsync({
+                    address: AAVE_POOL,
+                    abi: POOL_ABI,
+                    functionName: "supply",
+                    args: [asset.underlyingAsset as `0x${string}`, rawAmount, address, 0],
+                });
+            }
             toast.loading("Deposit submitted…", {
                 id: toastId,
                 action: {
@@ -152,8 +185,8 @@ export function DepositModal({ open, onOpenChange, asset }: Props) {
     const buttonLabel = busy
         ? "Processing…"
         : needsApproval
-        ? `Approve ${asset.symbol}`
-        : "Deposit";
+            ? `Approve ${asset.symbol}`
+            : "Deposit";
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>

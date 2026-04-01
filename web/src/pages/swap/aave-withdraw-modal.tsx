@@ -1,13 +1,17 @@
-import { useState, useMemo } from "react";
-import { useAccount, useWriteContract, usePublicClient } from "wagmi";
-import { maxUint256, parseUnits } from "viem";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { erc20Abi, maxUint256, parseUnits } from "viem";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import type { LendPosition } from "./use-aave-data";
+import { WETH_ADDRESS } from "./use-aave-data";
 
+// https://aave.com/docs/resources/addresses
 const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2" as const;
+const WETH_GATEWAY = "0xd01607c3C5eCABa394D8be377a08590149325722" as const;
+const A_WETH = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8" as const;
 
 const POOL_ABI = [
     {
@@ -19,6 +23,20 @@ const POOL_ABI = [
             { name: "to", type: "address" },
         ],
         outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "nonpayable",
+    },
+] as const;
+
+const GATEWAY_ABI = [
+    {
+        name: "withdrawETH",
+        type: "function",
+        inputs: [
+            { name: "", type: "address" },
+            { name: "amount", type: "uint256" },
+            { name: "to", type: "address" },
+        ],
+        outputs: [],
         stateMutability: "nonpayable",
     },
 ] as const;
@@ -35,9 +53,20 @@ export function WithdrawModal({ open, onOpenChange, position }: Props) {
     const publicClient = usePublicClient();
     const { writeContractAsync } = useWriteContract();
 
+    const isETH = position.underlyingAsset.toLowerCase() === WETH_ADDRESS;
+
     const [amount, setAmount] = useState("");
     const [isMax, setIsMax] = useState(false);
     const [busy, setBusy] = useState(false);
+
+    // For ETH withdrawals, check aWETH allowance to the WETH Gateway
+    const { data: gatewayAllowance, refetch: refetchGatewayAllowance } = useReadContract({
+        address: A_WETH,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [address!, WETH_GATEWAY],
+        query: { enabled: !!address && open && isETH },
+    });
 
     function handleInput(val: string) {
         if (!/^\d*\.?\d*$/.test(val)) return;
@@ -82,12 +111,49 @@ export function WithdrawModal({ open, onOpenChange, position }: Props) {
         const toastId = toast.loading("Confirm in wallet…");
 
         try {
-            const hash = await writeContractAsync({
-                address: AAVE_POOL,
-                abi: POOL_ABI,
-                functionName: "withdraw",
-                args: [position.underlyingAsset as `0x${string}`, rawAmount, address],
-            });
+            let hash: `0x${string}`;
+
+            if (isETH) {
+                // Approve aWETH to the gateway if needed
+                const needsGatewayApproval = rawAmount > 0n && (gatewayAllowance ?? 0n) < rawAmount;
+                if (needsGatewayApproval) {
+                    const approveHash = await writeContractAsync({
+                        address: A_WETH,
+                        abi: erc20Abi,
+                        functionName: "approve",
+                        args: [WETH_GATEWAY, rawAmount],
+                    });
+                    toast.loading("Approving aWETH…", {
+                        id: toastId,
+                        action: {
+                            label: "View",
+                            onClick: () => window.open(`https://etherscan.io/tx/${approveHash}`, "_blank"),
+                        },
+                    });
+                    const approveReceipt = await publicClient!.waitForTransactionReceipt({ hash: approveHash });
+                    if (approveReceipt.status !== "success") {
+                        toast.error("Approval failed", { id: toastId });
+                        setBusy(false);
+                        return;
+                    }
+                    await refetchGatewayAllowance();
+                    toast.loading("Confirm withdrawal in wallet…", { id: toastId });
+                }
+
+                hash = await writeContractAsync({
+                    address: WETH_GATEWAY,
+                    abi: GATEWAY_ABI,
+                    functionName: "withdrawETH",
+                    args: [AAVE_POOL, rawAmount, address],
+                });
+            } else {
+                hash = await writeContractAsync({
+                    address: AAVE_POOL,
+                    abi: POOL_ABI,
+                    functionName: "withdraw",
+                    args: [position.underlyingAsset as `0x${string}`, rawAmount, address],
+                });
+            }
             toast.loading("Withdrawal submitted…", {
                 id: toastId,
                 action: {
