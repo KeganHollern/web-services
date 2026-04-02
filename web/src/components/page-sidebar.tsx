@@ -1,6 +1,6 @@
 
 import { Sidebar as BaseSidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import { BookLock, Code, Home, Newspaper, Upload } from "lucide-react";
+import { ArrowLeftRight, BookLock, Code, Home, Newspaper, Upload } from "lucide-react";
 import React from "react";
 
 type SidebarProps = {
@@ -35,6 +35,11 @@ export function Sidebar({ children }: SidebarProps) {
             title: "Upload",
             url: "https://upload.lystic.dev",
             icon: Upload,
+        },
+        {
+            title: "Swap",
+            url: "https://swap.lystic.dev",
+            icon: ArrowLeftRight,
         },
     ];
 
