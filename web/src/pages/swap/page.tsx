@@ -462,15 +462,21 @@ export function SwapPage() {
 
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex justify-center pt-6">
-                    <div className="inline-flex rounded-lg border bg-muted p-1 gap-0.5">
+                    <div className="inline-flex rounded-lg border bg-muted p-1 gap-0.5 relative">
+                        <div
+                            className={cn(
+                                "absolute inset-y-1 w-[calc(50%-2px)] rounded-md bg-background shadow-sm transition-transform duration-200 ease-in-out",
+                                activeTab === "lend" ? "translate-x-[calc(100%+2px)]" : "translate-x-0"
+                            )}
+                        />
                         {TABS.map(tab => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={cn(
-                                    "px-5 py-1.5 rounded-md text-sm font-medium transition-colors",
+                                    "relative z-10 px-5 py-1.5 rounded-md text-sm font-medium transition-colors",
                                     activeTab === tab.id
-                                        ? "bg-background shadow-sm text-foreground"
+                                        ? "text-foreground"
                                         : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
