@@ -12,7 +12,7 @@ COPY web/. ./
 RUN npm run build
 
 # build go server
-FROM golang:1.24.5 AS gobuilder
+FROM golang:1.26.1 AS gobuilder
 WORKDIR /app
 COPY server/go.mod server/go.sum ./
 RUN go mod download
