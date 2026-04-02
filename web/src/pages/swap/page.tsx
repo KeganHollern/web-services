@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { ArrowDownIcon, Loader2Icon } from "lucide-react";
+import { ArrowDownIcon, Loader2Icon, ChevronDownIcon } from "lucide-react";
 import { Header } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { TokenSelectorModal, type Token } from "./token-selector-modal";
@@ -9,6 +9,77 @@ import { useQuote } from "./use-quote";
 import { LendTab } from "./lend-tab";
 import { useSwap } from "./use-swap";
 import { cn } from "@/lib/utils";
+
+// ---------------------------------------------------------------------------
+// Compact connect button for the header
+// ---------------------------------------------------------------------------
+
+function HeaderConnectButton() {
+    return (
+        <ConnectButton.Custom>
+            {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+                const connected = mounted && account && chain;
+
+                return (
+                    <div
+                        {...(!mounted && {
+                            "aria-hidden": true,
+                            style: { opacity: 0, pointerEvents: "none" as const, userSelect: "none" as const },
+                        })}
+                    >
+                        {(() => {
+                            if (!connected) {
+                                return (
+                                    <button
+                                        onClick={openConnectModal}
+                                        className="rounded-md border bg-background px-3 py-1 text-xs font-medium hover:bg-accent transition-colors"
+                                    >
+                                        Connect
+                                    </button>
+                                );
+                            }
+
+                            if (chain.unsupported) {
+                                return (
+                                    <button
+                                        onClick={openChainModal}
+                                        className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                                    >
+                                        Wrong network
+                                    </button>
+                                );
+                            }
+
+                            return (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={openChainModal}
+                                        className="flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-accent transition-colors"
+                                    >
+                                        {chain.hasIcon && chain.iconUrl && (
+                                            <img
+                                                alt={chain.name ?? "Chain"}
+                                                src={chain.iconUrl}
+                                                className="size-3 rounded-full"
+                                            />
+                                        )}
+                                        <ChevronDownIcon className="size-3 opacity-60" />
+                                    </button>
+                                    <button
+                                        onClick={openAccountModal}
+                                        className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium tabular-nums hover:bg-accent transition-colors"
+                                    >
+                                        {account.displayName}
+                                    </button>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                );
+            }}
+        </ConnectButton.Custom>
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -457,7 +528,7 @@ export function SwapPage() {
     return (
         <>
             <Header breadcrumbItems={breadcrumbs}>
-                <ConnectButton />
+                <HeaderConnectButton />
             </Header>
 
             <main className="flex flex-1 flex-col overflow-hidden">
