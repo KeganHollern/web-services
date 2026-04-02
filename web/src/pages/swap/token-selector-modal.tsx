@@ -123,31 +123,6 @@ function useWalletTokens(
 }
 
 // ---------------------------------------------------------------------------
-// Per-token balance (used for "to" / browse mode only)
-// ---------------------------------------------------------------------------
-
-function TokenBalance({
-    token,
-    userAddress,
-}: {
-    token: Token;
-    userAddress: `0x${string}`;
-}) {
-    const isNative = token.address.toLowerCase() === ETH_SENTINEL;
-    const { data } = useBalance({
-        address: userAddress,
-        token: isNative ? undefined : (token.address as `0x${string}`),
-    });
-
-    if (!data) return <span className="text-xs text-muted-foreground">--</span>;
-
-    const val = parseFloat(data.formatted);
-    const display = val === 0 ? "0" : val < 0.0001 ? "<0.0001" : val.toFixed(4);
-
-    return <span className="text-sm tabular-nums">{display}</span>;
-}
-
-// ---------------------------------------------------------------------------
 // Modal
 // ---------------------------------------------------------------------------
 
@@ -183,18 +158,19 @@ export function TokenSelectorModal({
             .finally(() => setListLoading(false));
     }, [open]);
 
-    // Wallet-held tokens (only active in "from" mode with connected wallet)
-    const walletMode = mode === "from" && isConnected && !!address;
+    // Wallet-held tokens (active in "from" mode always, and "to" mode for default view)
+    const hasWallet = isConnected && !!address;
     const { walletTokens, loading: walletLoading } = useWalletTokens(
         allTokens,
         address,
-        walletMode,
+        hasWallet,
     );
 
-    const loading = listLoading || (walletMode && walletLoading);
+    const loading = listLoading || (hasWallet && walletLoading);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
+        const walletMode = mode === "from";
 
         if (walletMode) {
             // "You pay" — only tokens in wallet
@@ -207,15 +183,15 @@ export function TokenSelectorModal({
             );
         }
 
-        // "You receive" — full Uniswap list
-        if (!q) return allTokens.slice(0, 100);
+        // "You receive" — show wallet tokens by default, search full list when typing
+        if (!q) return walletTokens;
         return allTokens.filter(
             t =>
                 t.symbol.toLowerCase().includes(q) ||
                 t.name.toLowerCase().includes(q) ||
                 t.address.toLowerCase() === q,
         );
-    }, [walletMode, walletTokens, allTokens, search]);
+    }, [mode, walletTokens, allTokens, search]);
 
     function handleSelect(token: Token) {
         onSelect(token);
@@ -249,11 +225,11 @@ export function TokenSelectorModal({
                         </div>
                     ) : filtered.length === 0 ? (
                         <div className="py-10 text-center text-sm text-muted-foreground">
-                            {walletMode ? "No tokens in wallet" : "No tokens found"}
+                            {search.trim() ? "No tokens found" : "No tokens in wallet"}
                         </div>
                     ) : (
                         filtered.map(token => {
-                            const wt = walletMode
+                            const wt = "balanceFormatted" in token
                                 ? (token as WalletToken)
                                 : null;
                             return (
@@ -282,14 +258,10 @@ export function TokenSelectorModal({
                                             {token.name}
                                         </div>
                                     </div>
-                                    {wt ? (
+                                    {wt && (
                                         <span className="text-sm tabular-nums">
                                             {wt.balanceFormatted}
                                         </span>
-                                    ) : (
-                                        isConnected && address && (
-                                            <TokenBalance token={token} userAddress={address} />
-                                        )
                                     )}
                                 </button>
                             );
