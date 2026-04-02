@@ -28,7 +28,9 @@ async function fetchTokenList(): Promise<Token[]> {
     fetchPromise = fetch("https://tokens.uniswap.org")
         .then(res => res.json())
         .then((data: { tokens: Token[] }) => {
-            cachedTokens = data.tokens.filter(t => t.chainId === 1);
+            const erc20s = data.tokens.filter(t => t.chainId === 1);
+            // Prepend native ETH so it's always available
+            cachedTokens = [NATIVE_ETH, ...erc20s];
             return cachedTokens;
         });
 
@@ -36,6 +38,16 @@ async function fetchTokenList(): Promise<Token[]> {
 }
 
 const ETH_SENTINEL = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+/** Native ETH entry — injected into the token list so it's always selectable. */
+const NATIVE_ETH: Token = {
+    chainId: 1,
+    address: ETH_SENTINEL,
+    name: "Ether",
+    symbol: "ETH",
+    decimals: 18,
+    logoURI: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+};
 
 // ---------------------------------------------------------------------------
 // Hook: batch-fetch balances for all tokens via a single multicall
@@ -168,11 +180,17 @@ export function TokenSelectorModal({
 
     const loading = listLoading || (hasWallet && walletLoading);
 
+    // Build a "to" default list: wallet tokens first, then remaining tokens
+    const toDefaultList = useMemo(() => {
+        const walletAddrs = new Set(walletTokens.map(t => t.address.toLowerCase()));
+        const rest = allTokens.filter(t => !walletAddrs.has(t.address.toLowerCase()));
+        return [...walletTokens, ...rest];
+    }, [walletTokens, allTokens]);
+
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        const walletMode = mode === "from";
 
-        if (walletMode) {
+        if (mode === "from") {
             // "You pay" — only tokens in wallet
             if (!q) return walletTokens;
             return walletTokens.filter(
@@ -183,15 +201,16 @@ export function TokenSelectorModal({
             );
         }
 
-        // "You receive" — show wallet tokens by default, search full list when typing
-        if (!q) return walletTokens;
-        return allTokens.filter(
+        // "You receive" — show all tokens (wallet first), filter on search
+        const source = q ? allTokens : toDefaultList;
+        if (!q) return source;
+        return source.filter(
             t =>
                 t.symbol.toLowerCase().includes(q) ||
                 t.name.toLowerCase().includes(q) ||
                 t.address.toLowerCase() === q,
         );
-    }, [mode, walletTokens, allTokens, search]);
+    }, [mode, walletTokens, allTokens, toDefaultList, search]);
 
     function handleSelect(token: Token) {
         onSelect(token);
