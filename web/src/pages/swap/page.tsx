@@ -499,6 +499,7 @@ function SwapTab() {
                 open={modalOpen}
                 onOpenChange={setModalOpen}
                 onSelect={handleTokenSelect}
+                mode={modalTarget}
             />
         </>
     );
