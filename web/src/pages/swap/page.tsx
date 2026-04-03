@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { useAccount } from "wagmi";
+import { useState, useEffect, useMemo } from "react";
+import { useAccount, useBalance, useReadContract } from "wagmi";
+import { erc20Abi, formatUnits } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { ArrowDownIcon, Loader2Icon, ChevronDownIcon } from "lucide-react";
 import { Header } from "@/components/page-header";
@@ -89,6 +90,37 @@ const SLIPPAGE_PRESETS = [0.1, 0.5, 1] as const;
 type SlippagePreset = (typeof SLIPPAGE_PRESETS)[number];
 
 const ETH_SENTINEL = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+// ---------------------------------------------------------------------------
+// Hook: fetch wallet balance for a single token
+// ---------------------------------------------------------------------------
+
+function useTokenBalance(token: Token | null): string | undefined {
+    const { address } = useAccount();
+    const isNative = token?.address.toLowerCase() === ETH_SENTINEL;
+
+    const { data: ethBal } = useBalance({
+        address,
+        query: { enabled: !!address && !!token && isNative },
+    });
+
+    const { data: erc20Bal } = useReadContract({
+        address: token?.address as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: address ? [address] : undefined,
+        query: { enabled: !!address && !!token && !isNative },
+    });
+
+    return useMemo(() => {
+        if (!token) return undefined;
+        if (isNative && ethBal) return ethBal.formatted;
+        if (!isNative && erc20Bal !== undefined) {
+            return formatUnits(erc20Bal as bigint, token.decimals);
+        }
+        return undefined;
+    }, [token, isNative, ethBal, erc20Bal]);
+}
 
 // ---------------------------------------------------------------------------
 // USD price hook (CoinGecko simple price)
@@ -339,6 +371,8 @@ function SwapTab() {
     );
     const { executeSwap, isSwapping } = useSwap();
 
+    const fromBalance = useTokenBalance(fromToken);
+
     const prices = useTokenPrices([fromToken, toToken]);
     const fromUnitPrice = fromToken ? prices[fromToken.address.toLowerCase()] : undefined;
     const toUnitPrice = toToken ? prices[toToken.address.toLowerCase()] : undefined;
@@ -384,7 +418,17 @@ function SwapTab() {
 
                 {/* ── From ── */}
                 <div className="rounded-lg bg-muted/40 border px-3 py-3 flex flex-col gap-1.5">
-                    <span className="text-xs text-muted-foreground">You pay</span>
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">You pay</span>
+                        {fromBalance && (
+                            <button
+                                onClick={() => setFromAmount(fromBalance)}
+                                className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                            >
+                                MAX
+                            </button>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2">
                         <input
                             className="flex-1 bg-transparent text-2xl font-medium outline-none placeholder:text-muted-foreground/50 min-w-0"
