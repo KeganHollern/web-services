@@ -33,7 +33,7 @@ function SkeletonRows({ count, cols }: { count: number; cols: number }) {
             {Array.from({ length: count }).map((_, i) => (
                 <tr key={i} className="border-b last:border-0">
                     {Array.from({ length: cols }).map((_, j) => (
-                        <td key={j} className="px-4 py-3">
+                        <td key={j} className="px-2 sm:px-4 py-3">
                             <Skeleton className="h-4 w-full" />
                         </td>
                     ))}
@@ -61,20 +61,20 @@ function PositionsTable({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                 Your Positions
             </p>
-            <div className="rounded-xl border overflow-hidden">
+            <div className="rounded-xl border overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="border-b bg-muted/40">
-                            <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">
+                            <th className="text-left px-2 sm:px-4 py-2.5 text-xs text-muted-foreground font-medium">
                                 Asset
                             </th>
-                            <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">
+                            <th className="text-right px-2 sm:px-4 py-2.5 text-xs text-muted-foreground font-medium">
                                 Deposited
                             </th>
-                            <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">
+                            <th className="text-right px-2 sm:px-4 py-2.5 text-xs text-muted-foreground font-medium">
                                 APY
                             </th>
-                            <th className="w-28 px-4 py-2.5" />
+                            <th className="px-2 sm:px-4 py-2.5" />
                         </tr>
                     </thead>
                     <tbody>
@@ -83,22 +83,22 @@ function PositionsTable({
                         ) : (
                             positions.map((pos) => (
                                 <tr key={pos.underlyingAsset} className="border-b last:border-0">
-                                    <td className="px-4 py-3">
+                                    <td className="px-2 sm:px-4 py-3">
                                         <AssetCell
                                             symbol={pos.symbol}
                                             logoURI={pos.logoURI}
                                         />
                                     </td>
-                                    <td className="px-4 py-3 text-right tabular-nums">
+                                    <td className="px-2 sm:px-4 py-3 text-right tabular-nums">
                                         <div>{pos.depositedAmount}</div>
                                         <div className="text-xs text-muted-foreground">
                                             ${pos.depositedAmountUSD}
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 text-right font-medium text-green-600 dark:text-green-400 tabular-nums">
+                                    <td className="px-2 sm:px-4 py-3 text-right font-medium text-green-600 dark:text-green-400 tabular-nums">
                                         {pos.supplyAPY}%
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-2 sm:px-4 py-3 text-right">
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -135,20 +135,20 @@ function AvailableTable({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                 Available to Deposit
             </p>
-            <div className="rounded-xl border overflow-hidden">
+            <div className="rounded-xl border overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="border-b bg-muted/40">
-                            <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">
+                            <th className="text-left px-2 sm:px-4 py-2.5 text-xs text-muted-foreground font-medium">
                                 Asset
                             </th>
-                            <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">
+                            <th className="text-right px-2 sm:px-4 py-2.5 text-xs text-muted-foreground font-medium">
                                 Wallet Balance
                             </th>
-                            <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">
+                            <th className="text-right px-2 sm:px-4 py-2.5 text-xs text-muted-foreground font-medium">
                                 APY
                             </th>
-                            <th className="w-28 px-4 py-2.5" />
+                            <th className="px-2 sm:px-4 py-2.5" />
                         </tr>
                     </thead>
                     <tbody>
@@ -158,7 +158,7 @@ function AvailableTable({
                             <tr>
                                 <td
                                     colSpan={4}
-                                    className="px-4 py-8 text-center text-sm text-muted-foreground"
+                                    className="px-2 sm:px-4 py-8 text-center text-sm text-muted-foreground"
                                 >
                                     No supported assets found in wallet
                                 </td>
@@ -166,19 +166,19 @@ function AvailableTable({
                         ) : (
                             assets.map((a) => (
                                 <tr key={a.underlyingAsset} className="border-b last:border-0">
-                                    <td className="px-4 py-3">
+                                    <td className="px-2 sm:px-4 py-3">
                                         <AssetCell symbol={a.symbol} logoURI={a.logoURI} />
                                     </td>
-                                    <td className="px-4 py-3 text-right tabular-nums">
+                                    <td className="px-2 sm:px-4 py-3 text-right tabular-nums">
                                         <div>{a.walletBalance}</div>
                                         <div className="text-xs text-muted-foreground">
                                             ${a.walletBalanceUSD}
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 text-right font-medium text-green-600 dark:text-green-400 tabular-nums">
+                                    <td className="px-2 sm:px-4 py-3 text-right font-medium text-green-600 dark:text-green-400 tabular-nums">
                                         {a.supplyAPY}%
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-2 sm:px-4 py-3 text-right">
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -229,7 +229,7 @@ export function LendTab() {
 
     return (
         <>
-            <div className="w-full max-w-2xl mx-auto mt-8 flex flex-col gap-6 pb-8">
+            <div className="w-full max-w-2xl mx-auto mt-8 flex flex-col gap-6 pb-8 px-2 sm:px-0">
                 {(loading || userPositions.length > 0) && (
                     <PositionsTable
                         positions={userPositions}

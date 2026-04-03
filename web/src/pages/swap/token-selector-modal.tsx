@@ -220,7 +220,7 @@ export function TokenSelectorModal({
 
     return (
         <Dialog open={open} onOpenChange={v => { onOpenChange(v); if (!v) setSearch(""); }}>
-            <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+            <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md p-0 gap-0 overflow-hidden">
                 <DialogHeader className="px-4 pt-5 pb-3">
                     <DialogTitle>Select a token</DialogTitle>
                 </DialogHeader>

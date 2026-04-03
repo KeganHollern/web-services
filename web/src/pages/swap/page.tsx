@@ -602,7 +602,7 @@ export function SwapPage() {
                     </div>
                 </div>
 
-                <div className="flex flex-col flex-1 px-4">
+                <div className="flex flex-col flex-1 px-4 min-w-0 w-full">
                     {activeTab === "swap" ? <SwapTab /> : <LendTab />}
                 </div>
             </main>
