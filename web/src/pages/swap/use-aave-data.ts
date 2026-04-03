@@ -40,7 +40,7 @@ async function fetchAaveReserves(provider: ethers.providers.Provider) {
         reserves: reservesData,
         currentTimestamp,
         marketReferenceCurrencyDecimals: baseCurrencyData.marketReferenceCurrencyDecimals,
-        marketReferencePriceInUsd: baseCurrencyData.networkBaseTokenPriceInUsd,
+        marketReferencePriceInUsd: baseCurrencyData.marketReferenceCurrencyPriceInUsd,
     });
     return { formattedReserves, baseCurrencyData, currentTimestamp };
 }
@@ -141,7 +141,7 @@ export function useAaveData(): AaveData {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const summary: any = formatUserSummary({
             currentTimestamp,
-            marketReferencePriceInUsd: baseCurrencyData.networkBaseTokenPriceInUsd,
+            marketReferencePriceInUsd: baseCurrencyData.marketReferenceCurrencyPriceInUsd,
             marketReferenceCurrencyDecimals: baseCurrencyData.marketReferenceCurrencyDecimals,
             userReserves: userReserveData.userReserves,
             formattedReserves,
@@ -198,9 +198,9 @@ export function useAaveData(): AaveData {
     const availableToDeposit = useMemo<AvailableAsset[]>(() => {
         if (!address || !formattedReserves.length || !balanceData) return [];
 
-        // ETH price in USD (networkBaseTokenPriceInUsd has 8 implicit decimals)
-        const ethPriceUSD =
-            parseFloat(baseCurrencyData?.networkBaseTokenPriceInUsd ?? "0") / 1e8;
+        // Market reference currency price in USD (has 8 implicit decimals; on V3 mainnet MRC=USD so this is 1.0)
+        const mrcPriceUSD =
+            parseFloat(baseCurrencyData?.marketReferenceCurrencyPriceInUsd ?? "0") / 1e8;
 
         const assets = formattedReserves
             .map((r, i) => ({ r, i }))
@@ -229,7 +229,7 @@ export function useAaveData(): AaveData {
                     typeof r.priceInUSD === "string"
                         ? parseFloat(r.priceInUSD)
                         : parseFloat(r.formattedPriceInMarketReferenceCurrency ?? "0") *
-                        ethPriceUSD;
+                        mrcPriceUSD;
 
                 return [
                     {
