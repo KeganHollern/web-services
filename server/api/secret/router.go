@@ -1,41 +1,33 @@
 package secret
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/labstack/echo/v4"
-)
-
-const (
-	cache_lifetime = time.Hour * 24 * 7 // 1 week
-	cache_capacity = 10000              // 10k items
 )
 
 type RequestBody struct {
 	Content string `json:"content"`
 }
 
-func Register(api *echo.Group) {
-	cache := ttlcache.New(
-		ttlcache.WithTTL[string, string](cache_lifetime),
-		ttlcache.WithCapacity[string, string](cache_capacity),
-	)
-
+func Register(api *echo.Group, store SecretStore) {
 	secret := api.Group("/secret")
 
 	secret.GET("/:id", func(c echo.Context) error {
 		slog.Info("request to fetch secret", slog.String("id", c.Param("id")))
 
-		item, ok := cache.GetAndDelete(c.Param("id"))
-		if !ok {
-			return echo.ErrNotFound
+		content, err := store.GetAndDelete(c.Param("id"))
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return echo.ErrNotFound
+			}
+			slog.Error("failed to get secret", "error", err)
+			return echo.ErrInternalServerError
 		}
 
-		return c.String(http.StatusOK, item.Value())
+		return c.String(http.StatusOK, content)
 	})
 
 	secret.POST("/create", func(c echo.Context) error {
@@ -50,9 +42,11 @@ func Register(api *echo.Group) {
 
 		slog.Info("request to store secret", slog.String("content", body.Content))
 
-		id := uuid.NewString()
-
-		cache.Set(id, body.Content, ttlcache.DefaultTTL)
+		id, err := store.Create(body.Content)
+		if err != nil {
+			slog.Error("failed to create secret", "error", err)
+			return echo.ErrInternalServerError
+		}
 
 		return c.String(http.StatusOK, id)
 	})

@@ -6,11 +6,27 @@ import (
 	"net/http"
 
 	"github.com/KeganHollern/web-services/server/api"
+	"github.com/KeganHollern/web-services/server/api/secret"
+	"github.com/KeganHollern/web-services/server/db"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
 func main() {
+	// Connect to MongoDB
+	database, err := db.Connect()
+	if err != nil {
+		slog.Error("failed to connect to MongoDB", "error", err)
+		return
+	}
+
+	// Initialize secret store
+	secretStore, err := secret.NewMongoStore(database)
+	if err != nil {
+		slog.Error("failed to initialize secret store", "error", err)
+		return
+	}
+
 	// Echo instance
 	e := echo.New()
 
@@ -34,7 +50,7 @@ func main() {
 	}))
 
 	// Serve APIs
-	api.Register(e)
+	api.Register(e, secretStore)
 
 	// Start server
 	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {

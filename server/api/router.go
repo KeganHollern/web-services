@@ -6,14 +6,14 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func Register(e *echo.Echo) {
+func Register(e *echo.Echo, secretStore secret.SecretStore) {
 	api := e.Group("/api", catch)
 	api.Any("*", func(c echo.Context) error { return echo.ErrNotImplemented }) // any unimplemented api request
 
 	// TODO: rate limiter middleware on API requests
 
 	// register /api/secret
-	secret.Register(api)
+	secret.Register(api, secretStore)
 	upload.Register(api)
 }
 
