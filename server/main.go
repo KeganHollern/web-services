@@ -18,12 +18,12 @@ func main() {
 	database, err := db.Connect()
 	if err != nil {
 		slog.Warn("MongoDB not configured, using in-memory secret storage — secrets will not persist across restarts", "error", err)
-		secretStore = secret.NewMemorySecretStore()
+		secretStore = secret.NewMemoryStore()
 	} else {
 		mongoStore, err := secret.NewMongoStore(database)
 		if err != nil {
 			slog.Warn("MongoDB not configured, using in-memory secret storage — secrets will not persist across restarts", "error", err)
-			secretStore = secret.NewMemorySecretStore()
+			secretStore = secret.NewMemoryStore()
 		} else {
 			slog.Info("using MongoDB for secret storage")
 			secretStore = mongoStore

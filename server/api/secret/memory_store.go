@@ -1,42 +1,46 @@
 package secret
 
 import (
-	"sync"
+	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 )
 
-// MemorySecretStore implements SecretStore with an in-memory map.
-// Secrets do not persist across restarts.
-type MemorySecretStore struct {
-	mu      sync.Mutex
-	secrets map[string]string
+const (
+	memoryTTL         = 24 * time.Hour
+	memoryMaxCapacity = 10_000
+)
+
+// MemoryStore implements SecretStore with an in-memory TTL cache.
+// Secrets expire after 24 hours and do not persist across restarts.
+type MemoryStore struct {
+	cache *ttlcache.Cache[string, string]
 }
 
-// NewMemorySecretStore creates an empty in-memory secret store.
-func NewMemorySecretStore() *MemorySecretStore {
-	return &MemorySecretStore{
-		secrets: make(map[string]string),
-	}
+// NewMemoryStore creates a MemoryStore backed by an in-memory TTL cache.
+func NewMemoryStore() *MemoryStore {
+	cache := ttlcache.New[string, string](
+		ttlcache.WithTTL[string, string](memoryTTL),
+		ttlcache.WithCapacity[string, string](memoryMaxCapacity),
+	)
+	go cache.Start()
+
+	return &MemoryStore{cache: cache}
 }
 
-func (s *MemorySecretStore) Create(content string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *MemoryStore) Create(_ context.Context, content string) (string, error) {
 	id := uuid.NewString()
-	s.secrets[id] = content
+	s.cache.Set(id, content, ttlcache.DefaultTTL)
 	return id, nil
 }
 
-func (s *MemorySecretStore) GetAndDelete(id string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	content, ok := s.secrets[id]
-	if !ok {
+func (s *MemoryStore) GetAndDelete(_ context.Context, id string) (string, error) {
+	item := s.cache.Get(id)
+	if item == nil {
 		return "", ErrNotFound
 	}
-	delete(s.secrets, id)
-	return content, nil
+	s.cache.Delete(id)
+	return item.Value(), nil
 }
