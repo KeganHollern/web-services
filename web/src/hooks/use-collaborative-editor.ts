@@ -25,7 +25,7 @@ function randomFrom<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function buildWsUrl(docId: string): string {
+function buildWsUrl(_docId: string): string {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${window.location.host}/api/editor/ws`;
 }
