@@ -52,7 +52,10 @@
     "tailwindcss": "^4.1.11",
     "viem": "^2.47.6",
     "vite-plugin-node-polyfills": "^0.24.0",
-    "wagmi": "^2.9.0"
+    "wagmi": "^2.9.0",
+    "y-monaco": "^0.1.6",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",

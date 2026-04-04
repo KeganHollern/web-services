@@ -13,6 +13,7 @@ type EditorProps = {
     readonly?: boolean
     content?: string
     onSave?(): void
+    onEditorMount?(editor: editor.IStandaloneCodeEditor, monaco: Monaco): void
     className?: string
     minimap?: boolean
     language?: string
@@ -30,6 +31,7 @@ export function Editor({
     readonly = false,
     content = constants.DEFAULT_CONTENT,
     onSave,
+    onEditorMount,
     className = "w-full h-full relative",
     minimap = false,
     language = "markdown",
@@ -66,6 +68,10 @@ export function Editor({
 
         if (onSave) {
             editor.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.KeyS, onSave)
+        }
+
+        if (onEditorMount) {
+            onEditorMount(editor, _monaco);
         }
 
         // ensure initial layout is correct
