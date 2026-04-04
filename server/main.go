@@ -13,18 +13,21 @@ import (
 )
 
 func main() {
-	// Connect to MongoDB
+	// Initialize secret store with MongoDB, falling back to in-memory
+	var secretStore secret.SecretStore
 	database, err := db.Connect()
 	if err != nil {
-		slog.Error("failed to connect to MongoDB", "error", err)
-		return
-	}
-
-	// Initialize secret store
-	secretStore, err := secret.NewMongoStore(database)
-	if err != nil {
-		slog.Error("failed to initialize secret store", "error", err)
-		return
+		slog.Warn("MongoDB not configured, using in-memory secret storage — secrets will not persist across restarts", "error", err)
+		secretStore = secret.NewMemorySecretStore()
+	} else {
+		mongoStore, err := secret.NewMongoStore(database)
+		if err != nil {
+			slog.Warn("MongoDB not configured, using in-memory secret storage — secrets will not persist across restarts", "error", err)
+			secretStore = secret.NewMemorySecretStore()
+		} else {
+			slog.Info("using MongoDB for secret storage")
+			secretStore = mongoStore
+		}
 	}
 
 	// Echo instance
