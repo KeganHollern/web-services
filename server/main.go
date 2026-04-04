@@ -77,5 +77,6 @@ func main() {
 	// Start server
 	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
+		return
 	}
 }
