@@ -2,40 +2,47 @@ package editor
 
 import (
 	"context"
-	"sync"
+	"time"
+
+	"github.com/jellydator/ttlcache/v3"
 )
 
-// MemoryStore implements EditorStore with an in-memory map.
-// Document state does not persist across restarts.
+const (
+	memoryTTL         = 24 * time.Hour
+	memoryMaxCapacity = 10_000
+)
+
+// MemoryStore implements EditorStore with an in-memory TTL cache.
+// Document state expires after 24 hours and does not persist across restarts.
 type MemoryStore struct {
-	mu   sync.RWMutex
-	docs map[string][]byte
+	cache *ttlcache.Cache[string, []byte]
 }
 
-// NewMemoryStore creates a MemoryStore backed by an in-memory map.
+// NewMemoryStore creates a MemoryStore backed by an in-memory TTL cache.
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{
-		docs: make(map[string][]byte),
-	}
+	cache := ttlcache.New[string, []byte](
+		ttlcache.WithTTL[string, []byte](memoryTTL),
+		ttlcache.WithCapacity[string, []byte](memoryMaxCapacity),
+	)
+	go cache.Start()
+
+	return &MemoryStore{cache: cache}
 }
 
 func (s *MemoryStore) Load(_ context.Context, documentID string) ([]byte, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	data, ok := s.docs[documentID]
-	if !ok {
+	item := s.cache.Get(documentID)
+	if item == nil {
 		return nil, nil
 	}
-	cp := make([]byte, len(data))
-	copy(cp, data)
+	src := item.Value()
+	cp := make([]byte, len(src))
+	copy(cp, src)
 	return cp, nil
 }
 
 func (s *MemoryStore) Save(_ context.Context, documentID string, data []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	cp := make([]byte, len(data))
 	copy(cp, data)
-	s.docs[documentID] = cp
+	s.cache.Set(documentID, cp, ttlcache.DefaultTTL)
 	return nil
 }

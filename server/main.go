@@ -53,9 +53,23 @@ func main() {
 		Filesystem: nil,
 	}))
 
-	// Initialize editor WebSocket hub and document store
+	// Initialize editor store with MongoDB, falling back to in-memory
+	var editorStore editor.EditorStore
+	if database != nil {
+		mongoEditorStore, err := editor.NewMongoStore(database)
+		if err != nil {
+			slog.Warn("failed to create MongoDB editor store, using in-memory editor storage", "error", err)
+			editorStore = editor.NewMemoryStore()
+		} else {
+			slog.Info("using MongoDB for editor document storage")
+			editorStore = mongoEditorStore
+		}
+	} else {
+		editorStore = editor.NewMemoryStore()
+	}
+
+	// Initialize editor WebSocket hub
 	editorHub := editor.NewHub()
-	editorStore := editor.NewMemoryStore()
 
 	// Serve APIs
 	api.Register(e, secretStore, editorHub, editorStore)
