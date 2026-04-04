@@ -1,5 +1,8 @@
 import { Editor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { useLinkShare } from "@/context/linkshare-provider";
+import { Link } from "lucide-react";
 import { useEffect, useState } from "react";
 
 function getDocIdFromHash(): string | null {
@@ -15,6 +18,7 @@ function generateDocId(): string {
 
 export function EditPage() {
     const [docId, setDocId] = useState(getDocIdFromHash);
+    const { shareLink } = useLinkShare();
 
     useEffect(() => {
         if (!docId) {
@@ -38,7 +42,20 @@ export function EditPage() {
 
     return (
         <>
-            <Header breadcrumbItems={breadcrumbs} />
+            <Header breadcrumbItems={breadcrumbs}>
+                <Button
+                    variant="outline"
+                    onClick={() =>
+                        shareLink(
+                            "Share Editor",
+                            "Share this link to collaborate on this document.",
+                            window.location.href,
+                        )
+                    }
+                >
+                    <Link /> Share
+                </Button>
+            </Header>
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 flex justify-center items-center w-full">
                     <Editor content="" language="markdown" />
