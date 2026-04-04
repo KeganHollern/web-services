@@ -18,7 +18,7 @@ func Register(api *echo.Group, store SecretStore) {
 	secret.GET("/:id", func(c echo.Context) error {
 		slog.Info("request to fetch secret", slog.String("id", c.Param("id")))
 
-		content, err := store.GetAndDelete(c.Param("id"))
+		content, err := store.GetAndDelete(c.Request().Context(), c.Param("id"))
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
 				return echo.ErrNotFound
@@ -42,7 +42,7 @@ func Register(api *echo.Group, store SecretStore) {
 
 		slog.Info("request to store secret", slog.String("content", body.Content))
 
-		id, err := store.Create(body.Content)
+		id, err := store.Create(c.Request().Context(), body.Content)
 		if err != nil {
 			slog.Error("failed to create secret", "error", err)
 			return echo.ErrInternalServerError

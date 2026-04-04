@@ -46,8 +46,8 @@ func NewMongoStore(db *mongo.Database) (*MongoStore, error) {
 	return &MongoStore{col: col}, nil
 }
 
-func (s *MongoStore) Create(content string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultCtxTimeout)
+func (s *MongoStore) Create(ctx context.Context, content string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultCtxTimeout)
 	defer cancel()
 
 	doc := secretDocument{
@@ -62,8 +62,8 @@ func (s *MongoStore) Create(content string) (string, error) {
 	return doc.ID, nil
 }
 
-func (s *MongoStore) GetAndDelete(id string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultCtxTimeout)
+func (s *MongoStore) GetAndDelete(ctx context.Context, id string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultCtxTimeout)
 	defer cancel()
 
 	var doc secretDocument
