@@ -1,7 +1,9 @@
 package editor
 
 import (
+	"context"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 )
@@ -10,15 +12,24 @@ const sendBufferSize = 256
 
 // Client represents a single WebSocket connection in a room.
 type Client struct {
-	room *Room
-	conn *websocket.Conn
-	send chan []byte
+	room       *Room
+	conn       *websocket.Conn
+	send       chan []byte
+	store      EditorStore
+	documentID string
+	lastMsg    atomic.Value // stores []byte
 }
 
 // readPump reads messages from the WebSocket and broadcasts them to the room.
 // Must be run as a goroutine — one per client.
 func (c *Client) readPump() {
 	defer func() {
+		// Persist the last received state before unregistering.
+		if data, ok := c.lastMsg.Load().([]byte); ok && len(data) > 0 {
+			if err := c.store.Save(context.Background(), c.documentID, data); err != nil {
+				slog.Error("failed to persist document state", "error", err, "document", c.documentID)
+			}
+		}
 		c.room.hub.unregister <- c
 		c.conn.Close()
 	}()
@@ -30,6 +41,7 @@ func (c *Client) readPump() {
 			}
 			return
 		}
+		c.lastMsg.Store(message)
 		c.room.broadcast <- broadcastMessage{data: message, sender: c}
 	}
 }

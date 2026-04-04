@@ -53,11 +53,12 @@ func main() {
 		Filesystem: nil,
 	}))
 
-	// Initialize editor WebSocket hub
+	// Initialize editor WebSocket hub and document store
 	editorHub := editor.NewHub()
+	editorStore := editor.NewMemoryStore()
 
 	// Serve APIs
-	api.Register(e, secretStore, editorHub)
+	api.Register(e, secretStore, editorHub, editorStore)
 
 	// Start server
 	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {
