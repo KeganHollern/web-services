@@ -9,6 +9,15 @@
             "command": ".claude/hooks/golangci-lint.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/typescript-check.sh"
+          }
+        ]
       }
     ]
   }
