@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/KeganHollern/web-services/server/api"
+	"github.com/KeganHollern/web-services/server/api/editor"
 	"github.com/KeganHollern/web-services/server/api/secret"
 	"github.com/KeganHollern/web-services/server/db"
 	"github.com/labstack/echo/v4"
@@ -52,8 +53,11 @@ func main() {
 		Filesystem: nil,
 	}))
 
+	// Initialize editor WebSocket hub
+	editorHub := editor.NewHub()
+
 	// Serve APIs
-	api.Register(e, secretStore)
+	api.Register(e, secretStore, editorHub)
 
 	// Start server
 	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {

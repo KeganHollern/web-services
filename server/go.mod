@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/labstack/echo/v4 v4.13.4
 	go.mongodb.org/mongo-driver/v2 v2.5.0
