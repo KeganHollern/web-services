@@ -1,20 +1,25 @@
 package editor
 
-import "log/slog"
+import (
+	"context"
+	"log/slog"
+)
 
 // Hub manages all active rooms and routes client registration/unregistration.
 type Hub struct {
 	rooms      map[string]*Room
 	register   chan *Client
 	unregister chan *Client
+	store      EditorStore
 }
 
 // NewHub creates and starts a Hub. Call this once at startup.
-func NewHub() *Hub {
+func NewHub(store EditorStore) *Hub {
 	h := &Hub{
 		rooms:      make(map[string]*Room),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		store:      store,
 	}
 	go h.run()
 	return h
@@ -25,7 +30,9 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			room := client.room
+			room.mu.Lock()
 			room.clients[client] = struct{}{}
+			room.mu.Unlock()
 			slog.Info("client joined room",
 				slog.String("room", room.id),
 				slog.Int("clients", len(room.clients)),
@@ -33,19 +40,25 @@ func (h *Hub) run() {
 
 		case client := <-h.unregister:
 			room := client.room
+			room.mu.Lock()
 			if _, ok := room.clients[client]; !ok {
+				room.mu.Unlock()
 				continue
 			}
 			delete(room.clients, client)
 			close(client.send)
+			empty := len(room.clients) == 0
+			room.mu.Unlock()
+
 			slog.Info("client left room",
 				slog.String("room", room.id),
 				slog.Int("clients", len(room.clients)),
 			)
 
-			// Auto-cleanup: remove room when empty.
-			if len(room.clients) == 0 {
-				close(room.broadcast)
+			// Auto-cleanup: persist and remove room when empty.
+			if empty {
+				room.persistState()
+				close(room.incoming)
 				delete(h.rooms, room.id)
 				slog.Info("room closed", slog.String("room", room.id))
 			}
@@ -58,7 +71,8 @@ func (h *Hub) getOrCreateRoom(documentID string) *Room {
 	if room, ok := h.rooms[documentID]; ok {
 		return room
 	}
-	room := newRoom(documentID, h)
+	room := newRoom(documentID, h, h.store)
+	room.loadState(context.TODO())
 	h.rooms[documentID] = room
 	go room.run()
 	return room

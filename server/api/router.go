@@ -7,7 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hub, editorStore editor.EditorStore) {
+func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hub) {
 	api := e.Group("/api", catch)
 	api.Any("*", func(c echo.Context) error { return echo.ErrNotImplemented }) // any unimplemented api request
 
@@ -18,7 +18,7 @@ func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hu
 	upload.Register(api)
 
 	// register /api/editor/ws/:id (websocket)
-	editor.Register(api, editorHub, editorStore)
+	editor.Register(api, editorHub)
 }
 
 // Echo Middleware.

@@ -15,7 +15,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // Register mounts the editor WebSocket endpoint on the given API group.
-func Register(api *echo.Group, hub *Hub, store EditorStore) {
+func Register(api *echo.Group, hub *Hub) {
 	api.GET("/editor/ws/:id", func(c echo.Context) error {
 		documentID := c.Param("id")
 		if documentID == "" {
@@ -28,30 +28,20 @@ func Register(api *echo.Group, hub *Hub, store EditorStore) {
 			return nil // Upgrade already wrote the HTTP error response
 		}
 
-		// Load existing document state and send to the new client.
-		state, err := store.Load(c.Request().Context(), documentID)
-		if err != nil {
-			slog.Error("failed to load document state", "error", err, "document", documentID)
-			ws.Close()
-			return nil
-		}
-		if state != nil {
-			if err := ws.WriteMessage(websocket.BinaryMessage, state); err != nil {
-				slog.Error("failed to send initial state", "error", err, "document", documentID)
-				ws.Close()
-				return nil
-			}
-		}
-
 		room := hub.getOrCreateRoom(documentID)
 		client := &Client{
-			room:       room,
-			conn:       ws,
-			send:       make(chan []byte, sendBufferSize),
-			store:      store,
-			documentID: documentID,
+			room: room,
+			conn: ws,
+			send: make(chan []byte, sendBufferSize),
 		}
 		hub.register <- client
+
+		// Send sync step 1 (server's state vector) so the client can diff.
+		room.sendSyncStep1(client)
+		// Also send the full doc state as sync step 2 so the client has everything.
+		room.sendSyncStep2(client)
+		// Send current awareness state so the new client sees existing cursors.
+		room.sendAwarenessState(client)
 
 		go client.writePump()
 		go client.readPump()
