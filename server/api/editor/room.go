@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"sync"
@@ -138,9 +139,10 @@ func (r *Room) sendAwarenessState(c *Client) {
 	encoded := ycrdt.EncodeAwarenessUpdate(r.awareness, clients, states)
 	r.mu.Unlock()
 
-	msg := make([]byte, 0, 1+len(encoded))
-	msg = append(msg, msgAwareness)
-	msg = append(msg, encoded...)
+	buf := new(bytes.Buffer)
+	ycrdt.WriteVarUint(buf, msgAwareness)
+	ycrdt.WriteVarUint8Array(buf, encoded)
+	msg := buf.Bytes()
 
 	select {
 	case c.send <- msg:
@@ -219,17 +221,28 @@ func buildSyncUpdateMsg(syncPayload []byte) []byte {
 }
 
 func (r *Room) handleAwareness(payload []byte, sender *Client) {
+	// The JS client sends awareness as VarUint8Array (length-prefixed).
+	// Strip the length prefix to get the raw awareness bytes that
+	// ApplyAwarenessUpdate expects.
+	decoder := ycrdt.NewDecoder(payload)
+	raw, err := ycrdt.ReadVarUint8Array(decoder)
+	if err != nil {
+		slog.Warn("failed to decode awareness payload", "error", err)
+		return
+	}
+	data := raw.([]byte)
+
 	r.mu.Lock()
-	ycrdt.ApplyAwarenessUpdate(r.awareness, payload, sender)
+	ycrdt.ApplyAwarenessUpdate(r.awareness, data, sender)
 	r.mu.Unlock()
 
-	// Broadcast awareness to all OTHER clients.
-	msg := make([]byte, 0, 1+len(payload))
-	msg = append(msg, msgAwareness)
-	msg = append(msg, payload...)
+	// Re-encode for broadcast with proper framing: [msgType, VarUint8Array].
+	buf := new(bytes.Buffer)
+	ycrdt.WriteVarUint(buf, msgAwareness)
+	ycrdt.WriteVarUint8Array(buf, data)
 
 	r.mu.Lock()
-	r.broadcastToOthers(sender, msg)
+	r.broadcastToOthers(sender, buf.Bytes())
 	r.mu.Unlock()
 }
 
