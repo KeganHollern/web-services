@@ -32,10 +32,13 @@ MongoDB is used for persistent secret storage but is **optional**. If the `MONGO
 See [server/README.md](server/README.md) for server configuration.
 See [web/README.md](web/README.md) for frontend configuration.
 
-## Future Services
+## TODO
 
 - p2p screen sharing (using Chrome API & WebRTC to avoid sending data to the server)
 - file converter (ideally in-browser using WebAssembly)
 - enable mongodb secret sharing and horizontal scaling
+- enable mongodb for editor
+- support horizontal scaling for pods w/ collaborative editor
+- reimagine the "upload" functionality
 
 Feel free to add a PR suggesting new services!

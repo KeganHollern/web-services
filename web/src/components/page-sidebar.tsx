@@ -23,7 +23,7 @@ export function Sidebar({ children }: SidebarProps) {
         },
         {
             title: "Editor",
-            url: "https://rustpad.lystic.dev",
+            url: "https://edit.lystic.dev",
             icon: Code,
         },
         {
