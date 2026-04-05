@@ -24,7 +24,7 @@ export function EditPage() {
     const [docId, setDocId] = useState(getDocIdFromHash);
     const { shareLink } = useLinkShare();
     const collab = useCollaborativeEditor(docId);
-    const bindingRef = useRef<MonacoBinding | null>(null);
+    const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
     useEffect(() => {
         if (!docId) {
@@ -40,26 +40,23 @@ export function EditPage() {
         return () => window.removeEventListener("hashchange", onHashChange);
     }, []);
 
-    useEffect(() => {
-        return () => {
-            bindingRef.current?.destroy();
-            bindingRef.current = null;
-        };
-    }, [docId]);
-
     const handleEditorMount = useCallback(
         (editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
-            if (!collab) return;
-            bindingRef.current?.destroy();
-            bindingRef.current = new MonacoBinding(
-                collab.ytext,
-                editorInstance.getModel()!,
-                new Set([editorInstance]),
-                collab.awareness,
-            );
+            editorRef.current = editorInstance;
         },
-        [collab],
+        [],
     );
+
+    useEffect(() => {
+        if (!editorRef.current || !collab) return;
+        const binding = new MonacoBinding(
+            collab.ytext,
+            editorRef.current.getModel()!,
+            new Set([editorRef.current]),
+            collab.awareness,
+        );
+        return () => binding.destroy();
+    }, [collab]);
 
     const breadcrumbs = [{ label: "Editor" }];
 
