@@ -5,11 +5,18 @@ import (
 	"log/slog"
 )
 
+// getRoomRequest is sent to the hub's event loop to safely look up or create a room.
+type getRoomRequest struct {
+	documentID string
+	result     chan *Room
+}
+
 // Hub manages all active rooms and routes client registration/unregistration.
 type Hub struct {
 	rooms      map[string]*Room
 	register   chan *Client
 	unregister chan *Client
+	getRoom    chan getRoomRequest
 	store      EditorStore
 }
 
@@ -19,6 +26,7 @@ func NewHub(store EditorStore) *Hub {
 		rooms:      make(map[string]*Room),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		getRoom:    make(chan getRoomRequest),
 		store:      store,
 	}
 	go h.run()
@@ -62,20 +70,30 @@ func (h *Hub) run() {
 				delete(h.rooms, room.id)
 				slog.Info("room closed", slog.String("room", room.id))
 			}
+
+		case req := <-h.getRoom:
+			room, ok := h.rooms[req.documentID]
+			if !ok {
+				slog.Debug("creating new room", "room", req.documentID)
+				room = newRoom(req.documentID, h, h.store)
+				room.loadState(context.TODO())
+				h.rooms[req.documentID] = room
+				go room.run()
+			} else {
+				slog.Debug("reusing existing room", "room", req.documentID)
+			}
+			req.result <- room
 		}
 	}
 }
 
 // getOrCreateRoom returns the room for the given document ID, creating it if needed.
+// It is safe to call from any goroutine — the lookup is routed through the hub's event loop.
 func (h *Hub) getOrCreateRoom(documentID string) *Room {
-	if room, ok := h.rooms[documentID]; ok {
-		slog.Debug("reusing existing room", "room", documentID)
-		return room
+	req := getRoomRequest{
+		documentID: documentID,
+		result:     make(chan *Room, 1),
 	}
-	slog.Debug("creating new room", "room", documentID)
-	room := newRoom(documentID, h, h.store)
-	room.loadState(context.TODO())
-	h.rooms[documentID] = room
-	go room.run()
-	return room
+	h.getRoom <- req
+	return <-req.result
 }

@@ -45,7 +45,7 @@ type incomingMessage struct {
 }
 
 func newRoom(id string, hub *Hub, store EditorStore) *Room {
-	doc := ycrdt.NewDoc(id, true, nil, nil, false)
+	doc := ycrdt.NewDoc(id, true, ycrdt.DefaultGCFilter, nil, false)
 	return &Room{
 		id:         id,
 		hub:        hub,
