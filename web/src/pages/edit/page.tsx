@@ -2,8 +2,12 @@ import { Editor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { useLinkShare } from "@/context/linkshare-provider";
+import { useCollaborativeEditor } from "@/hooks/use-collaborative-editor";
 import { Link } from "lucide-react";
-import { useEffect, useState } from "react";
+import type { Monaco } from "@monaco-editor/react";
+import type { editor } from "monaco-editor";
+import { MonacoBinding } from "y-monaco";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function getDocIdFromHash(): string | null {
     const hash = window.location.hash;
@@ -19,6 +23,8 @@ function generateDocId(): string {
 export function EditPage() {
     const [docId, setDocId] = useState(getDocIdFromHash);
     const { shareLink } = useLinkShare();
+    const collab = useCollaborativeEditor(docId);
+    const bindingRef = useRef<MonacoBinding | null>(null);
 
     useEffect(() => {
         if (!docId) {
@@ -33,6 +39,27 @@ export function EditPage() {
         window.addEventListener("hashchange", onHashChange);
         return () => window.removeEventListener("hashchange", onHashChange);
     }, []);
+
+    useEffect(() => {
+        return () => {
+            bindingRef.current?.destroy();
+            bindingRef.current = null;
+        };
+    }, [docId]);
+
+    const handleEditorMount = useCallback(
+        (editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
+            if (!collab) return;
+            bindingRef.current?.destroy();
+            bindingRef.current = new MonacoBinding(
+                collab.ytext,
+                editorInstance.getModel()!,
+                new Set([editorInstance]),
+                collab.awareness,
+            );
+        },
+        [collab],
+    );
 
     const breadcrumbs = [{ label: "Editor" }];
 
@@ -58,7 +85,11 @@ export function EditPage() {
             </Header>
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 flex justify-center items-center w-full">
-                    <Editor content="" language="markdown" />
+                    <Editor
+                        content=""
+                        language="markdown"
+                        onEditorMount={handleEditorMount}
+                    />
                 </div>
             </main>
         </>
