@@ -69,8 +69,10 @@ func (h *Hub) run() {
 // getOrCreateRoom returns the room for the given document ID, creating it if needed.
 func (h *Hub) getOrCreateRoom(documentID string) *Room {
 	if room, ok := h.rooms[documentID]; ok {
+		slog.Debug("reusing existing room", "room", documentID)
 		return room
 	}
+	slog.Debug("creating new room", "room", documentID)
 	room := newRoom(documentID, h, h.store)
 	room.loadState(context.TODO())
 	h.rooms[documentID] = room

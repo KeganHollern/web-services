@@ -66,9 +66,12 @@ func (r *Room) loadState(ctx context.Context) {
 		return
 	}
 	if data != nil {
+		slog.Debug("loaded document state from store", "room", r.id, "size", len(data))
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		ycrdt.ApplyUpdate(r.doc, data, nil)
+	} else {
+		slog.Debug("no existing state in store", "room", r.id)
 	}
 }
 
@@ -77,6 +80,8 @@ func (r *Room) persistState() {
 	r.mu.Lock()
 	update := ycrdt.EncodeStateAsUpdate(r.doc, nil)
 	r.mu.Unlock()
+
+	slog.Debug("persisting document state", "room", r.id, "size", len(update))
 
 	if err := r.store.Save(context.Background(), r.documentID, update); err != nil {
 		slog.Error("failed to persist document state", "error", err, "document", r.documentID)
@@ -98,6 +103,8 @@ func (r *Room) sendSyncStep1(c *Client) {
 	msg = append(msg, msgSync)
 	msg = append(msg, payload...)
 
+	slog.Debug("sending sync step 1", "room", r.id, "size", len(msg))
+
 	select {
 	case c.send <- msg:
 	default:
@@ -117,6 +124,8 @@ func (r *Room) sendSyncStep2(c *Client) {
 	msg := make([]byte, 0, 1+len(payload))
 	msg = append(msg, msgSync)
 	msg = append(msg, payload...)
+
+	slog.Debug("sending sync step 2", "room", r.id, "size", len(msg))
 
 	select {
 	case c.send <- msg:
@@ -144,6 +153,8 @@ func (r *Room) sendAwarenessState(c *Client) {
 	ycrdt.WriteVarUint8Array(buf, encoded)
 	msg := buf.Bytes()
 
+	slog.Debug("sending awareness state", "room", r.id, "clients", len(states), "size", len(msg))
+
 	select {
 	case c.send <- msg:
 	default:
@@ -164,6 +175,8 @@ func (r *Room) handleMessage(msg incomingMessage) {
 
 	msgType := msg.data[0]
 	payload := msg.data[1:]
+
+	slog.Debug("received message", "room", r.id, "type", msgType, "size", len(msg.data))
 
 	switch msgType {
 	case msgSync:
@@ -187,6 +200,8 @@ func (r *Room) handleSync(payload []byte, sender *Client) {
 	encoder := ycrdt.NewUpdateEncoderV1()
 
 	messageType := ycrdt.ReadSyncMessage(decoder, encoder, r.doc, sender)
+
+	slog.Debug("handled sync message", "room", r.id, "type", messageType, "size", len(payload))
 
 	// If ReadSyncMessage produced a reply (e.g. step1 -> step2 reply), send it back.
 	reply := encoder.ToUint8Array()
@@ -231,6 +246,8 @@ func (r *Room) handleAwareness(payload []byte, sender *Client) {
 		return
 	}
 	data := raw.([]byte)
+
+	slog.Debug("received awareness update", "room", r.id, "size", len(data))
 
 	r.mu.Lock()
 	ycrdt.ApplyAwarenessUpdate(r.awareness, data, sender)

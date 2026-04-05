@@ -30,6 +30,9 @@ func (c *Client) readPump() {
 			}
 			return
 		}
+		if len(message) > 0 {
+			slog.Debug("ws recv", "room", c.room.id, "type", message[0], "size", len(message))
+		}
 		c.room.incoming <- incomingMessage{data: message, sender: c}
 	}
 }
@@ -39,6 +42,7 @@ func (c *Client) readPump() {
 func (c *Client) writePump() {
 	defer c.conn.Close()
 	for msg := range c.send {
+		slog.Debug("ws send", "room", c.room.id, "size", len(msg))
 		if err := c.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 			slog.Error("websocket write error", "error", err)
 			return

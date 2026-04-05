@@ -28,6 +28,11 @@ func Register(api *echo.Group, hub *Hub) {
 			return nil // Upgrade already wrote the HTTP error response
 		}
 
+		slog.Debug("websocket upgrade succeeded",
+			"room", documentID,
+			"remote_addr", c.RealIP(),
+		)
+
 		room := hub.getOrCreateRoom(documentID)
 		client := &Client{
 			room: room,
