@@ -71,7 +71,6 @@ export function EditPage() {
         <>
             <Header breadcrumbItems={breadcrumbs}>
                 <Button
-                    variant="outline"
                     onClick={() =>
                         shareLink(
                             "Share Editor",
