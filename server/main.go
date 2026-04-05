@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/KeganHollern/web-services/server/api"
 	"github.com/KeganHollern/web-services/server/api/editor"
@@ -14,6 +15,13 @@ import (
 )
 
 func main() {
+	// Configure log level from environment
+	level := slog.LevelInfo
+	if os.Getenv("LOG_LEVEL") == "debug" {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
+
 	// Initialize secret store with MongoDB, falling back to in-memory
 	var secretStore secret.SecretStore
 	database, err := db.Connect()

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 
 	ycrdt "github.com/skyterra/y-crdt"
@@ -163,9 +164,23 @@ func (r *Room) sendAwarenessState(c *Client) {
 
 // run processes incoming messages for this room. Exits when the incoming channel is closed.
 func (r *Room) run() {
+	defer func() {
+		if p := recover(); p != nil {
+			slog.Error("room.run panicked", "room", r.id, "panic", p, "stack", string(debug.Stack()))
+		}
+	}()
 	for msg := range r.incoming {
-		r.handleMessage(msg)
+		r.safeHandleMessage(msg)
 	}
+}
+
+func (r *Room) safeHandleMessage(msg incomingMessage) {
+	defer func() {
+		if p := recover(); p != nil {
+			slog.Error("handleMessage panicked", "room", r.id, "panic", p, "msgType", msg.data[0], "msgSize", len(msg.data), "stack", string(debug.Stack()))
+		}
+	}()
+	r.handleMessage(msg)
 }
 
 func (r *Room) handleMessage(msg incomingMessage) {
@@ -249,18 +264,15 @@ func (r *Room) handleAwareness(payload []byte, sender *Client) {
 
 	slog.Debug("received awareness update", "room", r.id, "size", len(data))
 
-	r.mu.Lock()
-	ycrdt.ApplyAwarenessUpdate(r.awareness, data, sender)
-	r.mu.Unlock()
-
 	// Re-encode for broadcast with proper framing: [msgType, VarUint8Array].
 	buf := new(bytes.Buffer)
 	ycrdt.WriteVarUint(buf, msgAwareness)
 	ycrdt.WriteVarUint8Array(buf, data)
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	ycrdt.ApplyAwarenessUpdate(r.awareness, data, sender)
 	r.broadcastToOthers(sender, buf.Bytes())
-	r.mu.Unlock()
 }
 
 // broadcastToOthers sends data to all clients except the sender.
