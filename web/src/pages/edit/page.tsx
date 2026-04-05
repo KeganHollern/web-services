@@ -2,7 +2,7 @@ import { Editor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { useLinkShare } from "@/context/linkshare-provider";
-import { useCollaborativeEditor } from "@/hooks/use-collaborative-editor";
+import { collabDebug, useCollaborativeEditor } from "@/hooks/use-collaborative-editor";
 import { Link } from "lucide-react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
@@ -42,20 +42,29 @@ export function EditPage() {
 
     const handleEditorMount = useCallback(
         (editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
+            collabDebug('editor ref captured from onMount');
             editorRef.current = editorInstance;
         },
         [],
     );
 
     useEffect(() => {
+        collabDebug('collab hook result changed', { hasCollab: !!collab });
+    }, [collab]);
+
+    useEffect(() => {
         if (!editorRef.current || !collab) return;
+        collabDebug('MonacoBinding creating');
         const binding = new MonacoBinding(
             collab.ytext,
             editorRef.current.getModel()!,
             new Set([editorRef.current]),
             collab.awareness,
         );
-        return () => binding.destroy();
+        return () => {
+            collabDebug('MonacoBinding destroying');
+            binding.destroy();
+        };
     }, [collab]);
 
     const breadcrumbs = [{ label: "Editor" }];
