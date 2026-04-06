@@ -6,11 +6,20 @@ import (
 	"time"
 )
 
-func TestGetOrCreateRoom_CreatesNewRoom(t *testing.T) {
+// joinTestClient is a helper that creates a minimal client and joins it to a room via the hub.
+func joinTestClient(hub *Hub, documentID string) (*Client, *Room) {
+	client := &Client{
+		send: make(chan []byte, 64),
+	}
+	room := hub.JoinRoom(documentID, client)
+	return client, room
+}
+
+func TestJoinRoom_CreatesNewRoom(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
 
-	room := hub.getOrCreateRoom("doc-1")
+	_, room := joinTestClient(hub, "doc-1")
 	if room == nil {
 		t.Fatal("expected room to be created")
 	}
@@ -19,43 +28,35 @@ func TestGetOrCreateRoom_CreatesNewRoom(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateRoom_ReturnsSameRoom(t *testing.T) {
+func TestJoinRoom_ReturnsSameRoom(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
 
-	room1 := hub.getOrCreateRoom("doc-1")
-	room2 := hub.getOrCreateRoom("doc-1")
+	_, room1 := joinTestClient(hub, "doc-1")
+	_, room2 := joinTestClient(hub, "doc-1")
 
 	if room1 != room2 {
 		t.Fatal("expected same room instance for same document ID")
 	}
 }
 
-func TestGetOrCreateRoom_DifferentIDs(t *testing.T) {
+func TestJoinRoom_DifferentIDs(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
 
-	room1 := hub.getOrCreateRoom("doc-1")
-	room2 := hub.getOrCreateRoom("doc-2")
+	_, room1 := joinTestClient(hub, "doc-1")
+	_, room2 := joinTestClient(hub, "doc-2")
 
 	if room1 == room2 {
 		t.Fatal("expected different room instances for different document IDs")
 	}
 }
 
-func TestRegister_AddsClientToRoom(t *testing.T) {
+func TestJoinRoom_AddsClientToRoom(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
-	room := hub.getOrCreateRoom("doc-1")
 
-	client := &Client{
-		room: room,
-		send: make(chan []byte, 64),
-	}
-	hub.register <- client
-
-	// Give the hub event loop time to process.
-	time.Sleep(50 * time.Millisecond)
+	client, room := joinTestClient(hub, "doc-1")
 
 	room.mu.Lock()
 	_, exists := room.clients[client]
@@ -64,19 +65,16 @@ func TestRegister_AddsClientToRoom(t *testing.T) {
 	if !exists {
 		t.Fatal("expected client to be registered in room")
 	}
+	if client.room != room {
+		t.Fatal("expected client.room to be set")
+	}
 }
 
 func TestUnregister_RemovesClient(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
-	room := hub.getOrCreateRoom("doc-1")
 
-	client := &Client{
-		room: room,
-		send: make(chan []byte, 64),
-	}
-	hub.register <- client
-	time.Sleep(50 * time.Millisecond)
+	client, room := joinTestClient(hub, "doc-1")
 
 	hub.unregister <- client
 	time.Sleep(50 * time.Millisecond)
@@ -93,7 +91,8 @@ func TestUnregister_RemovesClient(t *testing.T) {
 func TestUnregister_EmptyRoomCleansUp(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
-	room := hub.getOrCreateRoom("doc-cleanup")
+
+	client, room := joinTestClient(hub, "doc-cleanup")
 
 	// Insert some text so we can verify persistence.
 	room.mu.Lock()
@@ -102,18 +101,11 @@ func TestUnregister_EmptyRoomCleansUp(t *testing.T) {
 	text.Insert(0, "cleanup-test", nil)
 	room.mu.Unlock()
 
-	client := &Client{
-		room: room,
-		send: make(chan []byte, 64),
-	}
-	hub.register <- client
-	time.Sleep(50 * time.Millisecond)
-
 	hub.unregister <- client
 	time.Sleep(100 * time.Millisecond)
 
 	// Room should be removed from the hub. Getting the same ID should create a new room.
-	newRoomInstance := hub.getOrCreateRoom("doc-cleanup")
+	_, newRoomInstance := joinTestClient(hub, "doc-cleanup")
 	if newRoomInstance == room {
 		t.Fatal("expected a new room after cleanup")
 	}
@@ -128,7 +120,7 @@ func TestUnregister_EmptyRoomCleansUp(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateRoom_ConcurrentSafety(t *testing.T) {
+func TestJoinRoom_ConcurrentSafety(t *testing.T) {
 	store := NewMemoryStore()
 	hub := NewHub(store)
 
@@ -140,7 +132,7 @@ func TestGetOrCreateRoom_ConcurrentSafety(t *testing.T) {
 	for i := 0; i < goroutines; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			rooms[idx] = hub.getOrCreateRoom("concurrent-doc")
+			_, rooms[idx] = joinTestClient(hub, "concurrent-doc")
 		}(i)
 	}
 	wg.Wait()

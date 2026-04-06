@@ -33,13 +33,11 @@ func Register(api *echo.Group, hub *Hub) {
 			"remote_addr", c.RealIP(),
 		)
 
-		room := hub.getOrCreateRoom(documentID)
 		client := &Client{
-			room: room,
 			conn: ws,
 			send: make(chan []byte, sendBufferSize),
 		}
-		hub.register <- client
+		room := hub.JoinRoom(documentID, client)
 
 		// Send sync step 1 (server's state vector) so the client can diff.
 		room.sendSyncStep1(client)
