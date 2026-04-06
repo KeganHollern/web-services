@@ -41,14 +41,21 @@ export interface CollaborativeEditor {
     provider: WebsocketProvider;
     ytext: Y.Text;
     awareness: WebsocketProvider['awareness'];
+    status: 'connecting' | 'connected' | 'disconnected';
+    lastUpdate: Date | null;
 }
 
 export function useCollaborativeEditor(docId: string | null): CollaborativeEditor | null {
     const [result, setResult] = useState<CollaborativeEditor | null>(null);
+    const [status, setStatus] = useState<CollaborativeEditor['status']>('connecting');
+    const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
     const cleanupRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         if (!docId) return;
+
+        setStatus('connecting');
+        setLastUpdate(null);
 
         const ydoc = new Y.Doc();
         const wsUrl = buildWsUrl(docId);
@@ -60,9 +67,10 @@ export function useCollaborativeEditor(docId: string | null): CollaborativeEdito
         const color = randomFrom(CURSOR_COLORS);
         const name = randomFrom(ANONYMOUS_NAMES);
 
-        provider.on('status', ({ status }: { status: string }) => {
-            collabDebug('provider status', { docId, status });
-            if (status === 'connected') {
+        provider.on('status', ({ status: s }: { status: string }) => {
+            collabDebug('provider status', { docId, status: s });
+            setStatus(s as CollaborativeEditor['status']);
+            if (s === 'connected') {
                 provider.awareness.setLocalStateField('user', { name, color });
             }
         });
@@ -79,11 +87,15 @@ export function useCollaborativeEditor(docId: string | null): CollaborativeEdito
             collabDebug('provider connection-error', { docId, event });
         });
 
+        ydoc.on('update', () => {
+            setLastUpdate(new Date());
+        });
+
         // Set awareness state immediately too in case already connected
         provider.awareness.setLocalStateField('user', { name, color });
         collabDebug('awareness local state set', { docId, name, color });
 
-        setResult({ ydoc, provider, ytext, awareness: provider.awareness });
+        setResult({ ydoc, provider, ytext, awareness: provider.awareness, status: 'connecting', lastUpdate: null });
 
         cleanupRef.current = () => {
             provider.disconnect();
@@ -97,6 +109,11 @@ export function useCollaborativeEditor(docId: string | null): CollaborativeEdito
             setResult(null);
         };
     }, [docId]);
+
+    // Keep result in sync with status/lastUpdate
+    if (result && (result.status !== status || result.lastUpdate !== lastUpdate)) {
+        return { ...result, status, lastUpdate };
+    }
 
     return result;
 }

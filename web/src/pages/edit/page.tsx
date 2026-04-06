@@ -1,3 +1,4 @@
+import { ConnectionStatus } from "@/components/connection-status";
 import { Editor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ export function EditPage() {
     return (
         <>
             <Header breadcrumbItems={breadcrumbs}>
+                <ConnectionStatus status={collab?.status ?? 'connecting'} lastUpdate={collab?.lastUpdate ?? null} />
                 <Button
                     onClick={() =>
                         shareLink(
