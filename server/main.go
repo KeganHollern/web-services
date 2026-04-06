@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/KeganHollern/web-services/server/api"
 	"github.com/KeganHollern/web-services/server/api/editor"
@@ -82,9 +85,20 @@ func main() {
 	// Serve APIs
 	api.Register(e, secretStore, editorHub)
 
-	// Start server
-	if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("failed to start server", "error", err)
-		return
+	// Graceful shutdown: persist all rooms on SIGINT/SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := e.Start(":80"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("failed to start server", "error", err)
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutting down, persisting all rooms...")
+	editorHub.Shutdown()
+	if err := e.Shutdown(context.Background()); err != nil {
+		slog.Error("failed to shut down server", "error", err)
 	}
 }

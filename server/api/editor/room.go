@@ -6,9 +6,12 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	ycrdt "github.com/skyterra/y-crdt"
 )
+
+const persistInterval = 30 * time.Second
 
 // Yjs message type prefixes (y-protocols).
 const (
@@ -163,14 +166,26 @@ func (r *Room) sendAwarenessState(c *Client) {
 }
 
 // run processes incoming messages for this room. Exits when the incoming channel is closed.
+// It also periodically persists the document state to the store, which resets
+// the store's TTL on active documents.
 func (r *Room) run() {
 	defer func() {
 		if p := recover(); p != nil {
 			slog.Error("room.run panicked", "room", r.id, "panic", p, "stack", string(debug.Stack()))
 		}
 	}()
-	for msg := range r.incoming {
-		r.safeHandleMessage(msg)
+	ticker := time.NewTicker(persistInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case msg, ok := <-r.incoming:
+			if !ok {
+				return // channel closed, room shutting down
+			}
+			r.safeHandleMessage(msg)
+		case <-ticker.C:
+			r.persistState()
+		}
 	}
 }
 

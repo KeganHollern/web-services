@@ -87,6 +87,15 @@ func (h *Hub) run() {
 	}
 }
 
+// Shutdown persists all active rooms. Call during graceful shutdown.
+// After Shutdown returns, no new requests should be processed.
+func (h *Hub) Shutdown() {
+	for _, room := range h.rooms {
+		room.persistState()
+		slog.Info("persisted room on shutdown", "room", room.id)
+	}
+}
+
 // getOrCreateRoom returns the room for the given document ID, creating it if needed.
 // It is safe to call from any goroutine — the lookup is routed through the hub's event loop.
 func (h *Hub) getOrCreateRoom(documentID string) *Room {
