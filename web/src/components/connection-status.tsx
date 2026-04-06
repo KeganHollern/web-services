@@ -25,6 +25,12 @@ export function ConnectionStatus({ status, lastUpdate }: ConnectionStatusProps) 
 
     return (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            {lastUpdate && (
+                <>
+                    <span className="hidden sm:inline">{formatRelativeTime(lastUpdate)}</span>
+                    <span className="hidden sm:inline text-muted-foreground/50">·</span>
+                </>
+            )}
             <span className="flex items-center gap-1.5">
                 <span
                     className={cn(
@@ -42,12 +48,6 @@ export function ConnectionStatus({ status, lastUpdate }: ConnectionStatusProps) 
                           : "Disconnected"}
                 </span>
             </span>
-            {lastUpdate && (
-                <>
-                    <span className="hidden sm:inline text-muted-foreground/50">·</span>
-                    <span className="hidden sm:inline">{formatRelativeTime(lastUpdate)}</span>
-                </>
-            )}
         </div>
     );
 }
