@@ -19,7 +19,7 @@ Feel free to open a PR and make changes, but if you do anything complex I won't 
 | home | Done | Homepage |
 | blog | Done | Personal blog (MDX) |
 | secret | Done | Zero-trust secret sharing (client-side encryption) |
-| edit | WIP | Collaborative markdown editor |
+| edit | Done | Collaborative markdown editor |
 | swap | Done | Fee-less Uniswap frontend alternative + Aave lending |
 | upload | WIP | Password-protected file uploader |
 
