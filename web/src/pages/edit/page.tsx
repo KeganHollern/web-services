@@ -9,6 +9,7 @@ import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { MonacoBinding } from "y-monaco";
 import { useCallback, useEffect, useState } from "react";
+import "@/styles/y-remote-cursors.css";
 
 function getDocIdFromHash(): string | null {
     const hash = window.location.hash;
@@ -85,6 +86,41 @@ export function EditPage() {
             binding.destroy();
         };
     }, [collab?.ytext, collab?.awareness, editorInstance]);
+
+    // Inject per-clientID CSS rules for remote cursor colors/names
+    useEffect(() => {
+        const awareness = collab?.awareness;
+        if (!awareness) return;
+
+        const styleEl = document.createElement('style');
+        styleEl.id = 'y-remote-cursor-colors';
+        document.head.appendChild(styleEl);
+
+        const updateStyles = () => {
+            const localID = awareness.clientID;
+            const rules: string[] = [];
+            awareness.getStates().forEach((state, clientID) => {
+                if (clientID === localID) return;
+                const user = state.user;
+                if (!user?.color) return;
+                const color = user.color;
+                rules.push(
+                    `.yRemoteSelection-${clientID} { background-color: ${color}33; }`,
+                    `.yRemoteSelectionHead-${clientID} { border-color: ${color}; background-color: ${color}; }`,
+                    `.yRemoteSelectionHead-${clientID}::after { content: "${user.name || 'Anonymous'}"; background-color: ${color}; }`,
+                );
+            });
+            styleEl.textContent = rules.join('\n');
+        };
+
+        updateStyles();
+        awareness.on('change', updateStyles);
+
+        return () => {
+            awareness.off('change', updateStyles);
+            styleEl.remove();
+        };
+    }, [collab?.awareness]);
 
     const breadcrumbs = [{ label: "Editor" }];
 
