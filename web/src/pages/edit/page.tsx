@@ -8,7 +8,7 @@ import { Link } from "lucide-react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { MonacoBinding } from "y-monaco";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 function getDocIdFromHash(): string | null {
     const hash = window.location.hash;
@@ -25,7 +25,7 @@ export function EditPage() {
     const [docId, setDocId] = useState(getDocIdFromHash);
     const { shareLink } = useLinkShare();
     const collab = useCollaborativeEditor(docId);
-    const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+    const [editorInstance, setEditorInstance] = useState<editor.IStandaloneCodeEditor | null>(null);
 
     useEffect(() => {
         if (!docId) {
@@ -44,7 +44,7 @@ export function EditPage() {
     const handleEditorMount = useCallback(
         (editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
             collabDebug('editor ref captured from onMount');
-            editorRef.current = editorInstance;
+            setEditorInstance(editorInstance);
         },
         [],
     );
@@ -54,12 +54,12 @@ export function EditPage() {
     }, [collab?.ytext, collab?.awareness]);
 
     useEffect(() => {
-        if (!editorRef.current || !collab) return;
+        if (!editorInstance || !collab) return;
         collabDebug('MonacoBinding creating');
         const binding = new MonacoBinding(
             collab.ytext,
-            editorRef.current.getModel()!,
-            new Set([editorRef.current]),
+            editorInstance.getModel()!,
+            new Set([editorInstance]),
             collab.awareness,
         );
 
@@ -84,7 +84,7 @@ export function EditPage() {
             collabDebug('MonacoBinding destroying');
             binding.destroy();
         };
-    }, [collab?.ytext, collab?.awareness]);
+    }, [collab?.ytext, collab?.awareness, editorInstance]);
 
     const breadcrumbs = [{ label: "Editor" }];
 
