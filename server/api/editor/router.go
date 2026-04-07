@@ -40,9 +40,9 @@ func Register(api *echo.Group, hub *Hub) {
 		room := hub.JoinRoom(documentID, client)
 
 		// Send sync step 1 (server's state vector) so the client can diff.
+		// The client will respond with its own SyncStep1 + SyncStep2, and
+		// handleSync will reply with the server's SyncStep2 (the actual doc diff).
 		room.sendSyncStep1(client)
-		// Also send the full doc state as sync step 2 so the client has everything.
-		room.sendSyncStep2(client)
 		// Send current awareness state so the new client sees existing cursors.
 		room.sendAwarenessState(client)
 
