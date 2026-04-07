@@ -60,6 +60,21 @@ export function useCollaborativeEditor(docId: string | null): CollaborativeEdito
         const ydoc = new Y.Doc();
         const wsUrl = buildWsUrl(docId);
         const provider = new WebsocketProvider(wsUrl, docId, ydoc);
+
+        // Override the reconnect check interval. y-websocket's default
+        // messageReconnectTimeout (30s) causes spurious reconnects because
+        // browser WebSocket API doesn't surface protocol-level pings from
+        // the server (54s interval). Replace the check with a 120s timeout.
+        clearInterval(provider._checkInterval);
+        const reconnectTimeout = 120000;
+        provider._checkInterval = setInterval(() => {
+            if (
+                provider.wsconnected &&
+                reconnectTimeout < Date.now() - provider.wsLastMessageReceived
+            ) {
+                provider.ws?.close();
+            }
+        }, reconnectTimeout / 10);
         const ytext = ydoc.getText('content');
 
         collabDebug('Y.Doc created', { docId, clientID: ydoc.clientID });
