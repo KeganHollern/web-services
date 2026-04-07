@@ -51,7 +51,7 @@ export function EditPage() {
 
     useEffect(() => {
         collabDebug('collab hook result changed', { hasCollab: !!collab });
-    }, [collab]);
+    }, [collab?.ytext, collab?.awareness]);
 
     useEffect(() => {
         if (!editorRef.current || !collab) return;
@@ -84,7 +84,7 @@ export function EditPage() {
             collabDebug('MonacoBinding destroying');
             binding.destroy();
         };
-    }, [collab]);
+    }, [collab?.ytext, collab?.awareness]);
 
     const breadcrumbs = [{ label: "Editor" }];
 

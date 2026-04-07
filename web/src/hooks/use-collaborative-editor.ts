@@ -115,9 +115,12 @@ export function useCollaborativeEditor(docId: string | null): CollaborativeEdito
         };
     }, [docId]);
 
-    // Keep result in sync with status/lastUpdate
-    if (result && (result.status !== status || result.lastUpdate !== lastUpdate)) {
-        return { ...result, status, lastUpdate };
+    // Mutate in place so the returned object is referentially stable.
+    // Components that need status/lastUpdate read them from the hook's
+    // separate state; the binding effect only depends on ytext/awareness.
+    if (result) {
+        result.status = status;
+        result.lastUpdate = lastUpdate;
     }
 
     return result;
