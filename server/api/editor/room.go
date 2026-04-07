@@ -206,12 +206,12 @@ func (r *Room) handleMessage(msg incomingMessage) {
 	msgType := msg.data[0]
 	payload := msg.data[1:]
 
-	slog.Debug("received message", "room", r.id, "type", msgType, "size", len(msg.data))
-
 	switch msgType {
 	case msgSync:
+		slog.Info("received message", "room", r.id, "type", "sync", "size", len(msg.data))
 		r.handleSync(payload, msg.sender)
 	case msgAwareness:
+		slog.Info("received message", "room", r.id, "type", "awareness", "size", len(msg.data))
 		r.handleAwareness(payload, msg.sender)
 	default:
 		slog.Warn("unknown yjs message type", "type", msgType)
@@ -231,7 +231,18 @@ func (r *Room) handleSync(payload []byte, sender *Client) {
 
 	messageType := ycrdt.ReadSyncMessage(decoder, encoder, r.doc, sender)
 
-	slog.Debug("handled sync message", "room", r.id, "type", messageType, "size", len(payload))
+	// Log sync sub-type at Info level for observability.
+	var syncTypeName string
+	switch messageType {
+	case 0:
+		syncTypeName = "step1"
+	case syncStep2:
+		syncTypeName = "step2"
+	case syncUpdate:
+		syncTypeName = "update"
+	default:
+		syncTypeName = "unknown"
+	}
 
 	// If ReadSyncMessage produced a reply (e.g. step1 -> step2 reply), send it back.
 	reply := encoder.ToUint8Array()
@@ -249,9 +260,13 @@ func (r *Room) handleSync(payload []byte, sender *Client) {
 	// If this was a sync update (type 2) or step 2 (type 1), broadcast to other clients.
 	// The update has already been applied to the doc by ReadSyncMessage.
 	if messageType == syncStep2 || messageType == syncUpdate {
+		broadcastCount := len(r.clients) - 1
+		slog.Info("sync update applied", "room", r.id, "type", syncTypeName, "size", len(payload), "broadcast_to", broadcastCount)
 		// Re-encode as a sync update message for broadcast.
 		// We forward the raw update payload to other clients.
 		r.broadcastToOthers(sender, buildSyncUpdateMsg(payload))
+	} else {
+		slog.Info("sync message handled", "room", r.id, "type", syncTypeName, "size", len(payload))
 	}
 }
 
@@ -277,7 +292,16 @@ func (r *Room) handleAwareness(payload []byte, sender *Client) {
 	}
 	data := raw.([]byte)
 
-	slog.Debug("received awareness update", "room", r.id, "size", len(data))
+	// Decode client IDs from the awareness update for logging.
+	var clientIDs []uint64
+	if idDecoder := ycrdt.NewDecoder(data); idDecoder.Len() > 0 {
+		count := ycrdt.ReadVarUint(idDecoder)
+		for i := uint64(0); i < count && idDecoder.Len() > 0; i++ {
+			clientIDs = append(clientIDs, ycrdt.ReadVarUint(idDecoder))
+			ycrdt.ReadVarUint(idDecoder) // skip clock
+			_, _ = ycrdt.ReadString(idDecoder) // skip state
+		}
+	}
 
 	// Re-encode for broadcast with proper framing: [msgType, VarUint8Array].
 	buf := new(bytes.Buffer)
@@ -287,16 +311,31 @@ func (r *Room) handleAwareness(payload []byte, sender *Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	ycrdt.ApplyAwarenessUpdate(r.awareness, data, sender)
+	broadcastCount := len(r.clients) - 1
+	slog.Info("awareness update", "room", r.id, "clients", clientIDs, "size", len(data), "broadcast_to", broadcastCount)
 	r.broadcastToOthers(sender, buf.Bytes())
 }
 
 // broadcastToOthers sends data to all clients except the sender.
 // Caller must hold r.mu.
 func (r *Room) broadcastToOthers(sender *Client, data []byte) {
+	var msgTypeName string
+	if len(data) > 0 {
+		switch data[0] {
+		case msgSync:
+			msgTypeName = "sync"
+		case msgAwareness:
+			msgTypeName = "awareness"
+		default:
+			msgTypeName = "unknown"
+		}
+	}
+	recipients := 0
 	for client := range r.clients {
 		if client == sender {
 			continue
 		}
+		recipients++
 		select {
 		case client.send <- data:
 		default:
@@ -304,5 +343,6 @@ func (r *Room) broadcastToOthers(sender *Client, data []byte) {
 			go func(c *Client) { r.hub.unregister <- c }(client)
 		}
 	}
+	slog.Info("broadcast sent", "room", r.id, "type", msgTypeName, "recipients", recipients, "size", len(data))
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/KeganHollern/web-services/server/api"
@@ -20,7 +21,7 @@ import (
 func main() {
 	// Configure log level from environment
 	level := slog.LevelInfo
-	if os.Getenv("LOG_LEVEL") == "debug" {
+	if strings.EqualFold(os.Getenv("LOG_LEVEL"), "debug") {
 		level = slog.LevelDebug
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
