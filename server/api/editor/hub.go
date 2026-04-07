@@ -68,6 +68,17 @@ func (h *Hub) run() {
 			}
 			delete(room.clients, client)
 			close(client.send)
+
+			// Broadcast awareness removal for all clientIDs owned by
+			// this WebSocket client so other users' cursors disappear.
+			if len(client.awarenessIDs) > 0 {
+				ids := make([]int, 0, len(client.awarenessIDs))
+				for id := range client.awarenessIDs {
+					ids = append(ids, id)
+				}
+				room.broadcastAwarenessRemoval(ids)
+			}
+
 			empty := len(room.clients) == 0
 			room.mu.Unlock()
 

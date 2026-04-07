@@ -20,6 +20,10 @@ type Client struct {
 	room       *Room
 	conn       *websocket.Conn
 	send       chan []byte
+
+	// awarenessIDs tracks the Y.Doc clientIDs whose awareness state was sent
+	// by this WebSocket client. Protected by room.mu.
+	awarenessIDs map[int]struct{}
 }
 
 // readPump reads messages from the WebSocket and routes them to the room.

@@ -311,9 +311,62 @@ func (r *Room) handleAwareness(payload []byte, sender *Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	ycrdt.ApplyAwarenessUpdate(r.awareness, data, sender)
+	// Track which awareness clientIDs this WebSocket client owns so we can
+	// broadcast removal when the client disconnects.
+	if sender.awarenessIDs == nil {
+		sender.awarenessIDs = make(map[int]struct{})
+	}
+	for _, id := range clientIDs {
+		sender.awarenessIDs[int(id)] = struct{}{}
+	}
 	broadcastCount := len(r.clients) - 1
 	slog.Info("awareness update", "room", r.id, "clients", clientIDs, "size", len(data), "broadcast_to", broadcastCount)
 	r.broadcastToOthers(sender, buf.Bytes())
+}
+
+// broadcastAwarenessRemoval encodes and broadcasts an awareness removal update
+// for the given clientIDs, then removes them from the server-side awareness.
+// Caller must hold r.mu.
+func (r *Room) broadcastAwarenessRemoval(clientIDs []int) {
+	if len(clientIDs) == 0 {
+		return
+	}
+
+	// Encode removal: for each client, write [clientID, clock+1, "null"].
+	encoder := ycrdt.NewEncoder()
+	ycrdt.WriteVarUint(encoder, uint64(len(clientIDs)))
+	for _, id := range clientIDs {
+		clock := 0
+		if meta, ok := r.awareness.Meta[id]; ok {
+			clock = meta["clock"].(int)
+		}
+		ycrdt.WriteVarUint(encoder, uint64(id))
+		ycrdt.WriteVarUint(encoder, uint64(clock+1))
+		ycrdt.WriteString(encoder, "null")
+	}
+	encoded := encoder.Bytes()
+
+	// Frame as awareness message: [msgAwareness, VarUint8Array(encoded)].
+	buf := new(bytes.Buffer)
+	ycrdt.WriteVarUint(buf, msgAwareness)
+	ycrdt.WriteVarUint8Array(buf, encoded)
+	msg := buf.Bytes()
+
+	// Remove from server-side awareness so new joiners don't get stale state.
+	ids := make([]ycrdt.Number, len(clientIDs))
+	copy(ids, clientIDs)
+	ycrdt.RemoveAwarenessStates(r.awareness, ids, "disconnect")
+
+	// Broadcast to ALL remaining clients (sender is already removed).
+	recipients := 0
+	for client := range r.clients {
+		recipients++
+		select {
+		case client.send <- msg:
+		default:
+		}
+	}
+	slog.Info("broadcast awareness removal", "room", r.id, "removedClients", clientIDs, "recipients", recipients)
 }
 
 // broadcastToOthers sends data to all clients except the sender.
