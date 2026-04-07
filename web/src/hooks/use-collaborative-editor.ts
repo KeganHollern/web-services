@@ -71,7 +71,12 @@ export function useCollaborativeEditor(docId: string | null): CollaborativeEdito
             collabDebug('provider status', { docId, status: s });
             setStatus(s as CollaborativeEditor['status']);
             if (s === 'connected') {
-                provider.awareness.setLocalStateField('user', { name, color });
+                // Defer awareness update so it never fires during a Y.js model
+                // content change, which would trigger MonacoBinding._rerenderDecorations
+                // recursively inside deltaDecorations and throw.
+                queueMicrotask(() => {
+                    provider.awareness.setLocalStateField('user', { name, color });
+                });
             }
         });
 

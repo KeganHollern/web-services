@@ -62,6 +62,24 @@ export function EditPage() {
             new Set([editorRef.current]),
             collab.awareness,
         );
+
+        // Patch _rerenderDecorations to debounce via requestAnimationFrame.
+        // y-monaco calls deltaDecorations synchronously from awareness change
+        // handlers, which can fire during model content changes and cause
+        // Monaco to throw "Invoking deltaDecorations recursively".
+        const original = (binding as any)._rerenderDecorations;
+        if (typeof original === 'function') {
+            let rafId: number | null = null;
+            (binding as any)._rerenderDecorations = () => {
+                if (rafId !== null) return;
+                rafId = requestAnimationFrame(() => {
+                    rafId = null;
+                    original.call(binding);
+                });
+            };
+            collabDebug('MonacoBinding _rerenderDecorations patched');
+        }
+
         return () => {
             collabDebug('MonacoBinding destroying');
             binding.destroy();
