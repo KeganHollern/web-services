@@ -386,6 +386,23 @@ const github = {
   ),
 }
 
+function YouTube({ id }: { id: string }) {
+  return (
+    <div className="flex justify-center items-center my-6">
+      <iframe
+        width="560"
+        height="315"
+        src={`https://www.youtube.com/embed/${id}`}
+        title="YouTube video player"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allowFullScreen
+        className="rounded-lg border border-muted shadow-sm max-w-full"
+      />
+    </div>
+  );
+}
+
 // stolen from shadcn/typeography
 export const mdxComponents = {
   ...headers,
@@ -394,4 +411,5 @@ export const mdxComponents = {
   ...flavor,
   ...code,
   ...github,
+  YouTube,
 };
