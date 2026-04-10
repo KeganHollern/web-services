@@ -3,10 +3,45 @@ import { Editor } from "@/components/monaco-editor/editor";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Maximize2 } from "lucide-react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LanguageShortToFull } from "./constants";
+
+function CopyButton({ content, className }: { content: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    });
+  }, [content]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={cn(
+        "rounded-md p-1.5 bg-background/80 border border-muted transition-opacity hover:bg-background cursor-pointer",
+        className
+      )}
+      aria-label="Copy code"
+    >
+      {copied
+        ? <Check className="size-4 text-green-500" />
+        : <Copy className="size-4 text-muted-foreground" />}
+    </button>
+  );
+}
 
 const headers = {
   h1: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLHeadingElement>) => (
@@ -161,24 +196,30 @@ function CodeBlock({ children }: { children: ReactNode }) {
         fontSize={12}
         minimap={false}
       />
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="absolute top-3 right-3 z-10 rounded-md p-1.5 bg-background/80 border border-muted opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background cursor-pointer"
-        aria-label="Expand code block"
-      >
-        <Maximize2 className="size-4 text-muted-foreground" />
-      </button>
+      <div className="absolute top-3 right-3 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <CopyButton content={content} />
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="rounded-md p-1.5 bg-background/80 border border-muted hover:bg-background cursor-pointer"
+          aria-label="Expand code block"
+        >
+          <Maximize2 className="size-4 text-muted-foreground" />
+        </button>
+      </div>
       <Lightbox open={expanded} onOpenChange={setExpanded}>
-        <Editor
-          readonly={true}
-          content={content}
-          className="h-[80vh] w-full relative rounded-lg p-1"
-          language={language}
-          wordwrap={false}
-          fontSize={14}
-          minimap={false}
-        />
+        <div className="relative">
+          <Editor
+            readonly={true}
+            content={content}
+            className="h-[80vh] w-full relative rounded-lg p-1"
+            language={language}
+            wordwrap={false}
+            fontSize={14}
+            minimap={false}
+          />
+          <CopyButton content={content} className="absolute top-3 right-11 z-10" />
+        </div>
       </Lightbox>
     </div>
   );
