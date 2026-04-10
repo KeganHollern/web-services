@@ -40,6 +40,7 @@ See [web/README.md](web/README.md) for frontend configuration.
 - enable mongodb for editor
 - support horizontal scaling for pods w/ collaborative editor
 - reimagine the "upload" functionality
+- put PING game on the website & add a leaderboard
 
 Feel free to add a PR suggesting new services!
 
