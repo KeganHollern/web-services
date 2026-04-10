@@ -1,38 +1,40 @@
 ---
 title: Hardware Packet Monitor - Raspberry Pi
 description: |
-    So I have been working on a new project with my Raspberry Pi 3. 
-    I was looking for situations where something running on...
+    I have been working on a new project with my Raspberry Pi 3.
+    I was looking for situations where something running on my current PC would block an application like Wireshark, and how to work around this protection.
 slug: hardware-packet-monitor-raspberry-pi
 ---
-<blockquote>So I have been working on a new project with my [Raspberry Pi 3]. 
-I was looking for situations where something running on my current PC would 
-block an application like <a href="https://www.wireshark.org/">Wireshark</a>, 
-and how to work around this protection. My solution was a direct bridge through 
-my Raspberry Pi along my ethernet cable.</blockquote>
-First things first. The Raspberry Pi 3 only has 1 ethernet port, so I had to 
-purchase an adapter for a second one. 
-I purchased this [Amazon adapter] and had no troubles, it is the same speed as 
-the onboard port the Pi has. This could be accomplished with IP Tables and using 
-the Wlan0 interface, however I opted to spend money and make my life easier.
 
-The first step is to enable SSH and connect your Pi to wifi. 
-<a href="https://www.raspberrypi.org/documentation/remote-access/ssh/">Here is 
-a tutorial for that if you don't already know.</a>
+# Hardware Packet Monitor - Raspberry Pi
 
-Next you will need to connect over 
-<a href="http://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html">Putty</a>, 
-The default login is: pi / raspberry
+> My solution was a direct bridge through my Raspberry Pi along my ethernet cable.
+
+I have been working on a new project with my [Raspberry Pi 3].
+I was looking for situations where something running on my current PC would block an application like [Wireshark], and how to work around this protection.
+My solution was a direct bridge through my Raspberry Pi along my ethernet cable.
+
+First things first. The Raspberry Pi 3 only has 1 ethernet port, so I had to purchase an adapter for a second one.
+I purchased this [Amazon adapter] and had no troubles, it is the same speed as the onboard port the Pi has.
+This could be accomplished with IP Tables and using the `wlan0` interface, however I opted to spend money and make my life easier.
+
+---
+
+The first step is to enable SSH and connect your Pi to wifi.
+[Here is a tutorial for that if you don't already know.][Raspberry Pi SSH]
+
+Next you will need to connect over [Putty].
+The default login is: `pi` / `raspberry`
 
 ![shell terminal](https://ss.lystic.zip/Legacy/H1ZjfkCw/T8mQqLvQ06YaFldX.png)
 
-Once connected, you'll need to navigate to /etc
+Once connected, you'll need to navigate to `/etc`
 
 ```bash
 cd /etc
 ```
 
-Now, you'll need to edit the rc.local file using nano.
+Now, you'll need to edit the `rc.local` file using nano.
 
 ```bash
 sudo nano rc.local
@@ -49,36 +51,42 @@ brctl addif br0 eth1
 ifconfig br0 up
 ```
 
+This zeroes out both ethernet interfaces, creates a bridge `br0`, adds both interfaces to it, and brings the bridge up. All traffic between `eth0` and `eth1` now passes through transparently.
+
 I added a bit more when playing around. The new file should look like this.
 
 ![full rc.local file content](https://ss.lystic.zip/Legacy/nfc3Bp18/wxfLDXHLEX8GP1BP.png)
 
-Good now you can save that file with Ctrl+O and exit with Ctrl+X
+Good, now you can save that file with `Ctrl+O` and exit with `Ctrl+X`.
 
-Now you can shutdown your Pi using sudo shutdown.
+Now you can shutdown your Pi using `sudo shutdown`.
 
-<strong>Hardware setup time!</strong>
+---
+
+**Hardware setup time!**
 
 ![picture of raspberry pi all connected](https://ss.lystic.zip/Legacy/hnhjEyl2/photo_2017-03-04_16-01-29.jpg)
 
 The red X's are unneeded for this build, I was using them during initial setup and never removed them.
-The yellow circle represents the eth1 interface, this connects to your router/switch/ect.
-The green circle represents the eth0 interface, this connects to your PC.
+The yellow circle represents the `eth1` interface, this connects to your router/switch/etc.
+The green circle represents the `eth0` interface, this connects to your PC.
 The purple circle is the power connector, I directly connected this to a USB port on my PC so the Pi boots whenever I boot my PC.
 
-Once all of this is connected, You should be able to boot your pi and use your internet as if nothing was changed.
+Once all of this is connected, you should be able to boot your Pi and use your internet as if nothing was changed.
 
-<strong>Now the software :D</strong>
+---
 
-For this example, I will be using TCPDump, you can install this with <em>sudo apt-get install tcpdump</em>
+**Now the software**
+
+For this example, I will be using **TCPDump**, you can install this with `sudo apt-get install tcpdump`.
 
 ```bash
 sudo apt-get install tcpdump
 tcpdump --help
 ```
 
-First verify that your bridge is setup. (You wouldn't have internet on your PC if it wasn't)
-For this I used ifconfig, however it can be done many ways.
+First verify that your bridge is setup. You wouldn't have internet on your PC if it wasn't.
+For this I used `ifconfig`, however it can be done many ways.
 
 ```bash
 ifconfig
@@ -86,33 +94,34 @@ ifconfig
 
 ![ifconfig output](https://ss.lystic.zip/Legacy/3QQHpbKd/KQDIYbcDZsWJq09k.png)
 
-Now you can start monitoring packets
+Now you can start monitoring packets.
 
 ```bash
 sudo tcpdump -i br0 -X -n not port 22
 ```
 
+This listens on the bridge interface, prints hex and ASCII output, skips DNS resolution, and filters out SSH traffic so you don't flood the output with your own Putty session.
+
 {/* TODO embed this video in a proper video player */}
 <video src="https://ss.lystic.zip/Legacy/7NExONS1/1WsVzqT3eyWdY2Xf.mp4" />
 
-You can cancel the packet capture with Ctrl+C
-
-<strong>Extension</strong>
-So if your internet is faster than 100Mbps the raspberry pi may not be your best
-bet. If you need Between 100Mbps and 1Gbps I would recommend doing something 
-similar to this with the new 
-[Asus Tinker board] which has onboard 1Gbps ethernet.
-
-I plan to continue this project with a Raspberry Pi Zero, 
-[Power over Ethernet], and <a href="http://libtins.github.io/">libtins</a>.
+You can cancel the packet capture with `Ctrl+C`.
 
 ---
 
-![pciture of me thumbs up](https://ss.lystic.zip/Legacy/snLIjLYA/photo_2017-03-04_16-01-09.jpg)
+If your internet is faster than 100Mbps the Raspberry Pi may not be your best bet.
+If you need between 100Mbps and 1Gbps I would recommend doing something similar to this with the [Asus Tinker Board] which has onboard 1Gbps ethernet.
 
+I plan to continue this project with a Raspberry Pi Zero, [Power over Ethernet], and [libtins].
+
+![picture of me thumbs up](https://ss.lystic.zip/Legacy/snLIjLYA/photo_2017-03-04_16-01-09.jpg)
 
 {/* reference links */}
-[Amazon adapter]: https://www.amazon.com/AmazonBasics-1000-Gigabit-Ethernet-Adapter/dp/B00M77HLII/ref=sr_1_1?dd=9MLP35dHsdPPzlSttU5YeQ%2C%2C&amp;ddc_refnmnt=pfod&amp;ie=UTF8&amp;qid=1487196158&amp;sr=8-1&amp;keywords=USB%2Bto%2Bethernet&amp;refinements=p_97%3A11292772011&amp;th=1
-[Asus Tinker board]: https://www.asus.com/uk/Single-board-Computer/TINKER-BOARD/
-[Power over Ethernet]: http://lifehacker.com/power-a-raspberry-pi-zero-over-ethernet-1752284809
 [Raspberry Pi 3]: https://www.raspberrypi.org/products/raspberry-pi-3-model-b/
+[Wireshark]: https://www.wireshark.org/
+[Amazon adapter]: https://www.amazon.com/AmazonBasics-1000-Gigabit-Ethernet-Adapter/dp/B00M77HLII/ref=sr_1_1?dd=9MLP35dHsdPPzlSttU5YeQ%2C%2C&ddc_refnmnt=pfod&ie=UTF8&qid=1487196158&sr=8-1&keywords=USB%2Bto%2Bethernet&refinements=p_97%3A11292772011&th=1
+[Raspberry Pi SSH]: https://www.raspberrypi.org/documentation/remote-access/ssh/
+[Putty]: http://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html
+[Asus Tinker Board]: https://www.asus.com/uk/Single-board-Computer/TINKER-BOARD/
+[Power over Ethernet]: http://lifehacker.com/power-a-raspberry-pi-zero-over-ethernet-1752284809
+[libtins]: http://libtins.github.io/
