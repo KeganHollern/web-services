@@ -1238,6 +1238,140 @@ export const flexokiThemeLight: editor.IStandaloneThemeData = {
     "encodedTokensColors": []
 };
 
+export const ASMLanguageDefinition: languages.IMonarchLanguage = {
+    defaultToken: '',
+    tokenPostfix: '.asm',
+    ignoreCase: true,
+
+    registers: [
+        'rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp',
+        'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15',
+        'eax', 'ebx', 'ecx', 'edx', 'esi', 'edi', 'ebp', 'esp',
+        'r8d', 'r9d', 'r10d', 'r11d', 'r12d', 'r13d', 'r14d', 'r15d',
+        'ax', 'bx', 'cx', 'dx', 'si', 'di', 'bp', 'sp',
+        'r8w', 'r9w', 'r10w', 'r11w', 'r12w', 'r13w', 'r14w', 'r15w',
+        'al', 'bl', 'cl', 'dl', 'ah', 'bh', 'ch', 'dh', 'sil', 'dil', 'bpl', 'spl',
+        'r8b', 'r9b', 'r10b', 'r11b', 'r12b', 'r13b', 'r14b', 'r15b',
+        'cs', 'ds', 'es', 'fs', 'gs', 'ss', 'rip', 'eip',
+        // ARM registers
+        'x0', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7',
+        'x8', 'x9', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15',
+        'x16', 'x17', 'x18', 'x19', 'x20', 'x21', 'x22', 'x23',
+        'x24', 'x25', 'x26', 'x27', 'x28', 'x29', 'x30',
+        'w0', 'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7',
+        'w8', 'w9', 'w10', 'w11', 'w12', 'w13', 'w14', 'w15',
+        'lr', 'pc', 'sp',
+    ],
+
+    keywords: [
+        // Data movement
+        'mov', 'movzx', 'movsx', 'movsxd', 'lea', 'xchg', 'cmov', 'cmove', 'cmovne',
+        'cmovz', 'cmovnz', 'cmova', 'cmovb', 'cmovg', 'cmovl', 'cmovge', 'cmovle',
+        // Stack
+        'push', 'pop', 'pushf', 'popf', 'pushfq', 'popfq',
+        // Arithmetic
+        'add', 'sub', 'mul', 'imul', 'div', 'idiv', 'inc', 'dec', 'neg', 'adc', 'sbb',
+        // Bitwise
+        'and', 'or', 'xor', 'not', 'shl', 'shr', 'sar', 'sal', 'rol', 'ror', 'rcl', 'rcr',
+        'bt', 'bts', 'btr', 'btc', 'bsf', 'bsr',
+        // Comparison / Test
+        'cmp', 'test',
+        // Jumps
+        'jmp', 'je', 'jne', 'jz', 'jnz', 'ja', 'jb', 'jg', 'jl', 'jge', 'jle',
+        'jae', 'jbe', 'jc', 'jnc', 'jo', 'jno', 'js', 'jns', 'jp', 'jnp',
+        'jecxz', 'jrcxz', 'loop', 'loope', 'loopne',
+        // Call / Return
+        'call', 'ret', 'retn', 'enter', 'leave',
+        // System
+        'syscall', 'sysenter', 'sysexit', 'sysret', 'int', 'nop', 'hlt', 'cpuid',
+        'rdtsc', 'rdtscp',
+        // String operations
+        'rep', 'repe', 'repne', 'repz', 'repnz',
+        'movsb', 'movsw', 'movsd', 'movsq', 'stosb', 'stosw', 'stosd', 'stosq',
+        'lodsb', 'lodsw', 'lodsd', 'lodsq', 'scasb', 'scasw', 'scasd', 'scasq',
+        'cmpsb', 'cmpsw', 'cmpsd', 'cmpsq',
+        // Set byte
+        'sete', 'setne', 'setz', 'setnz', 'seta', 'setb', 'setg', 'setl',
+        'setge', 'setle', 'setae', 'setbe',
+        // ARM instructions
+        'ldr', 'str', 'ldp', 'stp', 'adr', 'adrp', 'bl', 'blr', 'br', 'cbz', 'cbnz',
+        'tbz', 'tbnz', 'svc', 'mrs', 'msr', 'madd', 'msub',
+    ],
+
+    directives: [
+        'proc', 'endp', 'db', 'dw', 'dd', 'dq', 'byte', 'word', 'dword', 'qword',
+        'ptr', 'offset', 'section', 'segment', 'global', 'extern', 'public',
+        'end', 'macro', 'endm', 'equ', 'include', 'includelib',
+        'short', 'near', 'far', 'rel',
+    ],
+
+    dataDirectives: [
+        '.data', '.code', '.text', '.bss', '.model', '.stack', '.const',
+    ],
+
+    tokenizer: {
+        root: [
+            // Comments
+            [/;.*$/, 'comment'],
+
+            // Data section directives
+            [/^\s*\.[a-zA-Z]+/, {
+                cases: {
+                    '@dataDirectives': 'keyword.directive',
+                    '@default': 'keyword.directive',
+                }
+            }],
+
+            // Hex numbers (before identifiers to catch addresses like 140001713)
+            [/0x[0-9a-fA-F]+h?/, 'number.hex'],
+            [/[0-9][0-9a-fA-F]*h\b/, 'number.hex'],
+
+            // Labels (identifier followed by colon)
+            [/^[a-zA-Z_]\w*:/, 'type.identifier'],
+            [/^\s+[a-zA-Z_]\w*:/, 'type.identifier'],
+
+            // Address-style hex at start of line (disassembly output)
+            [/^[0-9a-fA-F]{6,}\b/, 'number.hex'],
+
+            // Hex byte sequences in disassembly (e.g., e8e8ffffff)
+            [/^\s+[0-9a-fA-F]{2,}\s/, 'number.hex'],
+
+            // Identifiers: registers, keywords, directives
+            [/[a-zA-Z_]\w*/, {
+                cases: {
+                    '@registers': 'variable.register',
+                    '@keywords': 'keyword',
+                    '@directives': 'keyword.directive',
+                    '@default': 'identifier',
+                }
+            }],
+
+            // Numbers
+            [/\d+/, 'number'],
+
+            // Strings
+            [/"/, { token: 'string.quote', next: '@string_double' }],
+            [/'/, { token: 'string.quote', next: '@string_single' }],
+
+            // Brackets
+            [/[[\]{}()]/, '@brackets'],
+
+            // Operators
+            [/[+\-*,:]/, 'operator'],
+        ],
+
+        string_double: [
+            [/[^"]+/, 'string'],
+            [/"/, { token: 'string.quote', next: '@pop' }],
+        ],
+
+        string_single: [
+            [/[^']+/, 'string'],
+            [/'/, { token: 'string.quote', next: '@pop' }],
+        ],
+    }
+};
+
 export const SQFLanguageDefinition: languages.IMonarchLanguage = {
     defaultToken: '',
     tokenPostfix: '.sqf',

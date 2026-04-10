@@ -24,6 +24,9 @@ type EditorProps = {
 loader.init().then((monacoInstance) => {
     monacoInstance.languages.register({ id: 'sqf' });
     monacoInstance.languages.setMonarchTokensProvider('sqf', constants.SQFLanguageDefinition);
+
+    monacoInstance.languages.register({ id: 'asm' });
+    monacoInstance.languages.setMonarchTokensProvider('asm', constants.ASMLanguageDefinition);
 });
 
 export function Editor({
