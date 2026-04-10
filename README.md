@@ -67,8 +67,6 @@ Posts that need updating from legacy format to modern MDX style.
 
 - [ ] 2017/Hardware Packet Monitor - Raspberry PI — needs: frontmatter, HTML→markdown (blockquote/a/strong/em/video)
 - [ ] 2017/extDB2 Exploit And Why You Should Use SQL_CUSTOM_V2 — needs: HTML img→markdown, WordPress classes cleanup, code screenshots→code blocks (has TODOs in file)
-- [ ] 2021/Executing SQF Without Allocating Memory — needs: HTML div/iframe→YouTube component or markdown
-- [ ] 2021/CallExtension in DayZ — needs: HTML `<b>`→markdown `**bold**`
 
 ### Content WIP / Incomplete
 
