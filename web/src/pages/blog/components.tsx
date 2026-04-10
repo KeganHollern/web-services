@@ -7,6 +7,7 @@ import { Check, Copy, Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LanguageShortToFull } from "./constants";
+import { VideoPlayer } from "./video-player";
 
 function CopyButton({ content, className }: { content: string; className?: string }) {
   const [copied, setCopied] = useState(false);
@@ -234,12 +235,8 @@ const flavor = {
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
     <BlogImage {...props} />
   ),
-  video: ({ ...props }: React.VideoHTMLAttributes<HTMLVideoElement>) => (
-    <video
-      controls
-      className={cn("my-6 w-full rounded-lg border-2 border-muted shadow-sm", props.className)}
-      {...props}
-    />
+  video: (props: React.VideoHTMLAttributes<HTMLVideoElement>) => (
+    <VideoPlayer {...props} />
   ),
 }
 
@@ -412,4 +409,5 @@ export const mdxComponents = {
   ...code,
   ...github,
   YouTube,
+  VideoPlayer,
 };
