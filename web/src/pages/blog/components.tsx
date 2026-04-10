@@ -43,6 +43,50 @@ function CopyButton({ content, className }: { content: string; className?: strin
   );
 }
 
+function getAlignmentClass(className?: string): string {
+  if (!className) return "mx-auto";
+  if (className.includes("alignleft")) return "mr-auto";
+  if (className.includes("alignright")) return "ml-auto";
+  return "mx-auto"; // aligncenter, alignnone, or default
+}
+
+function BlogImage(props: React.ImgHTMLAttributes<HTMLImageElement> & { caption?: string }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const { caption, className, width, height, title, ...imgProps } = props;
+  const displayCaption = caption || title;
+  const alignment = getAlignmentClass(className);
+
+  return (
+    <>
+      <figure className={cn("my-6 flex flex-col items-center", alignment === "mr-auto" && "items-start", alignment === "ml-auto" && "items-end")}>
+        <img
+          {...imgProps}
+          className={cn(
+            "max-w-full h-auto rounded-lg border border-muted shadow-sm cursor-zoom-in transition-shadow hover:shadow-md",
+            alignment
+          )}
+          style={width ? { maxWidth: `min(${width}px, 100%)` } : undefined}
+          onClick={() => setLightboxOpen(true)}
+        />
+        {displayCaption && (
+          <figcaption className="mt-2 text-center text-sm text-muted-foreground italic">
+            {displayCaption}
+          </figcaption>
+        )}
+      </figure>
+      <Lightbox open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <div className="flex items-center justify-center p-4">
+          <img
+            src={imgProps.src}
+            alt={imgProps.alt}
+            className="max-w-[85vw] max-h-[85vh] object-contain rounded-lg"
+          />
+        </div>
+      </Lightbox>
+    </>
+  );
+}
+
 const headers = {
   h1: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLHeadingElement>) => (
     <h1 className={cn("scroll-m-20 text-center text-4xl mb-12 pb-5 border-b-1 font-bold tracking-tight text-balance", props.className)} {...props}>
@@ -95,12 +139,66 @@ const lists = {
   ),
 }
 
-const text = {
-  p: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLParagraphElement>) => (
+function ParagraphWithCaptions({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLParagraphElement>) {
+  const childArray = React.Children.toArray(children);
+
+  // Detect [caption ...] ... [/caption] pattern around images
+  const hasCaptionTag = childArray.some(
+    (child) => typeof child === "string" && (child.includes("[caption") || child.includes("[/caption]"))
+  );
+
+  if (hasCaptionTag) {
+    // Process children: strip [caption ...] and [/caption], extract caption text and pass to BlogImage
+    const processed: ReactNode[] = [];
+    let pendingCaption: string | null = null;
+
+    for (const child of childArray) {
+      if (typeof child === "string") {
+        // Strip [caption ...] opening tag
+        let text = child.replace(/\[caption[^\]]*\]/g, "");
+        // Extract caption text before [/caption]
+        const closingMatch = text.match(/^(.*?)\[\/caption\]/);
+        if (closingMatch) {
+          pendingCaption = closingMatch[1].trim() || null;
+          text = text.replace(/.*?\[\/caption\]/, "");
+        }
+        const trimmed = text.trim();
+        if (trimmed) {
+          processed.push(trimmed);
+        }
+      } else if (React.isValidElement(child) && (child.type === "img" || (child.type as { name?: string })?.name === "img" || child.type === BlogImage)) {
+        // Apply pending caption to this image
+        const imgChild = child as React.ReactElement<React.ImgHTMLAttributes<HTMLImageElement> & { caption?: string }>;
+        // Look ahead for caption text after this image
+        const idx = childArray.indexOf(child);
+        const next = childArray[idx + 1];
+        let caption = pendingCaption;
+        if (!caption && typeof next === "string") {
+          const match = next.match(/^([^[]+)\[\/caption\]/);
+          if (match) {
+            caption = match[1].trim();
+          }
+        }
+        processed.push(
+          <BlogImage key={imgChild.key} {...imgChild.props} caption={caption || undefined} />
+        );
+        pendingCaption = null;
+      } else {
+        processed.push(child);
+      }
+    }
+    return <div {...props}>{processed}</div>;
+  }
+
+  return (
     <p className={cn("leading-7 [&:not(:first-child)]:mt-3", props.className)} {...props}>
       {children}
     </p>
-  ),
+  );
+}
+
+const text = {
+  p: ParagraphWithCaptions,
   strong: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLElement>) => (
     <strong className={cn("font-bold", props.className)} {...props}>
       {children}
@@ -133,8 +231,8 @@ const flavor = {
       {children}
     </a>
   ),
-  img: ({ ...props }: {} & React.HTMLAttributes<HTMLImageElement>) => (
-    <img className={cn(props.className)} {...props} />
+  img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+    <BlogImage {...props} />
   ),
   video: ({ ...props }: React.VideoHTMLAttributes<HTMLVideoElement>) => (
     <video
