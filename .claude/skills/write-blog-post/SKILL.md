@@ -1,3 +1,8 @@
+---
+name: write-blog-post
+description: Write blog posts for lystic.dev matching Kegan's established voice and conventions. Use when asked to write, draft, or create a blog post.
+---
+
 # Skill: Write Blog Post
 
 Write blog posts for lystic.dev matching Kegan's established voice and conventions.

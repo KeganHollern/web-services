@@ -65,7 +65,6 @@ Posts that need updating from legacy format to modern MDX style.
 
 ### Partial migration needed
 
-- [ ] 2017/Hardware Packet Monitor - Raspberry PI — needs: frontmatter, HTML→markdown (blockquote/a/strong/em/video)
 - [ ] 2017/extDB2 Exploit And Why You Should Use SQL_CUSTOM_V2 — needs: HTML img→markdown, WordPress classes cleanup, code screenshots→code blocks (has TODOs in file)
 
 ### Content WIP / Incomplete
