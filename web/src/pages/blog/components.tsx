@@ -1,9 +1,11 @@
+import { Lightbox } from "@/components/lightbox";
 import { Editor } from "@/components/monaco-editor/editor";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
-import React from "react";
+import React, { useState } from "react";
 import { LanguageShortToFull } from "./constants";
 
 const headers = {
@@ -108,6 +110,80 @@ const flavor = {
   ),
 }
 
+function CodeBlock({ children }: { children: ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+
+  let content = '';
+  let language = 'text';
+
+  const childrenArray = React.Children.toArray(children);
+
+  const codeChild = childrenArray.find(
+    (child) => {
+      if (!React.isValidElement(child)) return false;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+      if ((child.type as Function).name !== 'code') return false;
+      return true;
+    }
+  ) as React.ReactElement<HTMLElement> | undefined;
+
+  if (codeChild) {
+    const codeContent = codeChild.props.children;
+    if (typeof codeContent === 'string') {
+      content = codeContent;
+    } else if (Array.isArray(codeContent)) {
+      content = codeContent.filter((node) => typeof node === 'string').join('');
+    }
+
+    const className = codeChild.props.className || '';
+    const match = className.match(/language-(\w+)/);
+    if (match) {
+      language = match[1];
+    }
+  } else {
+    content = childrenArray.filter((node) => typeof node === 'string').join('');
+  }
+
+  if (!content) {
+    content = '';
+  }
+
+  language = LanguageShortToFull[language] ?? language;
+
+  return (
+    <div className="group relative my-4">
+      <Editor
+        readonly={true}
+        content={content}
+        className={cn("h-80 w-full relative border-2 border-muted rounded-lg p-1")}
+        language={language}
+        wordwrap={false}
+        fontSize={12}
+        minimap={false}
+      />
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="absolute top-3 right-3 z-10 rounded-md p-1.5 bg-background/80 border border-muted opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background cursor-pointer"
+        aria-label="Expand code block"
+      >
+        <Maximize2 className="size-4 text-muted-foreground" />
+      </button>
+      <Lightbox open={expanded} onOpenChange={setExpanded}>
+        <Editor
+          readonly={true}
+          content={content}
+          className="h-[80vh] w-full relative rounded-lg p-1"
+          language={language}
+          wordwrap={false}
+          fontSize={14}
+          minimap={false}
+        />
+      </Lightbox>
+    </div>
+  );
+}
+
 const code = {
   // inline code
   code: ({ children, ...props }: { children: ReactNode } & React.HTMLAttributes<HTMLElement>) => (
@@ -123,65 +199,7 @@ const code = {
   ),
   // block code
   pre: ({ children }: { children: ReactNode } & React.HTMLAttributes<HTMLPreElement>) => {
-    let content = '';
-    let language = 'text'; // Default language if none is found
-
-    // Convert children to array for easier traversal
-    const childrenArray = React.Children.toArray(children);
-
-    // Find the <code> child if it exists
-    const codeChild = childrenArray.find(
-      (child) => {
-        if (!React.isValidElement(child)) return false;
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-        if ((child.type as Function).name !== 'code') return false;
-
-        return true;
-      }
-    ) as React.ReactElement<HTMLElement> | undefined;
-
-
-    if (codeChild) {
-      // Extract the inner content (should be a string or array of strings/nodes)
-      const codeContent = codeChild.props.children;
-      if (typeof codeContent === 'string') {
-        content = codeContent;
-      } else if (Array.isArray(codeContent)) {
-        // If it's an array, join the strings (handles multiple text nodes)
-        content = codeContent.filter((node) => typeof node === 'string').join('');
-      }
-
-      // Extract language from className (e.g., "language-javascript")
-      const className = codeChild.props.className || '';
-      const match = className.match(/language-(\w+)/);
-      if (match) {
-        language = match[1];
-      }
-    } else {
-      // If no <code> child, treat the direct children as content
-      content = childrenArray.filter((node) => typeof node === 'string').join('');
-    }
-
-    // If no content found, fallback to empty
-    if (!content) {
-      content = ''; // Or some placeholder
-    }
-
-    // map short codes to full language name for monaco
-    language = LanguageShortToFull[language] ?? language;
-
-    // TODO: _fullscreen_ button for editor so viewers can fullscreen the code box in a popup dialog or something
-    return (
-      <Editor
-        readonly={true}
-        content={content}
-        className={cn("h-80 w-full relative border-2 border-muted rounded-lg p-1 my-4")}
-        language={language}
-        wordwrap={false}
-        fontSize={12}
-        minimap={false} />
-    )
+    return <CodeBlock>{children}</CodeBlock>;
   },
 }
 
