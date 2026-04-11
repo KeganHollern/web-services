@@ -386,6 +386,8 @@ function CodeBlock({ children }: { children: ReactNode }) {
     content = '';
   }
 
+  content = content.replace(/\n+$/, '');
+
   const isShell = language === "bash" || language === "shell" || language === "sh";
 
   language = LanguageShortToFull[language] ?? language;
