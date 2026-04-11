@@ -191,6 +191,22 @@ function ParagraphWithCaptions({ children, ...props }: { children: ReactNode } &
     return <div {...props}>{processed}</div>;
   }
 
+  const hasBlockChild = childArray.some((child) => {
+    if (!React.isValidElement(child)) return false;
+    if (child.type === "img" || child.type === "video") return true;
+    if (child.type === BlogImage || child.type === VideoPlayer) return true;
+    const name = (child.type as { name?: string })?.name;
+    return name === "img" || name === "video";
+  });
+
+  if (hasBlockChild) {
+    return (
+      <div className={cn("leading-7 [&:not(:first-child)]:mt-3", props.className)} {...props}>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <p className={cn("leading-7 [&:not(:first-child)]:mt-3", props.className)} {...props}>
       {children}
