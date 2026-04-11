@@ -86,7 +86,7 @@ function BlogImage(props: React.ImgHTMLAttributes<HTMLImageElement> & { caption?
           <img
             src={imgProps.src}
             alt={imgProps.alt}
-            className="max-w-[85vw] max-h-[85vh] object-contain rounded-lg"
+            className="max-w-full max-h-[85vh] object-contain rounded-lg"
           />
         </div>
       </Lightbox>
