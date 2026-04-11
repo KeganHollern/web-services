@@ -1,11 +1,11 @@
 import { Lightbox } from "@/components/lightbox";
-import { Editor } from "@/components/monaco-editor/editor";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { Check, Copy, Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { bundledLanguages, codeToHtml, type BundledLanguage } from "shiki";
 import { LanguageShortToFull } from "./constants";
 import { VideoPlayer } from "./video-player";
 
@@ -256,6 +256,60 @@ const flavor = {
   ),
 }
 
+function useShikiHtml(content: string, language: string): string | null {
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const lang: BundledLanguage | "plaintext" =
+      language in bundledLanguages ? (language as BundledLanguage) : "plaintext";
+
+    codeToHtml(content, {
+      lang,
+      themes: { light: "github-light", dark: "github-dark" },
+      defaultColor: false,
+    })
+      .then((result) => {
+        if (!cancelled) setHtml(result);
+      })
+      .catch(() => {
+        if (!cancelled) setHtml(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content, language]);
+
+  return html;
+}
+
+function HighlightedCode({
+  html,
+  content,
+  className,
+}: {
+  html: string | null;
+  content: string;
+  className?: string;
+}) {
+  if (html) {
+    return (
+      <div
+        className={cn("shiki-block", className)}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+  return (
+    <div className={cn("shiki-block", className)}>
+      <pre className="p-4 overflow-x-auto m-0">
+        <code>{content}</code>
+      </pre>
+    </div>
+  );
+}
+
 function CodeBlock({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -296,16 +350,14 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
   language = LanguageShortToFull[language] ?? language;
 
+  const html = useShikiHtml(content, language);
+
   return (
     <div className="group relative my-4">
-      <Editor
-        readonly={true}
+      <HighlightedCode
+        html={html}
         content={content}
-        className={cn("h-80 w-full relative border-2 border-muted rounded-lg p-1")}
-        language={language}
-        wordwrap={false}
-        fontSize={12}
-        minimap={false}
+        className="w-full border-2 border-muted rounded-lg overflow-hidden text-sm"
       />
       <div className="absolute top-3 right-3 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <CopyButton content={content} />
@@ -319,17 +371,13 @@ function CodeBlock({ children }: { children: ReactNode }) {
         </button>
       </div>
       <Lightbox open={expanded} onOpenChange={setExpanded}>
-        <div className="relative">
-          <Editor
-            readonly={true}
+        <div className="relative max-w-[90vw] max-h-[85vh] overflow-auto rounded-lg">
+          <HighlightedCode
+            html={html}
             content={content}
-            className="h-[80vh] w-full relative rounded-lg p-1"
-            language={language}
-            wordwrap={false}
-            fontSize={14}
-            minimap={false}
+            className="text-base rounded-lg"
           />
-          <CopyButton content={content} className="absolute top-3 right-11 z-10" />
+          <CopyButton content={content} className="absolute top-3 right-3 z-10" />
         </div>
       </Lightbox>
     </div>
