@@ -320,21 +320,23 @@ function HighlightedCode({
   html,
   content,
   className,
+  isShell,
 }: {
   html: string | null;
   content: string;
   className?: string;
+  isShell?: boolean;
 }) {
   if (html) {
     return (
       <div
-        className={cn("shiki-block", className)}
+        className={cn("shiki-block", isShell && "shiki-shell", className)}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     );
   }
   return (
-    <div className={cn("shiki-block", className)}>
+    <div className={cn("shiki-block", isShell && "shiki-shell", className)}>
       <pre className="p-4 overflow-x-auto m-0">
         <code>{content}</code>
       </pre>
@@ -384,6 +386,8 @@ function CodeBlock({ children }: { children: ReactNode }) {
     content = '';
   }
 
+  const isShell = language === "bash" || language === "shell" || language === "sh";
+
   language = LanguageShortToFull[language] ?? language;
 
   const html = useShikiHtml(content, language);
@@ -402,6 +406,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
           html={html}
           content={content}
           className="w-full text-sm"
+          isShell={isShell}
         />
         {isClipped && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-24 items-end justify-center bg-gradient-to-t from-background via-background/85 to-transparent pb-3">
@@ -443,6 +448,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
             html={html}
             content={content}
             className="text-base rounded-lg"
+            isShell={isShell}
           />
           <CopyButton content={content} className="absolute top-3 right-3 z-10" />
         </div>

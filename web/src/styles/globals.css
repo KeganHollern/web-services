@@ -179,6 +179,15 @@ body {
     background-color: var(--background);
 }
 
+.shiki-block.shiki-shell .shiki code .line::before {
+    content: "$";
+    display: inline-block;
+    width: 1.25rem;
+    opacity: 0.4;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 .shiki,
 .shiki span {
     color: var(--shiki-light);
