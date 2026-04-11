@@ -450,7 +450,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
             className="text-base rounded-lg"
             isShell={isShell}
           />
-          <CopyButton content={content} className="absolute top-3 right-3 z-10" />
+          <CopyButton content={content} className="absolute top-3 right-12 z-10" />
         </div>
       </Lightbox>
     </div>
