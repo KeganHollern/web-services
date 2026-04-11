@@ -342,8 +342,12 @@ function HighlightedCode({
   );
 }
 
+const COLLAPSE_LINE_THRESHOLD = 20;
+const COLLAPSED_MAX_HEIGHT = "28rem";
+
 function CodeBlock({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   let content = '';
   let language = 'text';
@@ -384,13 +388,44 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
   const html = useShikiHtml(content, language);
 
+  const lineCount = content ? content.split("\n").length : 0;
+  const isLong = lineCount > COLLAPSE_LINE_THRESHOLD;
+  const isClipped = isLong && collapsed;
+
   return (
     <div className="group relative my-4">
-      <HighlightedCode
-        html={html}
-        content={content}
-        className="w-full border-2 border-muted rounded-lg overflow-hidden text-sm"
-      />
+      <div
+        className="relative w-full border-2 border-muted rounded-lg overflow-hidden"
+        style={isClipped ? { maxHeight: COLLAPSED_MAX_HEIGHT } : undefined}
+      >
+        <HighlightedCode
+          html={html}
+          content={content}
+          className="w-full text-sm"
+        />
+        {isClipped && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-24 items-end justify-center bg-gradient-to-t from-background via-background/85 to-transparent pb-3">
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              className="pointer-events-auto rounded-md border border-muted bg-background px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-background cursor-pointer shadow-sm"
+            >
+              Show more ({lineCount} lines)
+            </button>
+          </div>
+        )}
+      </div>
+      {isLong && !collapsed && (
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="rounded-md border border-muted bg-background px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            Show less
+          </button>
+        </div>
+      )}
       <div className="absolute top-3 right-3 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <CopyButton content={content} />
         <button
