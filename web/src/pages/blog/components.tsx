@@ -5,8 +5,14 @@ import { cn } from "@/lib/utils";
 import { Check, Copy, Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { bundledLanguages, codeToHtml, type BundledLanguage } from "shiki";
+import {
+  bundledLanguages,
+  createHighlighter,
+  type BundledLanguage,
+  type Highlighter,
+} from "shiki";
 import { LanguageShortToFull } from "./constants";
+import { sqfGrammar } from "./sqf-grammar";
 import { VideoPlayer } from "./video-player";
 
 function CopyButton({ content, className }: { content: string; className?: string }) {
@@ -256,19 +262,45 @@ const flavor = {
   ),
 }
 
+let highlighterPromise: Promise<Highlighter> | null = null;
+
+function getBlogHighlighter(): Promise<Highlighter> {
+  if (!highlighterPromise) {
+    highlighterPromise = createHighlighter({
+      themes: ["github-light", "github-dark"],
+      langs: [sqfGrammar],
+    });
+  }
+  return highlighterPromise;
+}
+
+async function highlightCode(content: string, language: string): Promise<string> {
+  const highlighter = await getBlogHighlighter();
+  const loaded = new Set(highlighter.getLoadedLanguages());
+
+  let lang: string = language;
+  if (!loaded.has(lang)) {
+    if (lang in bundledLanguages) {
+      await highlighter.loadLanguage(bundledLanguages[lang as BundledLanguage]);
+    } else {
+      lang = "plaintext";
+    }
+  }
+
+  return highlighter.codeToHtml(content, {
+    lang,
+    themes: { light: "github-light", dark: "github-dark" },
+    defaultColor: false,
+  });
+}
+
 function useShikiHtml(content: string, language: string): string | null {
   const [html, setHtml] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const lang: BundledLanguage | "plaintext" =
-      language in bundledLanguages ? (language as BundledLanguage) : "plaintext";
 
-    codeToHtml(content, {
-      lang,
-      themes: { light: "github-light", dark: "github-dark" },
-      defaultColor: false,
-    })
+    highlightCode(content, language)
       .then((result) => {
         if (!cancelled) setHtml(result);
       })
