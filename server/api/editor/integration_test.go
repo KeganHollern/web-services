@@ -136,31 +136,33 @@ func sendAwareness(t *testing.T, ws *websocket.Conn, awarenessData []byte) {
 	}
 }
 
-// completeHandshake reads the initial sync step 1, sync step 2, and (optionally) awareness
-// messages from the server. Returns the raw step 2 update payload.
+// completeHandshake performs the full y-websocket sync handshake with the server.
+// The server sends sync step 1 (and optionally awareness); the client replies with
+// its own sync step 1, and the server responds with sync step 2 containing the
+// current document state. Returns the raw step 2 update payload.
 func completeHandshake(t *testing.T, ws *websocket.Conn) []byte {
 	t.Helper()
 
-	// Server sends: sync step 1, sync step 2, awareness (if any states exist).
-	// Read sync step 1.
+	// Read server's sync step 1.
 	sub1, _, _ := readSyncMessage(t, ws)
 	if sub1 != uint64(ycrdt.MessageYjsSyncStep1) {
 		t.Fatalf("expected sync step 1, got sub-type %d", sub1)
 	}
 
-	// Read sync step 2.
+	// Drain any optional awareness message the server may have sent.
+	ws.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	ws.ReadMessage() // ignore: awareness or timeout, both are fine
+	ws.SetReadDeadline(time.Time{})
+
+	// Reply with client's sync step 1 so the server can produce step 2.
+	clientDoc := ycrdt.NewDoc("handshake", true, ycrdt.DefaultGCFilter, nil, false)
+	sendSyncStep1(t, ws, clientDoc)
+
+	// Read server's sync step 2 reply — this contains the full document state.
 	sub2, step2Payload, _ := readSyncMessage(t, ws)
 	if sub2 != uint64(ycrdt.MessageYjsSyncStep2) {
 		t.Fatalf("expected sync step 2, got sub-type %d", sub2)
 	}
-
-	// The server may also send an awareness message. Try to read it with a short timeout.
-	ws.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-	_, _, err := ws.ReadMessage()
-	if err != nil {
-		// Timeout is expected if no awareness state exists — that's fine.
-	}
-	ws.SetReadDeadline(time.Time{}) // reset
 
 	return step2Payload
 }
@@ -186,7 +188,7 @@ func TestIntegration_SingleClientConnectAndSync(t *testing.T) {
 	ws := connectWS(t, ts.URL, "test-doc")
 	defer ws.Close()
 
-	// Read sync step 1: format should be [0, 0, ...]
+	// Server sends sync step 1 first.
 	msg1 := readMessage(t, ws)
 	if msg1.msgType != 0 {
 		t.Fatalf("first message should be sync (0), got %d", msg1.msgType)
@@ -197,27 +199,15 @@ func TestIntegration_SingleClientConnectAndSync(t *testing.T) {
 		t.Fatalf("expected sync step 1 (sub-type 0), got %d", subType)
 	}
 
-	// Read sync step 2: format should be [0, 1, ...]
-	msg2 := readMessage(t, ws)
-	if msg2.msgType != 0 {
-		t.Fatalf("second message should be sync (0), got %d", msg2.msgType)
-	}
-	decoder2 := ycrdt.NewDecoder(msg2.payload)
-	subType2 := ycrdt.ReadVarUint(decoder2)
-	if subType2 != 1 {
-		t.Fatalf("expected sync step 2 (sub-type 1), got %d", subType2)
-	}
-
-	// The server may also send awareness state — drain it if present.
+	// Server may optionally send awareness — drain it with a short timeout.
 	ws.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 	ws.ReadMessage() // ignore awareness or timeout
 	ws.SetReadDeadline(time.Time{})
 
-	// Now send a sync step 1 from the client.
+	// Client replies with sync step 1; server responds with sync step 2.
 	clientDoc := ycrdt.NewDoc("client", true, ycrdt.DefaultGCFilter, nil, false)
 	sendSyncStep1(t, ws, clientDoc)
 
-	// Read the server's sync step 2 reply.
 	sub, _, _ := readSyncMessage(t, ws)
 	if sub != uint64(ycrdt.MessageYjsSyncStep2) {
 		t.Fatalf("expected step 2 reply, got sub-type %d", sub)
