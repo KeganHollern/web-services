@@ -5,6 +5,7 @@ import { BlogRouter } from "@/pages/blog/router";
 import { EditRouter } from "@/pages/edit/router";
 import { HomeRouter } from "@/pages/home/router";
 import { SecretRouter } from "@/pages/secret/router";
+import { ShareRouter } from "@/pages/share/router";
 import { SwapRouter } from "@/pages/swap/router";
 import { UploadRouter } from "@/pages/upload/router";
 import { PageNotFound } from "@/pages/404/page";
@@ -23,6 +24,8 @@ function GetPageRouter(subdomain: string): React.FC {
             return SwapRouter;
         case "upload":
             return UploadRouter;
+        case "share":
+            return ShareRouter;
 
         default:
             return PageNotFound;

@@ -31,6 +31,7 @@ export function SubdomainSelector() {
                     <SelectItem value="edit">Edit</SelectItem>
                     <SelectItem value="upload">Upload</SelectItem>
                     <SelectItem value="swap">Swap</SelectItem>
+                    <SelectItem value="share">Share</SelectItem>
                     <SelectItem value="not-found">Not Found</SelectItem>
                 </SelectContent>
             </Select>

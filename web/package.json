@@ -41,6 +41,7 @@
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.525.0",
     "monaco-editor": "^0.52.2",
+    "qr": "^0.5.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router": "^7.7.1",
