@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { parseShareUrl } from "@/lib/share/crypto";
-import { createViewerSession, type PeerSession } from "@/lib/share/rtc";
+import { createViewerSession, type DataChannelHandle, type PeerSession } from "@/lib/share/rtc";
 import { SignalingClient } from "@/lib/share/signaling";
 
+import { CHAT_CHANNEL_LABEL, ChatPanel } from "./chat-panel";
 import { BadLinkTitle, ShareEndedBody, ShareEndedTitle } from "./constants";
 import { SasConfirm } from "./sas-confirm";
 import { computeSAS } from "./sas";
@@ -34,6 +35,7 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
     const [sas, setSas] = useState<string | null>(null);
     const [localConfirmed, setLocalConfirmed] = useState(false);
     const [remoteConfirmed, setRemoteConfirmed] = useState(false);
+    const [chatChannel, setChatChannel] = useState<DataChannelHandle | null>(null);
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
@@ -151,6 +153,32 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
         }
     }, [phase]);
 
+    useEffect(() => {
+        if (phase !== "live") return;
+        const session = sessionRef.current;
+        if (!session) return;
+        let disposed = false;
+        let handle: DataChannelHandle | null = null;
+        void session
+            .openDataChannel(CHAT_CHANNEL_LABEL)
+            .then((h) => {
+                if (disposed) {
+                    h.close();
+                    return;
+                }
+                handle = h;
+                setChatChannel(h);
+            })
+            .catch(() => {
+                /* channel never opened */
+            });
+        return () => {
+            disposed = true;
+            handle?.close();
+            setChatChannel(null);
+        };
+    }, [phase]);
+
     const confirmSas = () => {
         setLocalConfirmed(true);
         void sendConfirmRef.current();
@@ -219,7 +247,8 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                 <CardDescription>
                     End-to-end encrypted. The server cannot see this stream.
                 </CardDescription>
-                <CardAction>
+                <CardAction className="flex items-center gap-2">
+                    {phase === "live" && <ChatPanel channel={chatChannel} />}
                     <StatusPill status={status} />
                 </CardAction>
             </CardHeader>

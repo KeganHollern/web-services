@@ -7,9 +7,10 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { encodeShareUrl, generateRoomKey } from "@/lib/share/crypto";
-import { createSharerSession, type PeerSession } from "@/lib/share/rtc";
+import { createSharerSession, type DataChannelHandle, type PeerSession } from "@/lib/share/rtc";
 import { SignalingClient, createRoom } from "@/lib/share/signaling";
 
+import { CHAT_CHANNEL_LABEL, ChatPanel } from "./chat-panel";
 import { ExplainerBody, ExplainerTitle } from "./constants";
 import { QRCode } from "./qr-code";
 import { SasConfirm } from "./sas-confirm";
@@ -33,6 +34,7 @@ export function SharerPanel() {
     const [sas, setSas] = useState<string | null>(null);
     const [localConfirmed, setLocalConfirmed] = useState(false);
     const [remoteConfirmed, setRemoteConfirmed] = useState(false);
+    const [chatChannel, setChatChannel] = useState<DataChannelHandle | null>(null);
 
     const active = useRef<ActiveRefs | null>(null);
     const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -45,6 +47,32 @@ export function SharerPanel() {
         if (phase === "live" && previewRef.current && active.current?.localStream) {
             previewRef.current.srcObject = active.current.localStream;
         }
+    }, [phase]);
+
+    useEffect(() => {
+        if (phase !== "live") return;
+        const session = active.current?.session;
+        if (!session) return;
+        let disposed = false;
+        let handle: DataChannelHandle | null = null;
+        void session
+            .openDataChannel(CHAT_CHANNEL_LABEL)
+            .then((h) => {
+                if (disposed) {
+                    h.close();
+                    return;
+                }
+                handle = h;
+                setChatChannel(h);
+            })
+            .catch(() => {
+                /* channel never opened */
+            });
+        return () => {
+            disposed = true;
+            handle?.close();
+            setChatChannel(null);
+        };
     }, [phase]);
 
     const teardown = () => {
@@ -205,7 +233,8 @@ export function SharerPanel() {
                 <CardDescription>
                     Share the link below. Keep this tab open for the duration of the session.
                 </CardDescription>
-                <CardAction>
+                <CardAction className="flex items-center gap-2">
+                    {phase === "live" && <ChatPanel channel={chatChannel} />}
                     <StatusPill status={status} />
                 </CardAction>
             </CardHeader>
