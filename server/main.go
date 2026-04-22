@@ -13,6 +13,7 @@ import (
 	"github.com/KeganHollern/web-services/server/api"
 	"github.com/KeganHollern/web-services/server/api/editor"
 	"github.com/KeganHollern/web-services/server/api/secret"
+	"github.com/KeganHollern/web-services/server/api/share"
 	"github.com/KeganHollern/web-services/server/db"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -83,8 +84,11 @@ func main() {
 	// Initialize editor WebSocket hub
 	editorHub := editor.NewHub(editorStore)
 
+	// Initialize share relay hub (in-memory only; see server/api/share/README.md)
+	shareHub := share.NewHub()
+
 	// Serve APIs
-	api.Register(e, secretStore, editorHub)
+	api.Register(e, secretStore, editorHub, shareHub)
 
 	// Graceful shutdown: persist all rooms on SIGINT/SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

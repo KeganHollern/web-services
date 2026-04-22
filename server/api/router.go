@@ -3,11 +3,12 @@ package api
 import (
 	"github.com/KeganHollern/web-services/server/api/editor"
 	"github.com/KeganHollern/web-services/server/api/secret"
+	"github.com/KeganHollern/web-services/server/api/share"
 	"github.com/KeganHollern/web-services/server/api/upload"
 	"github.com/labstack/echo/v4"
 )
 
-func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hub) {
+func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hub, shareHub *share.Hub) {
 	api := e.Group("/api", catch)
 	api.Any("*", func(c echo.Context) error { return echo.ErrNotImplemented }) // any unimplemented api request
 
@@ -19,6 +20,9 @@ func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hu
 
 	// register /api/editor/ws/:id (websocket)
 	editor.Register(api, editorHub)
+
+	// register /api/share/room and /api/share/room/:id (websocket)
+	share.Register(api, shareHub)
 }
 
 // Echo Middleware.
