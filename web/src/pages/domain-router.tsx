@@ -10,26 +10,21 @@ import { SwapRouter } from "@/pages/swap/router";
 import { UploadRouter } from "@/pages/upload/router";
 import { PageNotFound } from "@/pages/404/page";
 
-function GetPageRouter(subdomain: string): React.FC {
-    switch (subdomain) {
-        case "main":
-            return HomeRouter;
-        case "blog":
-            return BlogRouter;
-        case "secret":
-            return SecretRouter;
-        case "edit":
-            return EditRouter;
-        case "swap":
-            return SwapRouter;
-        case "upload":
-            return UploadRouter;
-        case "share":
-            return ShareRouter;
+// Single source of truth: subdomain/path-segment -> router. Consumed by
+// domain resolution (lib/domain.ts) and by the dev subdomain selector.
+// "main" is handled separately as the root/home router.
+export const SERVICE_ROUTERS: Record<string, React.FC> = {
+    blog: BlogRouter,
+    secret: SecretRouter,
+    edit: EditRouter,
+    swap: SwapRouter,
+    upload: UploadRouter,
+    share: ShareRouter,
+};
 
-        default:
-            return PageNotFound;
-    }
+function GetPageRouter(subdomain: string): React.FC {
+    if (subdomain === "main") return HomeRouter;
+    return SERVICE_ROUTERS[subdomain] ?? PageNotFound;
 }
 
 
@@ -46,5 +41,3 @@ export function DomainRouter() {
         </SubdomainProvider>
     )
 }
-
-

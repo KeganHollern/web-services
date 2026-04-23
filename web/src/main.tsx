@@ -8,12 +8,14 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from "@/components/ui/sonner";
 import { LinkShareProvider } from '@/context/linkshare-provider';
 import { ThemeProvider } from "@/context/theme-provider";
+import { resolveDomain } from '@/lib/domain';
 import { getItem } from '@/lib/state';
 import { DomainRouter } from "@/pages/domain-router";
 import { BrowserRouter } from "react-router";
 import ScrollToTop from './hooks/scroll';
 
 const open = (getItem('sidebar_state') ?? "true") === "true";
+const { basename } = resolveDomain();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -21,7 +23,7 @@ createRoot(document.getElementById('root')!).render(
       <LinkShareProvider>
         <SidebarProvider defaultOpen={open}>
           <Sidebar>
-            <BrowserRouter>
+            <BrowserRouter basename={basename}>
               <ScrollToTop />
               <DomainRouter />
             </BrowserRouter>

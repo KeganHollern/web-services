@@ -4,6 +4,7 @@ import { Header } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { useLinkShare } from "@/context/linkshare-provider";
 import { encryptSecret } from "@/lib/crypto";
+import { serviceUrl } from "@/lib/domain";
 import { Save } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
@@ -33,7 +34,7 @@ export function SecretEditorPage() {
 
         encryptSecret(value, key)
             .then(encrypted => pushSecret(encrypted))
-            .then(id => shareLink(constants.ShareDialogTitle, constants.ShareDialogDescription, `${window.location.origin}/s/${id}#${key}`))
+            .then(id => shareLink(constants.ShareDialogTitle, constants.ShareDialogDescription, `${serviceUrl(`/s/${id}`)}#${key}`))
             .catch((err: Error) => toast.error(err.message))
     }
 

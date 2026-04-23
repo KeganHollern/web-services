@@ -1,4 +1,5 @@
 import { useSubdomain } from "@/context/subdomain-provider"; // Adjust import path
+import { SERVICE_ROUTERS } from "@/pages/domain-router";
 
 import {
     Select,
@@ -9,6 +10,10 @@ import {
 } from "@/components/ui/select";
 
 import { Label } from "@/components/ui/label";
+
+function labelFor(name: string): string {
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
 
 export function SubdomainSelector() {
     const { subdomain, setSubdomain } = useSubdomain();
@@ -26,12 +31,9 @@ export function SubdomainSelector() {
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="main">Main</SelectItem>
-                    <SelectItem value="blog">Blog</SelectItem>
-                    <SelectItem value="secret">Secret</SelectItem>
-                    <SelectItem value="edit">Edit</SelectItem>
-                    <SelectItem value="upload">Upload</SelectItem>
-                    <SelectItem value="swap">Swap</SelectItem>
-                    <SelectItem value="share">Share</SelectItem>
+                    {Object.keys(SERVICE_ROUTERS).map((name) => (
+                        <SelectItem key={name} value={name}>{labelFor(name)}</SelectItem>
+                    ))}
                     <SelectItem value="not-found">Not Found</SelectItem>
                 </SelectContent>
             </Select>

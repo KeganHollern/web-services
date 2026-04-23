@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { serviceUrl } from "@/lib/domain";
 import { encodeShareUrl, generateRoomKey } from "@/lib/share/crypto";
 import { createSharerSession, type DataChannelHandle, type PeerSession } from "@/lib/share/rtc";
 import { SignalingClient, createRoom } from "@/lib/share/signaling";
@@ -111,7 +112,7 @@ export function SharerPanel() {
         try {
             const key = generateRoomKey();
             const roomId = await createRoom();
-            const url = `${window.location.origin}/${encodeShareUrl(roomId, key)}`;
+            const url = serviceUrl(`/${encodeShareUrl(roomId, key)}`);
             setShareUrl(url);
 
             const client = new SignalingClient(key);
