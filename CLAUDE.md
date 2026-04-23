@@ -64,7 +64,7 @@ Both are "block with feedback" — Claude will receive the errors and is expecte
 
 [.github/workflows/claude.yml](.github/workflows/claude.yml) runs `anthropics/claude-code-action@v1` in two agent-mode jobs:
 
-- `auto-resolve-issue` fires on `issues.opened`, attempts to open a PR closing the issue, and labels that PR `claude`.
-- `pr-follow-up` fires on comments/reviews against `claude`-labeled PRs (with a `github-actions[bot]` sender guard to prevent self-reply loops) and either pushes fixes or replies in-thread.
+- `auto-resolve-issue` fires when the repo owner opens an issue, OR when the repo owner comments `@claude` on an existing issue (re-trigger). It attempts to open a PR closing the issue, and labels that PR `claude`.
+- `pr-follow-up` fires on comments/reviews against `claude`-labeled PRs when the sender is the repo owner, and either pushes fixes or replies in-thread.
 
-No `@claude` mention is required. The `claude` label must exist in the repo — if missing, create it with `gh label create claude --color 5319E7`.
+All triggers are gated to the repo owner — non-owners cannot invoke Claude via this workflow. The `claude` label must exist in the repo — if missing, create it with `gh label create claude --color 5319E7`.
