@@ -1,7 +1,9 @@
 import { Fullscreen, Home, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
+import { toast } from "sonner";
 
+import { fetchTurnConfig } from "@/api/turn";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +14,11 @@ import { SignalingClient } from "@/lib/share/signaling";
 
 import { CHAT_CHANNEL_LABEL, ChatPanel } from "./chat-panel";
 import { BadLinkTitle, ShareEndedBody, ShareEndedTitle } from "./constants";
+import { RelayPrompt } from "./relay-prompt";
 import { SasConfirm } from "./sas-confirm";
 import { computeSAS } from "./sas";
-import { StatusPill, type ShareStatus } from "./status-pill";
-import { createWireBridge } from "./wire";
+import { StatusPill, type ShareStatus, type Transport } from "./status-pill";
+import { createWireBridge, type WireBridge } from "./wire";
 
 type Phase =
     | "connecting"
@@ -36,11 +39,17 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
     const [localConfirmed, setLocalConfirmed] = useState(false);
     const [remoteConfirmed, setRemoteConfirmed] = useState(false);
     const [chatChannel, setChatChannel] = useState<DataChannelHandle | null>(null);
+    const [relayPromptOpen, setRelayPromptOpen] = useState(false);
+    const [relayBusy, setRelayBusy] = useState(false);
+    const [peerRelayRequested, setPeerRelayRequested] = useState(false);
+    const [relayEnabled, setRelayEnabled] = useState(false);
+    const [transport, setTransport] = useState<Transport>("unknown");
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const clientRef = useRef<SignalingClient | null>(null);
     const sessionRef = useRef<PeerSession | null>(null);
+    const bridgeRef = useRef<WireBridge | null>(null);
     const sendConfirmRef = useRef<() => Promise<void>>(async () => { });
 
     useEffect(() => {
@@ -78,6 +87,7 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
             }
 
             const bridge = createWireBridge(client);
+            bridgeRef.current = bridge;
             sendConfirmRef.current = () => bridge.sendApp({ kind: "sas-confirmed" });
 
             client.on("error", (ev) => {
@@ -102,10 +112,18 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
 
             bridge.onAppMessage((msg) => {
                 if (msg.kind === "sas-confirmed") setRemoteConfirmed(true);
+                else if (msg.kind === "relay-enabled") {
+                    setPeerRelayRequested(true);
+                    setRelayPromptOpen(true);
+                }
             });
 
             const session = createViewerSession({
                 signaling: bridge.transport,
+                onIceFail: () => {
+                    if (cancelled) return;
+                    setRelayPromptOpen(true);
+                },
                 onStream: (stream) => {
                     streamRef.current = stream;
                 },
@@ -137,9 +155,58 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
             sessionRef.current = null;
             clientRef.current?.close();
             clientRef.current = null;
+            bridgeRef.current = null;
             streamRef.current = null;
         };
     }, [hash]);
+
+    // Poll the selected-candidate-pair type once negotiated or on relay toggles.
+    useEffect(() => {
+        if (phase !== "live" && phase !== "verifying") {
+            setTransport("unknown");
+            return;
+        }
+        let cancelled = false;
+        const poll = async () => {
+            const s = sessionRef.current;
+            if (!s) return;
+            const t = await s.getTransport();
+            if (!cancelled && t) {
+                setTransport(t);
+                // ICE recovered — the relay prompt is no longer relevant.
+                setRelayPromptOpen(false);
+            }
+        };
+        void poll();
+        const id = window.setInterval(poll, 3000);
+        return () => {
+            cancelled = true;
+            clearInterval(id);
+        };
+    }, [phase, relayEnabled]);
+
+    const confirmRelay = async () => {
+        const s = sessionRef.current;
+        const b = bridgeRef.current;
+        if (!s || relayBusy) return;
+        setRelayBusy(true);
+        try {
+            const cfg = await fetchTurnConfig();
+            await s.enableRelay(cfg.iceServers);
+            setRelayEnabled(true);
+            if (b) void b.sendApp({ kind: "relay-enabled" });
+            setRelayPromptOpen(false);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "failed to enable relay");
+        } finally {
+            setRelayBusy(false);
+        }
+    };
+
+    const cancelRelay = () => {
+        setRelayPromptOpen(false);
+        setPeerRelayRequested(false);
+    };
 
     useEffect(() => {
         if (phase === "verifying" && localConfirmed && remoteConfirmed) {
@@ -249,7 +316,7 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                 </CardDescription>
                 <CardAction className="flex items-center gap-2">
                     {phase === "live" && <ChatPanel channel={chatChannel} />}
-                    <StatusPill status={status} />
+                    <StatusPill status={status} transport={transport} />
                 </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -305,6 +372,13 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                     </>
                 )}
             </CardContent>
+            <RelayPrompt
+                open={relayPromptOpen}
+                busy={relayBusy}
+                peerRequested={peerRelayRequested}
+                onConfirm={() => void confirmRelay()}
+                onCancel={cancelRelay}
+            />
         </Card>
     );
 }

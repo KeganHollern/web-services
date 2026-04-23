@@ -14,16 +14,29 @@ export interface DataChannelHandle {
     close(): void;
 }
 
+export type TransportKind = "direct" | "relay";
+
 export interface PeerSession {
     getLocalFingerprint(): string | null;
     getRemoteFingerprint(): string | null;
     openDataChannel(label: string): Promise<DataChannelHandle>;
+    // Returns the kind of path the selected ICE candidate pair is on, or null
+    // if negotiation has not completed yet.
+    getTransport(): Promise<TransportKind | null>;
+    // Swap ICE servers (e.g. add a TURN entry after an opt-in) and, on the
+    // offerer, kick off an ICE restart so the new candidates are tried.
+    enableRelay(iceServers: RTCIceServer[]): Promise<void>;
     dispose(): void;
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
     { urls: "stun:stun.l.google.com:19302" },
 ];
+
+// If ICE has not reached connected/completed within this window we treat the
+// attempt as failed — some networks never emit iceconnectionstate "failed"
+// and just stall in "checking".
+const ICE_FAIL_TIMEOUT_MS = 15_000;
 
 // A placeholder channel created up-front on the sharer so that the initial
 // offer always includes an m=application section and SCTP is negotiated
@@ -90,11 +103,18 @@ interface SessionCtx {
     tracks: MediaStreamTrack[];
     channels: RTCDataChannel[];
     disposed: boolean;
+    iceFailTimer: ReturnType<typeof setTimeout> | null;
+    iceFailFired: boolean;
+    onIceFail: (() => void) | null;
 }
 
 function disposeCtx(ctx: SessionCtx): void {
     if (ctx.disposed) return;
     ctx.disposed = true;
+    if (ctx.iceFailTimer != null) {
+        clearTimeout(ctx.iceFailTimer);
+        ctx.iceFailTimer = null;
+    }
     for (const c of ctx.channels) {
         try {
             c.close();
@@ -116,9 +136,75 @@ function disposeCtx(ctx: SessionCtx): void {
     }
 }
 
+function fireIceFail(ctx: SessionCtx): void {
+    if (ctx.iceFailFired || ctx.disposed) return;
+    ctx.iceFailFired = true;
+    if (ctx.iceFailTimer != null) {
+        clearTimeout(ctx.iceFailTimer);
+        ctx.iceFailTimer = null;
+    }
+    const cb = ctx.onIceFail;
+    if (cb) {
+        try { cb(); } catch { /* callback errors must not break dispose */ }
+    }
+}
+
+function armIceFailWatchdog(ctx: SessionCtx): void {
+    if (ctx.iceFailTimer != null || ctx.iceFailFired || ctx.disposed) return;
+    ctx.iceFailTimer = setTimeout(() => {
+        ctx.iceFailTimer = null;
+        const state = ctx.pc.iceConnectionState;
+        if (state !== "connected" && state !== "completed") {
+            fireIceFail(ctx);
+        }
+    }, ICE_FAIL_TIMEOUT_MS);
+}
+
+function wireIceFailDetect(ctx: SessionCtx): void {
+    ctx.pc.addEventListener("iceconnectionstatechange", () => {
+        const s = ctx.pc.iceConnectionState;
+        if (s === "connected" || s === "completed") {
+            if (ctx.iceFailTimer != null) {
+                clearTimeout(ctx.iceFailTimer);
+                ctx.iceFailTimer = null;
+            }
+            // Allow a subsequent restart (e.g. after enableRelay) to detect
+            // failure again.
+            ctx.iceFailFired = false;
+        } else if (s === "failed") {
+            fireIceFail(ctx);
+        }
+    });
+}
+
+async function resolveTransport(pc: RTCPeerConnection): Promise<TransportKind | null> {
+    // RTCStatsReport is a Map-like; iterate to find the nominated succeeded
+    // candidate pair, then look up its two candidates by id.
+    type Stat = { type: string; state?: string; nominated?: boolean; selected?: boolean; localCandidateId?: string; remoteCandidateId?: string; candidateType?: string };
+    let report: RTCStatsReport;
+    try {
+        report = await pc.getStats();
+    } catch {
+        return null;
+    }
+    let pair: Stat | null = null;
+    report.forEach((v: unknown) => {
+        const s = v as Stat;
+        if (s.type !== "candidate-pair") return;
+        if (s.state !== "succeeded") return;
+        if (s.nominated === true || s.selected === true) pair = s;
+    });
+    if (!pair) return null;
+    const local = report.get((pair as Stat).localCandidateId ?? "") as Stat | undefined;
+    const remote = report.get((pair as Stat).remoteCandidateId ?? "") as Stat | undefined;
+    if (local?.candidateType === "relay" || remote?.candidateType === "relay") return "relay";
+    return "direct";
+}
+
 function makeHandle(
     ctx: SessionCtx,
     openDataChannel: (label: string) => Promise<DataChannelHandle>,
+    enableRelay: (iceServers: RTCIceServer[]) => Promise<void>,
 ): PeerSession {
     return {
         getLocalFingerprint() {
@@ -128,6 +214,10 @@ function makeHandle(
             return extractFingerprint(ctx.pc.remoteDescription?.sdp);
         },
         openDataChannel,
+        getTransport() {
+            return resolveTransport(ctx.pc);
+        },
+        enableRelay,
         dispose() {
             disposeCtx(ctx);
         },
@@ -150,6 +240,10 @@ function wireIce(
 export interface SharerOptions {
     signaling: SignalingTransport;
     iceServers?: RTCIceServer[];
+    // Fired when ICE reaches the "failed" state, or when it has not reached
+    // connected/completed within ICE_FAIL_TIMEOUT_MS. Signals to the UI that a
+    // relay fallback should be offered.
+    onIceFail?: () => void;
     // DI hook for capture source; defaults to navigator.mediaDevices.getDisplayMedia.
     // Returning null skips media attachment (used in tests without a capture source).
     getMedia?: () => Promise<MediaStream | null>;
@@ -158,9 +252,18 @@ export interface SharerOptions {
 export function createSharerSession(opts: SharerOptions): PeerSession {
     const iceServers = opts.iceServers ?? DEFAULT_ICE_SERVERS;
     const pc = new RTCPeerConnection({ iceServers });
-    const ctx: SessionCtx = { pc, tracks: [], channels: [], disposed: false };
+    const ctx: SessionCtx = {
+        pc,
+        tracks: [],
+        channels: [],
+        disposed: false,
+        iceFailTimer: null,
+        iceFailFired: false,
+        onIceFail: opts.onIceFail ?? null,
+    };
 
     wireIce(pc, opts.signaling, () => ctx.disposed);
+    wireIceFailDetect(ctx);
 
     const initDc = pc.createDataChannel(INIT_CHANNEL_LABEL);
     ctx.channels.push(initDc);
@@ -194,6 +297,7 @@ export function createSharerSession(opts: SharerOptions): PeerSession {
             await pc.setLocalDescription(offer);
             if (ctx.disposed || !offer.sdp) return;
             opts.signaling.send({ kind: "offer", sdp: offer.sdp });
+            armIceFailWatchdog(ctx);
         } catch (e) {
             console.error("sharer setup failed", e);
         }
@@ -207,7 +311,20 @@ export function createSharerSession(opts: SharerOptions): PeerSession {
         return wrapChannel(dc);
     };
 
-    return makeHandle(ctx, openDataChannel);
+    const enableRelay = async (iceServers: RTCIceServer[]): Promise<void> => {
+        if (ctx.disposed) return;
+        pc.setConfiguration({ iceServers });
+        // Allow a second-attempt failure to refire onIceFail (e.g. if TURN
+        // itself can't reach the peer).
+        ctx.iceFailFired = false;
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+        if (ctx.disposed || !offer.sdp) return;
+        opts.signaling.send({ kind: "offer", sdp: offer.sdp });
+        armIceFailWatchdog(ctx);
+    };
+
+    return makeHandle(ctx, openDataChannel, enableRelay);
 }
 
 function defaultGetDisplayMedia(): Promise<MediaStream> {
@@ -221,14 +338,24 @@ export interface ViewerOptions {
     signaling: SignalingTransport;
     iceServers?: RTCIceServer[];
     onStream: (stream: MediaStream) => void;
+    onIceFail?: () => void;
 }
 
 export function createViewerSession(opts: ViewerOptions): PeerSession {
     const iceServers = opts.iceServers ?? DEFAULT_ICE_SERVERS;
     const pc = new RTCPeerConnection({ iceServers });
-    const ctx: SessionCtx = { pc, tracks: [], channels: [], disposed: false };
+    const ctx: SessionCtx = {
+        pc,
+        tracks: [],
+        channels: [],
+        disposed: false,
+        iceFailTimer: null,
+        iceFailFired: false,
+        onIceFail: opts.onIceFail ?? null,
+    };
 
     wireIce(pc, opts.signaling, () => ctx.disposed);
+    wireIceFailDetect(ctx);
 
     pc.addEventListener("track", (ev) => {
         if (ctx.disposed) return;
@@ -271,6 +398,10 @@ export function createViewerSession(opts: ViewerOptions): PeerSession {
                     await pc.setLocalDescription(answer);
                     if (ctx.disposed || !answer.sdp) return;
                     opts.signaling.send({ kind: "answer", sdp: answer.sdp });
+                    // Permit fresh ICE-fail detection after a renegotiation
+                    // (e.g. the sharer's iceRestart offer).
+                    ctx.iceFailFired = false;
+                    armIceFailWatchdog(ctx);
                 } else if (msg.kind === "ice") {
                     await pc.addIceCandidate(msg.candidate);
                 }
@@ -298,5 +429,14 @@ export function createViewerSession(opts: ViewerOptions): PeerSession {
         return wrapChannel(dc);
     };
 
-    return makeHandle(ctx, openDataChannel);
+    // The viewer is the answerer; it does not trigger ICE restart on its own
+    // — the sharer's restartIce offer drives renegotiation. Updating the
+    // configuration here just ensures new candidates can use the TURN server
+    // if the viewer also holds credentials.
+    const enableRelay = async (iceServers: RTCIceServer[]): Promise<void> => {
+        if (ctx.disposed) return;
+        pc.setConfiguration({ iceServers });
+    };
+
+    return makeHandle(ctx, openDataChannel, enableRelay);
 }

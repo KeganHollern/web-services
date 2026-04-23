@@ -6,7 +6,9 @@
 import type { SignalingClient } from "@/lib/share/signaling";
 import type { SignalingMessage, SignalingTransport } from "@/lib/share/rtc";
 
-export type AppMessage = { kind: "sas-confirmed" };
+export type AppMessage =
+    | { kind: "sas-confirmed" }
+    | { kind: "relay-enabled" };
 
 type WireMessage = SignalingMessage | AppMessage;
 
@@ -29,7 +31,7 @@ export function createWireBridge(client: SignalingClient): WireBridge {
         }
         if (msg.kind === "offer" || msg.kind === "answer" || msg.kind === "ice") {
             for (const h of rtcHandlers) h(msg);
-        } else if (msg.kind === "sas-confirmed") {
+        } else if (msg.kind === "sas-confirmed" || msg.kind === "relay-enabled") {
             for (const h of appHandlers) h(msg);
         }
     });

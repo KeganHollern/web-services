@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Copy, Loader2, MonitorUp, Square } from "lucide-react";
 import { toast } from "sonner";
 
+import { fetchTurnConfig } from "@/api/turn";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,9 +14,10 @@ import { SignalingClient, createRoom } from "@/lib/share/signaling";
 import { CHAT_CHANNEL_LABEL, ChatPanel } from "./chat-panel";
 import { ExplainerBody, ExplainerTitle } from "./constants";
 import { QRCode } from "./qr-code";
+import { RelayPrompt } from "./relay-prompt";
 import { SasConfirm } from "./sas-confirm";
 import { computeSAS } from "./sas";
-import { StatusPill, type ShareStatus } from "./status-pill";
+import { StatusPill, type ShareStatus, type Transport } from "./status-pill";
 import { createWireBridge, type WireBridge } from "./wire";
 
 type Phase = "idle" | "creating" | "created" | "verifying" | "live" | "disconnected";
@@ -35,6 +37,11 @@ export function SharerPanel() {
     const [localConfirmed, setLocalConfirmed] = useState(false);
     const [remoteConfirmed, setRemoteConfirmed] = useState(false);
     const [chatChannel, setChatChannel] = useState<DataChannelHandle | null>(null);
+    const [relayPromptOpen, setRelayPromptOpen] = useState(false);
+    const [relayBusy, setRelayBusy] = useState(false);
+    const [peerRelayRequested, setPeerRelayRequested] = useState(false);
+    const [relayEnabled, setRelayEnabled] = useState(false);
+    const [transport, setTransport] = useState<Transport>("unknown");
 
     const active = useRef<ActiveRefs | null>(null);
     const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -92,6 +99,11 @@ export function SharerPanel() {
         setSas(null);
         setLocalConfirmed(false);
         setRemoteConfirmed(false);
+        setRelayPromptOpen(false);
+        setRelayBusy(false);
+        setPeerRelayRequested(false);
+        setRelayEnabled(false);
+        setTransport("unknown");
     };
 
     const startShare = async () => {
@@ -129,6 +141,10 @@ export function SharerPanel() {
 
             bridge.onAppMessage((msg) => {
                 if (msg.kind === "sas-confirmed") setRemoteConfirmed(true);
+                else if (msg.kind === "relay-enabled") {
+                    setPeerRelayRequested(true);
+                    setRelayPromptOpen(true);
+                }
             });
 
             setPhase("created");
@@ -146,6 +162,10 @@ export function SharerPanel() {
         try {
             const session = createSharerSession({
                 signaling: a.bridge.transport,
+                onIceFail: () => {
+                    if (!active.current) return;
+                    setRelayPromptOpen(true);
+                },
                 getMedia: async () => {
                     const stream = await navigator.mediaDevices.getDisplayMedia({
                         video: true,
@@ -185,6 +205,53 @@ export function SharerPanel() {
         setLocalConfirmed(true);
         void a.bridge.sendApp({ kind: "sas-confirmed" });
     };
+
+    const confirmRelay = async () => {
+        const a = active.current;
+        if (!a?.session || relayBusy) return;
+        setRelayBusy(true);
+        try {
+            const cfg = await fetchTurnConfig();
+            await a.session.enableRelay(cfg.iceServers);
+            setRelayEnabled(true);
+            void a.bridge.sendApp({ kind: "relay-enabled" });
+            setRelayPromptOpen(false);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "failed to enable relay");
+        } finally {
+            setRelayBusy(false);
+        }
+    };
+
+    const cancelRelay = () => {
+        setRelayPromptOpen(false);
+        setPeerRelayRequested(false);
+    };
+
+    // Poll the selected-candidate-pair type once we're live or on relay changes.
+    useEffect(() => {
+        if (phase !== "live" && phase !== "verifying") {
+            setTransport("unknown");
+            return;
+        }
+        let cancelled = false;
+        const poll = async () => {
+            const a = active.current;
+            if (!a?.session) return;
+            const t = await a.session.getTransport();
+            if (!cancelled && t) {
+                setTransport(t);
+                // ICE recovered — the relay prompt is now stale.
+                setRelayPromptOpen(false);
+            }
+        };
+        void poll();
+        const id = window.setInterval(poll, 3000);
+        return () => {
+            cancelled = true;
+            clearInterval(id);
+        };
+    }, [phase, relayEnabled]);
 
     useEffect(() => {
         if (phase === "verifying" && localConfirmed && remoteConfirmed) {
@@ -235,7 +302,7 @@ export function SharerPanel() {
                 </CardDescription>
                 <CardAction className="flex items-center gap-2">
                     {phase === "live" && <ChatPanel channel={chatChannel} />}
-                    <StatusPill status={status} />
+                    <StatusPill status={status} transport={transport} />
                 </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -303,6 +370,13 @@ export function SharerPanel() {
                     <Square /> Stop share
                 </Button>
             </CardContent>
+            <RelayPrompt
+                open={relayPromptOpen}
+                busy={relayBusy}
+                peerRequested={peerRelayRequested}
+                onConfirm={() => void confirmRelay()}
+                onCancel={cancelRelay}
+            />
         </Card>
     );
 }

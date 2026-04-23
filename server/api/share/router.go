@@ -19,6 +19,8 @@ var upgrader = websocket.Upgrader{
 func Register(api *echo.Group, hub *Hub) {
 	group := api.Group("/share")
 
+	registerTurn(group)
+
 	group.POST("/room", func(c echo.Context) error {
 		room, err := hub.CreateRoom()
 		if err != nil {
