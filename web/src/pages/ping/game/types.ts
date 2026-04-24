@@ -34,5 +34,5 @@ export interface GameState {
     rightPaddle: Paddle;
     score: number;
     highscore: number;
-    gameOver: boolean;
+    isPlaying: boolean;
 }

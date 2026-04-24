@@ -35,7 +35,7 @@ export function createInitialState(highscore: number): GameState {
         rightPaddle: makePaddle(RIGHT_PADDLE_X),
         score: 0,
         highscore,
-        gameOver: false,
+        isPlaying: false,
     };
     resetState(state, highscore);
     return state;
@@ -61,5 +61,5 @@ export function resetState(state: GameState, highscore: number): void {
 
     state.score = 0;
     state.highscore = highscore;
-    state.gameOver = false;
+    state.isPlaying = false;
 }
