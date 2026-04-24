@@ -38,6 +38,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --permission-mode bypassPermissions
           prompt: |
             Issue #${{ github.event.issue.number }} needs attention: "${{ github.event.issue.title }}".
 
@@ -81,6 +83,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --permission-mode bypassPermissions
           prompt: |
             You authored this PR. A new comment or review was just posted. Read the full PR
             conversation, then either:
