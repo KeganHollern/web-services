@@ -22,6 +22,8 @@ Feel free to open a PR and make changes, but if you do anything complex I won't 
 | edit | Done | Collaborative markdown editor |
 | swap | Done | Fee-less Uniswap frontend alternative + Aave lending |
 | upload | WIP | Password-protected file uploader |
+| share | Done | Zero-trust P2P screen sharing via WebRTC (server relays opaque ciphertext only) |
+| ping | WIP | Ping game |
 
 ## Dependencies
 
@@ -34,13 +36,12 @@ See [web/README.md](web/README.md) for frontend configuration.
 
 ## TODO
 
-- p2p screen sharing (using Chrome API & WebRTC to avoid sending data to the server)
 - file converter (ideally in-browser using WebAssembly)
 - enable mongodb secret sharing and horizontal scaling
 - enable mongodb for editor
 - support horizontal scaling for pods w/ collaborative editor
 - reimagine the "upload" functionality
-- put PING game on the website & add a leaderboard
+- finish the Ping game and add a leaderboard
 
 Feel free to add a PR suggesting new services!
 
