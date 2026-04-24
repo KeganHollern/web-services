@@ -6,6 +6,7 @@ import { applyPhysics, checkCollision, checkGameOver } from "./game/physics";
 import { createInitialState, resetState } from "./game/state";
 import { createLoop } from "./game/loop";
 import { attachInput } from "./game/input";
+import { loadHighscore, updateHighscore } from "./game/highscore";
 
 export function PingPage() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -17,7 +18,7 @@ export function PingPage() {
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
-        const state = createInitialState(0);
+        const state = createInitialState(loadHighscore());
 
         const applyLetterboxTransform = () => {
             const dpr = window.devicePixelRatio || 1;
@@ -69,7 +70,8 @@ export function PingPage() {
             }
 
             if (checkGameOver(state)) {
-                resetState(state, state.highscore);
+                const best = updateHighscore(state.score);
+                resetState(state, best);
             }
         };
 
