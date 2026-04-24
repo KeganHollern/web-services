@@ -7,6 +7,7 @@ import { createInitialState, resetState } from "./game/state";
 import { createLoop } from "./game/loop";
 import { attachInput } from "./game/input";
 import { loadHighscore, updateHighscore } from "./game/highscore";
+import { play, preload, resume } from "./game/audio";
 
 export function PingPage() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -19,6 +20,8 @@ export function PingPage() {
         if (!ctx) return;
 
         const state = createInitialState(loadHighscore());
+
+        void preload();
 
         const applyLetterboxTransform = () => {
             const dpr = window.devicePixelRatio || 1;
@@ -67,9 +70,11 @@ export function PingPage() {
                 state.ball.vel.x = -state.ball.vel.x;
                 state.score += 1;
                 setPaddleAnimation(hitPaddle, now);
+                play("wallhit");
             }
 
             if (checkGameOver(state)) {
+                play("explosion");
                 const best = updateHighscore(state.score);
                 resetState(state, best);
             }
@@ -81,8 +86,10 @@ export function PingPage() {
         const detachInput = attachInput(
             canvas,
             () => {
+                resume();
                 if (!state.isPlaying) state.isPlaying = true;
                 state.ball.vel.y = JUMP_VELOCITY;
+                play("jump");
             },
             () => navigate("/"),
         );
