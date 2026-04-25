@@ -53,7 +53,6 @@ Posts that need updating from legacy format to modern MDX style.
 - [ ] 2016/ArmA 3 UI Execution Exploit - In Detail — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
 - [ ] 2016/Blocking Scripted Remote Execution — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
 - [ ] 2016/CSharp Arma Extension command parsing — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/Draw3D Interactive Menu — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup ([embed]), code screenshots→code blocks
 - [ ] 2016/Having AI run after and kill you — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
 - [ ] 2016/How do Anticheats work — needs: frontmatter, HTML→markdown (ol/li/strong/em/hr), Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
 - [ ] 2016/How to detect hint menus — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
