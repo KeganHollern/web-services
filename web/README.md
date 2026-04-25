@@ -26,6 +26,5 @@ Output is written to `dist/`, which the Go server serves as a static SPA.
 | secret | `/secret` | Zero-trust secret sharing with client-side encryption |
 | edit | `/edit` | Collaborative markdown editor |
 | swap | `/swap` | Fee-less Uniswap frontend + Aave lending |
-| upload | `/upload` | Password-protected file uploader |
 | share | `/share` | Zero-trust P2P screen sharing via WebRTC |
 | ping | `/ping` | Ping game (WIP) |

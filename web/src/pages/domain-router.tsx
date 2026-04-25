@@ -8,7 +8,6 @@ import { PingRouter } from "@/pages/ping";
 import { SecretRouter } from "@/pages/secret/router";
 import { ShareRouter } from "@/pages/share/router";
 import { SwapRouter } from "@/pages/swap/router";
-import { UploadRouter } from "@/pages/upload/router";
 import { PageNotFound } from "@/pages/404/page";
 
 // Single source of truth: subdomain/path-segment -> router. Consumed by
@@ -19,7 +18,6 @@ export const SERVICE_ROUTERS: Record<string, React.FC> = {
     secret: SecretRouter,
     edit: EditRouter,
     swap: SwapRouter,
-    upload: UploadRouter,
     share: ShareRouter,
     ping: PingRouter,
 };

@@ -4,7 +4,6 @@ import (
 	"github.com/KeganHollern/web-services/server/api/editor"
 	"github.com/KeganHollern/web-services/server/api/secret"
 	"github.com/KeganHollern/web-services/server/api/share"
-	"github.com/KeganHollern/web-services/server/api/upload"
 	"github.com/labstack/echo/v4"
 )
 
@@ -16,7 +15,6 @@ func Register(e *echo.Echo, secretStore secret.SecretStore, editorHub *editor.Hu
 
 	// register /api/secret
 	secret.Register(api, secretStore)
-	upload.Register(api)
 
 	// register /api/editor/ws/:id (websocket)
 	editor.Register(api, editorHub)

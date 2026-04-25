@@ -5,7 +5,6 @@ Go backend using the [Echo](https://echo.labstack.com/) framework. Serves the fr
 ## API Routes
 
 - `/api/secret` — create and retrieve one-time secrets
-- `/api/upload` — password-protected file uploads
 - `/api/editor/ws/:id` — collaborative Yjs/Monaco editor over WebSocket
 - `/api/share/room` — create a P2P relay room
 - `/api/share/room/:id` (WebSocket) — peer relay for screen sharing (opaque ciphertext only)
@@ -17,7 +16,6 @@ Server is configured via environment variables:
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `upload_password` | Yes | Password for the upload service |
 | `MONGO_URI` | No | MongoDB connection string (e.g. `mongodb://localhost:27017`) |
 | `MONGO_DB` | No | MongoDB database name |
 | `TURN_URLS` | No | Comma-separated TURN URLs for WebRTC relay fallback |

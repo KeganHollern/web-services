@@ -21,7 +21,7 @@ There is no root-level package manager — all commands run inside `server/` or 
 - `npm test` — Vitest (runs once, non-watch). Single file: `npx vitest run path/to/file.test.ts`. Single test: add `-t "test name"`.
 
 **Backend (`cd server`):**
-- `go run main.go` — starts Echo on `:80`. Requires env `upload_password` (see [.vscode/launch.json](.vscode/launch.json) — uses `"localhost"` for local dev).
+- `go run main.go` — starts Echo on `:80`.
 - `go test ./...` — all tests. Single package: `go test ./api/editor`. Single test: `go test ./api/editor -run TestName`.
 - No lint command is wired up; the `.claude/hooks/golangci-lint.sh` hook runs `golangci-lint` automatically on edited `.go` files (see Automation below).
 
@@ -30,7 +30,7 @@ There is no root-level package manager — all commands run inside `server/` or 
 ## Architecture essentials
 
 ### Subdomain-based SPA routing
-One SPA, many services. [main.tsx](web/src/main.tsx) mounts a single `<DomainRouter />` ([web/src/pages/domain-router.tsx](web/src/pages/domain-router.tsx)) which reads a subdomain from `SubdomainProvider` and dispatches to a per-service router: `HomeRouter`, `BlogRouter`, `SecretRouter`, `EditRouter`, `SwapRouter`, `UploadRouter`, `ShareRouter`. Adding a new service = adding a folder under `web/src/pages/<name>/`, exporting a `<NameRouter>`, and wiring it into the `switch` in `GetPageRouter`.
+One SPA, many services. [main.tsx](web/src/main.tsx) mounts a single `<DomainRouter />` ([web/src/pages/domain-router.tsx](web/src/pages/domain-router.tsx)) which reads a subdomain from `SubdomainProvider` and dispatches to a per-service router: `HomeRouter`, `BlogRouter`, `SecretRouter`, `EditRouter`, `SwapRouter`, `ShareRouter`. Adding a new service = adding a folder under `web/src/pages/<name>/`, exporting a `<NameRouter>`, and wiring it into the `switch` in `GetPageRouter`.
 
 ### Zero-trust server
 This is a core design invariant, not a nice-to-have. The server stores/relays ciphertext only and never holds key material:
@@ -38,7 +38,6 @@ This is a core design invariant, not a nice-to-have. The server stores/relays ci
 - **`/api/secret`** — one-time secrets. Payload is already encrypted client-side; server just stores the blob until retrieval. Key lives in the URL fragment.
 - **`/api/share`** — two-peer WebSocket relay for screen-share / P2P signaling. See [server/api/share/README.md](server/api/share/README.md). Server forwards opaque frames verbatim, never parses, never logs payloads.
 - **`/api/editor/ws/:id`** — collaborative Yjs/Monaco editor over WebSocket. Uses CRDT updates.
-- **`/api/upload`** — password-gated file upload (the one non-zero-trust service; gated by `upload_password` env).
 
 When touching any of these, keep payloads opaque on the server side. If you find yourself adding JSON parsing or logging of bytes the client sent, stop and reconsider.
 
