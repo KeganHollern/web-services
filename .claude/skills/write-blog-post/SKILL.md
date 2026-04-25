@@ -22,6 +22,7 @@ description: |
     Copy of the opening 1-2 sentences of the post verbatim.
     This displays as a preview on the main blog listing page.
 slug: kebab-case-slug
+image: /blog/kebab-case-slug/cover.png
 visible: true
 ---
 ```
@@ -29,6 +30,7 @@ visible: true
 - `title`: Full title, title case
 - `description`: Multi-line using `|` pipe syntax. This is an **exact copy** of the first 1-2 sentences of the post body. It displays on the main page as a preview snippet. Keep to 1-2 sentences max.
 - `slug`: kebab-case, used as the URL path
+- `image`: Path (under `web/public/`) to the cover image. Wired to `og:image` / `twitter:image` via `<PageMeta>` automatically. See **Cover image** below. Omit if no cover exists yet.
 - `visible`: Set to `false` for drafts; omit or set `true` for published posts
 
 ## Post Structure
@@ -97,6 +99,52 @@ visible: true
 - Host on `ss.lystic.zip` if available, or use placeholder URLs for drafts
 - Use sparingly (1-3 per post) for screenshots, diagrams, or UI references
 - Alt text should be short and descriptive
+
+## Cover image
+
+Every new post (and any substantial rewrite) gets a cover image. The cover is what shows on the blog index card and in OG/Twitter share previews — visual consistency across posts matters.
+
+### When to generate
+
+- **Generate** when creating a new post, or when substantially rewriting an existing post such that its topic / framing has shifted.
+- **Skip** for typo fixes, frontmatter-only edits, link tweaks, or small content edits. The existing cover stays.
+- **Keep** the existing cover by default when updating a post that already has one. Only regenerate if the user asks, or the post's subject has meaningfully changed.
+
+### Visual style — single source of truth
+
+The canonical style spec lives at [.claude/blog-cover-style.md](../../blog-cover-style.md). **Read it at runtime** and use the style anchor verbatim — do not paraphrase it here. Paraphrasing causes the index to drift visually, which is the whole reason the spec is centralized.
+
+In short, the aesthetic is high-contrast stenciled propaganda-poster illustration in a two-tone off-white + red-orange-on-charcoal palette, halftone/paper texture, bold silhouette focal motif, and **no text/letters/logos/symbols** in the image. The full anchor string and per-post prompt structure are in that file.
+
+### Generation workflow
+
+1. **Draft the post first.** Title, description, and body must be settled before deriving a visual.
+2. **Derive a `Subject:` clause** from the post's title, frontmatter description, and a skim of the body. Concrete and visual: name the silhouette(s), the action, where the red-orange accent lands. No brand names. No text-the-model-might-letter.
+3. **Build the full prompt** by prepending the style anchor from `.claude/blog-cover-style.md` to your `Subject:` clause, exactly per that file's "Per-post prompt structure" section.
+4. **Show the proposed prompt to the user and wait for approval before invoking the API.** Image generation costs real money per call — never skip this step, even on rewrites. If the user wants edits, iterate on the prompt text only.
+5. **Invoke `generate-image`** once approved:
+
+   ```sh
+   .claude/skills/generate-image/generate.sh \
+       --prompt "<approved prompt>" \
+       --aspect-ratio 16:9 \
+       --resolution 2k \
+       --name <slug>-cover
+   ```
+
+   (Default model — do not override.) Capture the printed `/tmp/...` path.
+6. **Move the file to the canonical location:** `web/public/blog/<slug>/cover.png`. Create the per-slug directory if needed. Rename to `cover.png` regardless of the source extension — the file is served as-is and the `.png` name is the convention even when the bytes are JPEG.
+7. **Set the frontmatter `image` field** to `/blog/<slug>/cover.png` (note: leading `/`, no `web/public` prefix — that's the public-served path).
+
+### Missing `XAI_API_KEY`
+
+If the env var is unset, `generate-image` will fail fast. **Do not block post creation on this.** Instead:
+
+- Write the post without a cover.
+- Omit the `image` frontmatter field (or leave it unset).
+- Tell the user the cover was skipped because `XAI_API_KEY` is not exported, and that they can re-run the cover step manually later (steps 2–7 above) once the key is set.
+
+Do not write the key into `.claude/settings.json`, `.env`, the user's shell profile, or anywhere else — that's the user's responsibility.
 
 ## Closing Style
 
