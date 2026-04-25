@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { nonstandard } from "@roamhq/wrtc";
 import {
     createSharerSession,
     createViewerSession,
@@ -6,14 +7,24 @@ import {
 } from "./rtc";
 import type { SignalingMessage, SignalingTransport } from "./rtc";
 
-function loopback(): { sharer: SignalingTransport; viewer: SignalingTransport } {
+interface Loopback {
+    sharer: SignalingTransport;
+    viewer: SignalingTransport;
+    sentBySharer: SignalingMessage[];
+    sentByViewer: SignalingMessage[];
+}
+
+function loopback(): Loopback {
     let sharerInbound: ((m: SignalingMessage) => void) | null = null;
     let viewerInbound: ((m: SignalingMessage) => void) | null = null;
     const pendingForSharer: SignalingMessage[] = [];
     const pendingForViewer: SignalingMessage[] = [];
+    const sentBySharer: SignalingMessage[] = [];
+    const sentByViewer: SignalingMessage[] = [];
 
     const sharer: SignalingTransport = {
         send: (m) => {
+            sentBySharer.push(m);
             if (viewerInbound) viewerInbound(m);
             else pendingForViewer.push(m);
         },
@@ -25,6 +36,7 @@ function loopback(): { sharer: SignalingTransport; viewer: SignalingTransport } 
 
     const viewer: SignalingTransport = {
         send: (m) => {
+            sentByViewer.push(m);
             if (sharerInbound) sharerInbound(m);
             else pendingForSharer.push(m);
         },
@@ -34,7 +46,17 @@ function loopback(): { sharer: SignalingTransport; viewer: SignalingTransport } 
         },
     };
 
-    return { sharer, viewer };
+    return { sharer, viewer, sentBySharer, sentByViewer };
+}
+
+// Settle both sides until either no offer/answer is in flight or `predicate`
+// returns true. Used to wait out async negotiation in tests without sleeping.
+async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+        if (Date.now() - start > timeoutMs) throw new Error("waitFor: timeout");
+        await new Promise((r) => setTimeout(r, 10));
+    }
 }
 
 describe("extractFingerprint", () => {
@@ -57,7 +79,6 @@ describe("rtc sessions over loopback", () => {
 
         const sharer = createSharerSession({
             signaling: sharerTransport,
-            getMedia: async () => null,
         });
 
         const viewer = createViewerSession({
@@ -97,5 +118,88 @@ describe("rtc sessions over loopback", () => {
         // Second dispose should be a no-op.
         sharer.dispose();
         viewer.dispose();
+    });
+
+    it("sends the initial offer with no media tracks on construction", async () => {
+        const { sharer: sharerTransport, viewer: viewerTransport, sentBySharer } = loopback();
+
+        const sharer = createSharerSession({ signaling: sharerTransport });
+        const viewer = createViewerSession({
+            signaling: viewerTransport,
+            onStream: () => { /* no media yet */ },
+        });
+
+        // First message out from the sharer should be the no-media offer,
+        // emitted before any getDisplayMedia work happens.
+        await waitFor(() => sentBySharer.some((m) => m.kind === "offer"));
+        const firstOffer = sentBySharer.find((m) => m.kind === "offer") as
+            | Extract<SignalingMessage, { kind: "offer" }>
+            | undefined;
+        expect(firstOffer).toBeTruthy();
+        expect(firstOffer!.sdp).not.toMatch(/^m=video/m);
+        expect(firstOffer!.sdp).not.toMatch(/^m=audio/m);
+        expect(firstOffer!.sdp).toMatch(/^m=application/m);
+
+        sharer.dispose();
+        viewer.dispose();
+    });
+
+    it("attachMedia triggers a renegotiation offer with the track and delivers it to the viewer", async () => {
+        const { sharer: sharerTransport, viewer: viewerTransport, sentBySharer } = loopback();
+
+        const sharer = createSharerSession({ signaling: sharerTransport });
+        const receivedStreams: MediaStream[] = [];
+        let resolveTrack!: (s: MediaStream) => void;
+        const onTrack = new Promise<MediaStream>((resolve) => {
+            resolveTrack = resolve;
+        });
+        const viewer = createViewerSession({
+            signaling: viewerTransport,
+            onStream: (stream) => {
+                receivedStreams.push(stream);
+                resolveTrack(stream);
+            },
+        });
+
+        try {
+            // Wait for the initial (no-media) offer to land so we can
+            // distinguish the renegotiation offer that follows.
+            await waitFor(() => sentBySharer.filter((m) => m.kind === "offer").length >= 1);
+            const fp1Sharer = sharer.getLocalFingerprint();
+            await waitFor(() => sharer.getRemoteFingerprint() != null);
+            const fp1Viewer = sharer.getRemoteFingerprint();
+            expect(fp1Sharer).toBeTruthy();
+            expect(fp1Viewer).toBeTruthy();
+
+            const source = new nonstandard.RTCVideoSource();
+            const track = source.createTrack();
+            const stream = new MediaStream([track as unknown as MediaStreamTrack]);
+
+            await sharer.attachMedia(stream);
+
+            // A second offer should have been sent, this time with media.
+            await waitFor(() => sentBySharer.filter((m) => m.kind === "offer").length >= 2);
+            const offers = sentBySharer.filter((m) => m.kind === "offer") as Array<
+                Extract<SignalingMessage, { kind: "offer" }>
+            >;
+            expect(offers[1].sdp).toMatch(/^m=video/m);
+
+            // Fingerprints are bound to the PC identity, so they should be
+            // unchanged across the renegotiation — SAS computed pre-media
+            // stays valid.
+            expect(sharer.getLocalFingerprint()).toBe(fp1Sharer);
+            expect(sharer.getRemoteFingerprint()).toBe(fp1Viewer);
+
+            // The viewer should receive the track via the renegotiated offer.
+            const delivered = await onTrack;
+            expect(delivered.getVideoTracks().length).toBeGreaterThan(0);
+
+            track.stop();
+        } finally {
+            sharer.dispose();
+            viewer.dispose();
+            // Stop any extra tracks the viewer materialized.
+            for (const s of receivedStreams) s.getTracks().forEach((t) => t.stop());
+        }
     });
 });

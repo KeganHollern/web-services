@@ -43,6 +43,7 @@ export function SharerPanel() {
     const [peerRelayRequested, setPeerRelayRequested] = useState(false);
     const [relayEnabled, setRelayEnabled] = useState(false);
     const [transport, setTransport] = useState<Transport>("unknown");
+    const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
     const active = useRef<ActiveRefs | null>(null);
     const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -52,10 +53,10 @@ export function SharerPanel() {
     }, []);
 
     useEffect(() => {
-        if (phase === "live" && previewRef.current && active.current?.localStream) {
-            previewRef.current.srcObject = active.current.localStream;
+        if (phase === "live" && previewRef.current && previewStream) {
+            previewRef.current.srcObject = previewStream;
         }
-    }, [phase]);
+    }, [phase, previewStream]);
 
     useEffect(() => {
         if (phase !== "live") return;
@@ -83,20 +84,22 @@ export function SharerPanel() {
         };
     }, [phase]);
 
-    const teardown = () => {
-        const a = active.current;
-        if (!a) return;
-        active.current = null;
-        if (a.fingerprintTimer != null) clearInterval(a.fingerprintTimer);
+    // Tear down the active PC and any captured stream WITHOUT closing the
+    // signaling client or dropping the wire bridge — used on peer-left so the
+    // room can accept another viewer.
+    const teardownSession = (a: ActiveRefs) => {
+        if (a.fingerprintTimer != null) {
+            clearInterval(a.fingerprintTimer);
+            a.fingerprintTimer = null;
+        }
         a.session?.dispose();
+        a.session = null;
         a.localStream?.getTracks().forEach((t) => t.stop());
-        a.client.close();
+        a.localStream = null;
+        a.bridge.resetRtcHandler();
     };
 
-    const stopShare = () => {
-        teardown();
-        setPhase("idle");
-        setShareUrl(null);
+    const resetSessionState = () => {
         setSas(null);
         setLocalConfirmed(false);
         setRemoteConfirmed(false);
@@ -105,6 +108,22 @@ export function SharerPanel() {
         setPeerRelayRequested(false);
         setRelayEnabled(false);
         setTransport("unknown");
+        setPreviewStream(null);
+    };
+
+    const teardown = () => {
+        const a = active.current;
+        if (!a) return;
+        active.current = null;
+        teardownSession(a);
+        a.client.close();
+    };
+
+    const stopShare = () => {
+        teardown();
+        setPhase("idle");
+        setShareUrl(null);
+        resetSessionState();
     };
 
     const startShare = async () => {
@@ -131,7 +150,7 @@ export function SharerPanel() {
                 void onPeerJoined();
             });
             client.on("peer-left", () => {
-                setPhase("disconnected");
+                onPeerLeft();
             });
             client.on("error", (ev) => {
                 toast.error(ev.message);
@@ -155,9 +174,29 @@ export function SharerPanel() {
         }
     };
 
+    const onPeerLeft = () => {
+        const a = active.current;
+        if (!a) return;
+        // A previous viewer left the room. Drop the PC and any captured
+        // media; the room (and signaling client) stays open so a new viewer
+        // can still join with the same link.
+        teardownSession(a);
+        resetSessionState();
+        setPhase("created");
+    };
+
     const onPeerJoined = async () => {
         const a = active.current;
         if (!a) return;
+
+        // Defensive cleanup: if a prior session was somehow left attached
+        // (racy peer-left/peer-joined ordering), dispose it and clear
+        // residual state before we register a new RTC handler.
+        if (a.session || a.localStream || a.fingerprintTimer != null) {
+            teardownSession(a);
+            resetSessionState();
+        }
+
         setPhase("verifying");
 
         try {
@@ -166,19 +205,6 @@ export function SharerPanel() {
                 onIceFail: () => {
                     if (!active.current) return;
                     setRelayPromptOpen(true);
-                },
-                getMedia: async () => {
-                    const stream = await navigator.mediaDevices.getDisplayMedia({
-                        video: true,
-                        audio: false,
-                    } as DisplayMediaStreamOptions);
-                    if (!active.current) {
-                        stream.getTracks().forEach((t) => t.stop());
-                        return null;
-                    }
-                    active.current.localStream = stream;
-                    stream.getVideoTracks()[0]?.addEventListener("ended", () => stopShare());
-                    return stream;
                 },
             });
             a.session = session;
@@ -259,6 +285,52 @@ export function SharerPanel() {
             setPhase("live");
         }
     }, [phase, localConfirmed, remoteConfirmed]);
+
+    // Once both sides have confirmed SAS and we're live, capture the screen
+    // and attach it via renegotiation. This deferral is what keeps SAS on
+    // the sharing tab during getDisplayMedia (no tab focus shift before
+    // verification) and keeps the viewer's offer-watchdog from racing OS
+    // permission dialogs.
+    useEffect(() => {
+        if (phase !== "live") return;
+        const a = active.current;
+        if (!a?.session) return;
+        if (a.localStream) return; // already attached
+
+        let cancelled = false;
+        void (async () => {
+            let stream: MediaStream;
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: false,
+                } as DisplayMediaStreamOptions);
+            } catch (err) {
+                if (cancelled || !active.current) return;
+                const denied = err instanceof DOMException && err.name === "NotAllowedError";
+                toast.error(denied ? "Screen capture permission denied" : (err instanceof Error ? err.message : "failed to capture screen"));
+                stopShare();
+                return;
+            }
+            if (cancelled || !active.current?.session) {
+                stream.getTracks().forEach((t) => t.stop());
+                return;
+            }
+            active.current.localStream = stream;
+            stream.getVideoTracks()[0]?.addEventListener("ended", () => stopShare());
+            setPreviewStream(stream);
+            try {
+                await active.current.session.attachMedia(stream);
+            } catch (err) {
+                if (cancelled || !active.current) return;
+                toast.error(err instanceof Error ? err.message : "failed to attach media");
+                stopShare();
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [phase]);
 
     const copyLink = async () => {
         if (!shareUrl) return;
@@ -357,7 +429,7 @@ export function SharerPanel() {
                     <>
                         <Separator />
                         <p className="text-muted-foreground text-sm">
-                            The other side disconnected. Start a new share to continue.
+                            The signaling connection closed. Start a new share to continue.
                         </p>
                     </>
                 )}

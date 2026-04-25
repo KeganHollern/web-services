@@ -26,6 +26,12 @@ export interface PeerSession {
     // Swap ICE servers (e.g. add a TURN entry after an opt-in) and, on the
     // offerer, kick off an ICE restart so the new candidates are tried.
     enableRelay(iceServers: RTCIceServer[]): Promise<void>;
+    // Attach media to the session after it has been constructed. The sharer
+    // defers getDisplayMedia until SAS is confirmed so that the SDP exchange
+    // (and thus the fingerprint that SAS is derived from) happens without
+    // waiting on OS permission prompts. attachMedia adds the tracks and
+    // renegotiates. On the viewer side this is not supported.
+    attachMedia(stream: MediaStream): Promise<void>;
     dispose(): void;
 }
 
@@ -205,6 +211,7 @@ function makeHandle(
     ctx: SessionCtx,
     openDataChannel: (label: string) => Promise<DataChannelHandle>,
     enableRelay: (iceServers: RTCIceServer[]) => Promise<void>,
+    attachMedia: (stream: MediaStream) => Promise<void>,
 ): PeerSession {
     return {
         getLocalFingerprint() {
@@ -218,6 +225,7 @@ function makeHandle(
             return resolveTransport(ctx.pc);
         },
         enableRelay,
+        attachMedia,
         dispose() {
             disposeCtx(ctx);
         },
@@ -244,9 +252,6 @@ export interface SharerOptions {
     // connected/completed within ICE_FAIL_TIMEOUT_MS. Signals to the UI that a
     // relay fallback should be offered.
     onIceFail?: () => void;
-    // DI hook for capture source; defaults to navigator.mediaDevices.getDisplayMedia.
-    // Returning null skips media attachment (used in tests without a capture source).
-    getMedia?: () => Promise<MediaStream | null>;
 }
 
 export function createSharerSession(opts: SharerOptions): PeerSession {
@@ -281,18 +286,12 @@ export function createSharerSession(opts: SharerOptions): PeerSession {
         }
     });
 
-    const getMedia = opts.getMedia ?? defaultGetDisplayMedia;
-
+    // Send the initial offer immediately, with only the placeholder data
+    // channel. Media is attached later via attachMedia() once the user has
+    // confirmed SAS — this lets the fingerprint reach the viewer in <1s
+    // regardless of how long the OS permission dialog takes.
     void (async () => {
         try {
-            const stream = await getMedia();
-            if (ctx.disposed) return;
-            if (stream) {
-                for (const t of stream.getTracks()) {
-                    pc.addTrack(t, stream);
-                    ctx.tracks.push(t);
-                }
-            }
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             if (ctx.disposed || !offer.sdp) return;
@@ -324,14 +323,25 @@ export function createSharerSession(opts: SharerOptions): PeerSession {
         armIceFailWatchdog(ctx);
     };
 
-    return makeHandle(ctx, openDataChannel, enableRelay);
-}
+    const attachMedia = async (stream: MediaStream): Promise<void> => {
+        if (ctx.disposed) return;
+        for (const t of stream.getTracks()) {
+            pc.addTrack(t, stream);
+            ctx.tracks.push(t);
+        }
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        if (ctx.disposed || !offer.sdp) return;
+        opts.signaling.send({ kind: "offer", sdp: offer.sdp });
+        // The DTLS fingerprint stays the same across renegotiations (it's
+        // bound to the PC's identity), so SAS computed pre-media remains
+        // valid. We only need to re-arm ICE-fail detection in case the
+        // renegotiation itself stalls.
+        ctx.iceFailFired = false;
+        armIceFailWatchdog(ctx);
+    };
 
-function defaultGetDisplayMedia(): Promise<MediaStream> {
-    return navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: { suppressLocalAudioPlayback: true },
-    } as DisplayMediaStreamOptions);
+    return makeHandle(ctx, openDataChannel, enableRelay, attachMedia);
 }
 
 export interface ViewerOptions {
@@ -438,5 +448,9 @@ export function createViewerSession(opts: ViewerOptions): PeerSession {
         pc.setConfiguration({ iceServers });
     };
 
-    return makeHandle(ctx, openDataChannel, enableRelay);
+    const attachMedia = async (): Promise<void> => {
+        throw new Error("attachMedia is only valid on the sharer side");
+    };
+
+    return makeHandle(ctx, openDataChannel, enableRelay, attachMedia);
 }

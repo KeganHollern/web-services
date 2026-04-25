@@ -159,6 +159,12 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                 }
             }, 100);
 
+            // The sharer now sends its first offer immediately on peer-join
+            // (before getDisplayMedia), so the fingerprint should arrive in
+            // well under a second. A 10s watchdog catches genuine stalls
+            // without timing out humans — it's cleared as soon as both
+            // fingerprints land (clearTimers above), so the verifying phase
+            // has no time limit.
             watchdogTimer = window.setTimeout(() => {
                 if (cancelled) return;
                 if (session.getRemoteFingerprint() != null) return;
@@ -166,7 +172,7 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                     "The share session did not start. Ask the sharer to try again or reload this page.",
                     true,
                 );
-            }, 30000);
+            }, 10000);
         })();
 
         return () => {

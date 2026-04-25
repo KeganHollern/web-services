@@ -16,10 +16,15 @@ export interface WireBridge {
     transport: SignalingTransport;
     sendApp(msg: AppMessage): Promise<void>;
     onAppMessage(handler: (msg: AppMessage) => void): void;
+    // Drop the currently-registered RTC handler so a disposed session no
+    // longer sees incoming SDP/ICE. The sharer reuses the bridge across
+    // peer-rejoin cycles, so leftover handlers from a previous PC must be
+    // cleared before a new session registers its own.
+    resetRtcHandler(): void;
 }
 
 export function createWireBridge(client: SignalingClient): WireBridge {
-    const rtcHandlers: Array<(msg: SignalingMessage) => void> = [];
+    let rtcHandler: ((msg: SignalingMessage) => void) | null = null;
     const appHandlers: Array<(msg: AppMessage) => void> = [];
 
     client.on("message", ({ plaintext }) => {
@@ -30,7 +35,7 @@ export function createWireBridge(client: SignalingClient): WireBridge {
             return;
         }
         if (msg.kind === "offer" || msg.kind === "answer" || msg.kind === "ice") {
-            for (const h of rtcHandlers) h(msg);
+            rtcHandler?.(msg);
         } else if (msg.kind === "sas-confirmed" || msg.kind === "relay-enabled") {
             for (const h of appHandlers) h(msg);
         }
@@ -41,7 +46,10 @@ export function createWireBridge(client: SignalingClient): WireBridge {
             void client.send(JSON.stringify(msg));
         },
         onMessage(handler) {
-            rtcHandlers.push(handler);
+            // Single-handler model: a fresh session registration replaces
+            // any prior handler. Combined with resetRtcHandler() this keeps
+            // disposed sessions from racing the active one.
+            rtcHandler = handler;
         },
     };
 
@@ -52,6 +60,9 @@ export function createWireBridge(client: SignalingClient): WireBridge {
         },
         onAppMessage(handler) {
             appHandlers.push(handler);
+        },
+        resetRtcHandler() {
+            rtcHandler = null;
         },
     };
 }
