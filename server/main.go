@@ -51,6 +51,19 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	// Redirect www.lystic.dev → lystic.dev (301)
+	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			req := c.Request()
+			host := req.Host
+			if strings.HasPrefix(strings.ToLower(host), "www.") {
+				target := "https://" + host[4:] + req.RequestURI
+				return c.Redirect(http.StatusMovedPermanently, target)
+			}
+			return next(c)
+		}
+	})
+
 	// NOTE: nginx also restricts body size, this is just a second layer of protection
 	// to prevent large requests from hitting the server.
 	e.Use(middleware.BodyLimit("100M"))
