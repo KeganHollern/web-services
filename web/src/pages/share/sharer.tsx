@@ -137,7 +137,7 @@ export function SharerPanel() {
                 toast.error(ev.message);
             });
             client.on("close", () => {
-                if (phase !== "idle") setPhase("disconnected");
+                setPhase((prev) => (prev === "idle" ? prev : "disconnected"));
             });
 
             bridge.onAppMessage((msg) => {

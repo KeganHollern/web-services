@@ -101,7 +101,9 @@ func (p *Peer) writePump() {
 				return
 			}
 			if err := p.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				slog.Error("share websocket write error", "error", err, "room", p.room.id)
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+					slog.Error("share websocket write error", "error", err, "room", p.room.id)
+				}
 				return
 			}
 			p.bytesOut += int64(len(msg))
