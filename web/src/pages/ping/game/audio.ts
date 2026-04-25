@@ -1,9 +1,9 @@
 export type SoundName = "jump" | "wallhit" | "explosion";
 
 const FILES: Record<SoundName, string> = {
-    jump: "/ping/sfx/jump.ogg",
-    wallhit: "/ping/sfx/wallhit.ogg",
-    explosion: "/ping/sfx/explosion.ogg",
+    jump: "/sfx/ping/jump.ogg",
+    wallhit: "/sfx/ping/wallhit.ogg",
+    explosion: "/sfx/ping/explosion.ogg",
 };
 
 let context: AudioContext | null = null;
