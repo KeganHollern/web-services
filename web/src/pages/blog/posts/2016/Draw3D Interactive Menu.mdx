@@ -1,18 +1,28 @@
-A few months ago I was looking into making a user interface with the draw3d mission event handler. I was looking into using keybinds to interact with the menu and found that they were, more often than not, not so user friendly. Instead I opted for a way to interact with the menu by looking at the item you want to select. This is a gif of the final product.
-<img class="aligncenter" src="https://i.gyazo.com/e58da1c8fecd93f0d03e72db9a007114.gif" width="500" height="388" />
+---
+title: Draw3D Interactive Menu
+description: |
+    A few months ago I was poking at the [Draw3D] mission event handler in Arma 3, trying to build a user interface that didn't rely on clunky keybinds for selection.
+    Most in-game menus I had seen cycled through options with keys, which always felt awkward.
+slug: draw3d-interactive-menu
+image: /blog/draw3d-interactive-menu/cover.png
+---
 
-&nbsp;
+# Draw3D Interactive Menu
 
-The code I used to detect the angle you're looking at can be used for a lot of other things such as bullet prediction and a more accurate object placement system.
+A few months ago I was poking at the [Draw3D] mission event handler in Arma 3, trying to build a user interface that didn't rely on clunky keybinds for selection.
+Most in-game menus I had seen cycled through options with keys, which always felt awkward.
+Instead I opted for a menu you interact with by _looking_ at the item you want — point your camera at the row, press the action key, the script runs.
 
-&nbsp;
+![Looking-to-select menu in action](https://i.gyazo.com/e58da1c8fecd93f0d03e72db9a007114.gif)
 
-Here is the code.
+The trick I used to figure out which item the player is looking at is the same vector math you'd reach for in plenty of other places — bullet prediction, more accurate object placement, anything that needs "how close is my view direction to this point in the world".
+
+---
 
 ```sqf
 SCRIPT1 = {
     hint "This is script 1";
-} ;
+};
 RANDOM1 = 0;
 RANDOM2 = [
     ["Script 1", SCRIPT1]
@@ -23,59 +33,61 @@ if (!isNil "RANDOM3") then {
 if (!isNil "RANDOM4") then {
     (findDisplay 46) removeEventHandler ["KeyDown", RANDOM4];
 };
-RANDOM4 = (findDisplay 46) displayAddEventHandler ["KeyDown", {|
+RANDOM4 = (findDisplay 46) displayAddEventHandler ["KeyDown", {
     _s = false;
     if ((_this select 1) == 2) then {
         if (isNil "RANDOM3") then {
             RANDOM3 = addMissionEventHandler ["Draw3D", {
-                _obj = player:
-                _shortestItem = [O,1e9];
+                _obj = player;
+                _shortestItem = [0, 1e9];
 
-                _p1 = _obj modelToworld [2,5,0.5]:
-                _p2 = _obj modeltoworld [2,5,3.5];
-                _p3 = _obj modelToworld [-2,5,0.5]:
-                _p4 = _obj modeltoworld [-2,5,3.5];
-                _p5 = _obj modelToworld [-1.5,5,3.5]:
-                _p6 = _obj modelToWorld [-1.5,5,3.3];
+                // menu border in model space, projected out 5m in front of the player
+                _p1 = _obj modelToWorld [2, 5, 0.5];
+                _p2 = _obj modelToWorld [2, 5, 3.5];
+                _p3 = _obj modelToWorld [-2, 5, 0.5];
+                _p4 = _obj modelToWorld [-2, 5, 3.5];
+                _p5 = _obj modelToWorld [-1.5, 5, 3.5];
+                _p6 = _obj modelToWorld [-1.5, 5, 3.3];
 
-                drawLine3D [p1,p2 , [1,0,0,1]]:
-                drawLine3D [p3,p4, [1,0,0,1]]:
-                drawLine3D [ p1, p3, [1,0,0,1]];
-                drawLine3D [_p2,_p4, [1,0,0,1]];
+                drawLine3D [_p1, _p2, [1, 0, 0, 1]];
+                drawLine3D [_p3, _p4, [1, 0, 0, 1]];
+                drawLine3D [_p1, _p3, [1, 0, 0, 1]];
+                drawLine3D [_p2, _p4, [1, 0, 0, 1]];
 
-                drawIcon3D ["", [0,1,0,1], _p5, 0, 0, 0, "Aether Menu v2", 1, 0.05, "PuristaMedium"];
-                drawIcon3D ["", [0,1,0,1], _p6, 0, 0, 0, "By Lystic", 1, 0.05, "PuristaMedium"];
+                drawIcon3D ["", [0, 1, 0, 1], _p5, 0, 0, 0, "Aether Menu v2", 1, 0.05, "PuristaMedium"];
+                drawIcon3D ["", [0, 1, 0, 1], _p6, 0, 0, 0, "By Lystic", 1, 0.05, "PuristaMedium"];
 
-            _z = 2.9;
-            {
-                _P = _obj modelToworld [0,5,_z];
+                _z = 2.9;
+                {
+                    _P = _obj modelToWorld [0, 5, _z];
+                    drawIcon3D ["", [0, 1, 1, 1], _P, 0, 0, 0, _x select 0, 1, 0.05, "PuristaMedium"];
+                    _z = _z - 0.2;
 
-                drawIcon3D ["", [0,1,1,1], _P, 0, 0, 0, _x select 0, 1, 0.05, "PuristaMedium"];
-                _z = _z - 0.2;
+                    // angle between the camera direction and the vector to this item
+                    _eposagl = ASLtoAGL eyePos player;
+                    _dirvector = _eposagl vectorFromTo _P;
+                    _eyevector = (positionCameraToWorld [0, 0, 0]) vectorFromTo (positionCameraToWorld [0, 0, 1]);
 
-                _eposagl = ASLtoAGL eyePos player;
-                _dirvector = _eposagl vectorFromTo _p;
-                _eyevector = (positionCameraToWorld [0,0,0]) vectorFromTo (positionCameraToWorld [0,0,1]);
+                    _dist = abs((_dirvector select 2) - (_eyevector select 2));
 
-                _dist = abs((_dirvector select 2) - (_eyevector select 2)) ;
-
-                if(_dist < (_shortestItem select 1)) then {
-                    _shortestItem set[O,_forEachIndex];
-                    _shortestItem set[1,_dist];
+                    if (_dist < (_shortestItem select 1)) then {
+                        _shortestItem set [0, _forEachIndex];
+                        _shortestItem set [1, _dist];
+                    };
                 } forEach RANDOM2;
-                
+
                 RANDOM1 = _shortestItem select 0;
                 _z = 2.7 - (RANDOM1 * .2);
-                _pa = _obj modelToWorld[-.75,5,_z];
-                _pb = _obj modelToWorld [.75,5,_z];
-                drawLine3D [_pa,_pb, [0,0, 1, 1]];
+                _pa = _obj modelToWorld [-.75, 5, _z];
+                _pb = _obj modelToWorld [.75, 5, _z];
+                drawLine3D [_pa, _pb, [0, 0, 1, 1]];
             }];
         } else {
-            removeMissionEventHandler ["Draw3D", RANDOM3] ;
+            removeMissionEventHandler ["Draw3D", RANDOM3];
             RANDOM3 = nil;
         };
         _s = true;
-    }
+    };
     if ((_this select 1) == 15) then {
         if (!isNil "RANDOM3") then {
             [] spawn ((RANDOM2 select RANDOM1) select 1);
@@ -83,11 +95,27 @@ RANDOM4 = (findDisplay 46) displayAddEventHandler ["KeyDown", {|
         };
     };
     _s;
-};
+}];
 ```
 
-Here is a video I have made on the subject.
+Each frame the `Draw3D` handler draws the menu's red border, places a label per entry in `RANDOM2` along a vertical strip in front of the player, and computes how close the player's camera direction is to each entry.
+The closest entry wins, gets stored in `RANDOM1`, and is highlighted with a blue underline.
+Key code `2` (the `1` key) toggles the menu on and off, and key code `15` (Tab) spawns the script bound to the currently highlighted entry.
 
-[embed]https://www.youtube.com/watch?v=Ffz7odUWKGI[/embed]
+The "looking at" check is the only part that's interesting — everything else is just `drawLine3D` and `drawIcon3D` decoration.
+I take the vertical component of the unit vector from the player's eye to each menu item, the vertical component of the camera's forward unit vector, and pick whichever item minimizes the difference between the two.
+A real implementation would compare the full 3D vectors, but since the menu is a single column and only varies on the Z axis, comparing one component is enough.
 
-&nbsp;
+---
+{/* 
+
+NOTE: this video was privated - its not on my main channel so idk where it is...
+
+Here's a video walkthrough on the same subject.
+
+<YouTube id="Ffz7odUWKGI" /> */}
+
+Anyway, that was a fun afternoon. Same vector math has come back in a lot of unrelated projects since.
+
+{/* references */}
+[Draw3D]: https://community.bistudio.com/wiki/Arma_3:_Mission_Event_Handlers#Draw3D

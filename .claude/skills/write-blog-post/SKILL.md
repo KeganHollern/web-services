@@ -100,6 +100,10 @@ visible: true
 - Use sparingly (1-3 per post) for screenshots, diagrams, or UI references
 - Alt text should be short and descriptive
 
+## Embedded media
+
+- **YouTube videos** — use the `<YouTube>` MDX component, never a raw `<iframe>` or a bare link to youtube.com. Pass the video ID (the `v=` query param), not the full URL: `<YouTube id="Ffz7odUWKGI" />`. The component is registered in [web/src/pages/blog/components.tsx](../../../web/src/pages/blog/components.tsx) and renders a centered, responsive embed.
+
 ## Cover image
 
 Every new post (and any substantial rewrite) gets a cover image. The cover is what shows on the blog index card and in OG/Twitter share previews — visual consistency across posts matters.
