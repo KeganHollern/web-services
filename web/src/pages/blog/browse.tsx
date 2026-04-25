@@ -1,4 +1,5 @@
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 import { cn } from "@/lib/utils";
 import { Link as Hyperlink } from "lucide-react";
 import { Link } from "react-router";
@@ -13,6 +14,10 @@ export function BrowsePage() {
 
     return (
         <>
+            <PageMeta
+                title="Lystic's Blog"
+                description="Posts on game-cheat development, DMA hardware, low-level Windows internals, Ethereum, and other things Kegan has been building or breaking."
+            />
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="container mx-auto py-6 space-y-6">

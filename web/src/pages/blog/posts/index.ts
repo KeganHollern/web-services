@@ -9,11 +9,9 @@ export interface PostMetadata {
     title: string
     description: string
     visible: boolean
+    image?: string
     // TODO: date?
     // TODO: tags[]
-
-    // uncertain if i want/need these...
-    // TODO: image? (optional)
 }
 export interface PostModule {
     filePath: string,
@@ -34,6 +32,7 @@ export const Modules = Object.entries(_modules).map(([filePath, importFn]): Post
     const title: string = rawMetadata["title"] ?? slug.replaceAll("-", " ") ?? "";
     const description = rawMetadata["description"] ?? "";
     const visible = rawMetadata["visible"] ?? "true"
+    const image: string | undefined = rawMetadata["image"];
 
 
     return {
@@ -42,7 +41,8 @@ export const Modules = Object.entries(_modules).map(([filePath, importFn]): Post
             slug,
             title,
             description,
-            visible
+            visible,
+            image,
         },
         importFn,
     }

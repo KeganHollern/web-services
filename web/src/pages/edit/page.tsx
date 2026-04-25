@@ -1,6 +1,7 @@
 import { ConnectionStatus } from "@/components/connection-status";
 import { Editor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 import { Button } from "@/components/ui/button";
 import { useLinkShare } from "@/context/linkshare-provider";
 import { collabDebug, useCollaborativeEditor } from "@/hooks/use-collaborative-editor";
@@ -130,6 +131,10 @@ export function EditPage() {
 
     return (
         <>
+            <PageMeta
+                title="Collaborative editor"
+                description="Real-time collaborative markdown editing in the browser. Share a link to edit together."
+            />
             <Header breadcrumbItems={breadcrumbs}>
                 <ConnectionStatus status={collab?.status ?? 'connecting'} lastUpdate={collab?.lastUpdate ?? null} />
                 <Button

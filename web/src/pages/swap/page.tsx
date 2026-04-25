@@ -4,6 +4,7 @@ import { erc20Abi, formatUnits } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { ArrowDownIcon, Loader2Icon, ChevronDownIcon } from "lucide-react";
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 import { Button } from "@/components/ui/button";
 import { TokenSelectorModal, type Token } from "./token-selector-modal";
 import { useQuote } from "./use-quote";
@@ -572,6 +573,10 @@ export function SwapPage() {
 
     return (
         <>
+            <PageMeta
+                title="Swap & lend"
+                description="Browser-based crypto swap and Aave lending. Connect a wallet, swap tokens, and supply liquidity."
+            />
             <Header breadcrumbItems={breadcrumbs}>
                 <HeaderConnectButton />
             </Header>

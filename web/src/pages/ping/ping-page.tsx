@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 
 import { H, JUMP_VELOCITY, W } from "./game/constants";
 import { animatePaddle, setPaddleAnimation } from "./game/animation";
@@ -103,6 +104,10 @@ export function PingPage() {
 
     return (
         <>
+            <PageMeta
+                title="Ping — endless jumper"
+                description="A tiny browser game built into lystic.dev. Jump over the obstacles, beat your highscore."
+            />
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div

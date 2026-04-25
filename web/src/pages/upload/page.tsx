@@ -1,5 +1,6 @@
 import { uploadFile } from "@/api/upload";
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -92,6 +93,10 @@ export function UploadPage() {
 
     return (
         <>
+            <PageMeta
+                title="File upload"
+                description="Password-gated file upload to lystic.dev."
+            />
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden" onPaste={handlePaste}>
                 <div className="flex-1 flex justify-center items-center w-full p-4">

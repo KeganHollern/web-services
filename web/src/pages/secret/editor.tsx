@@ -1,6 +1,7 @@
 import { pushSecret } from "@/api/secret";
 import { Editor, type CodeEditor } from "@/components/monaco-editor/editor";
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 import { Button } from "@/components/ui/button";
 import { useLinkShare } from "@/context/linkshare-provider";
 import { encryptSecret } from "@/lib/crypto";
@@ -40,6 +41,10 @@ export function SecretEditorPage() {
 
     return (
         <>
+            <PageMeta
+                title="Encrypted one-time secrets"
+                description="Share a one-time secret over a zero-trust link. Content is encrypted client-side; the key never leaves your URL."
+            />
             <Header breadcrumbItems={breadcrumbs}>
                 <Button onClick={save}>
                     <Save /> Save

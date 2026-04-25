@@ -1,5 +1,6 @@
 import YouAreLost from "@/assets/you-are-lost.gif";
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 
 type PageNotFoundProps = {
     domain?: string
@@ -17,6 +18,10 @@ export function PageNotFound({ domain }: PageNotFoundProps) {
 
     return (
         <>
+            <PageMeta
+                title={`404 — ${domain}`}
+                description="Page not found."
+            />
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 flex justify-center items-center w-full">

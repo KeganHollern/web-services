@@ -1,4 +1,5 @@
 import { Header } from "@/components/page-header";
+import { PageMeta } from "@/components/page-meta";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useSecret } from '@/hooks/api/use-secret'; // Adjust path
 import { Loader, Plus } from "lucide-react";
@@ -28,6 +29,10 @@ export function SecretViewerPage() {
 
     return (
         <>
+            <PageMeta
+                title="View encrypted secret"
+                description="Decrypt and view a one-time secret. Content is decrypted client-side using a key from the URL."
+            />
             <Header breadcrumbItems={breadcrumbs}>
                 <Button onClick={() => {
                     navigate("/")
