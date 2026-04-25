@@ -9,7 +9,83 @@ The code I used to detect the angle you're looking at can be used for a lot of o
 
 Here is the code.
 
-<img class="aligncenter" src="https://i.gyazo.com/1eb171c1717c9d325a3813935b41b55b.png" width="1115" height="867" /><img class="aligncenter" src="https://i.gyazo.com/001823708b257396e07436a372963f65.png" width="1117" height="497" />
+```sqf
+SCRIPT1 = {
+    hint "This is script 1";
+} ;
+RANDOM1 = 0;
+RANDOM2 = [
+    ["Script 1", SCRIPT1]
+];
+if (!isNil "RANDOM3") then {
+    removeMissionEventHandler ["Draw3D", RANDOM3];
+};
+if (!isNil "RANDOM4") then {
+    (findDisplay 46) removeEventHandler ["KeyDown", RANDOM4];
+};
+RANDOM4 = (findDisplay 46) displayAddEventHandler ["KeyDown", {|
+    _s = false;
+    if ((_this select 1) == 2) then {
+        if (isNil "RANDOM3") then {
+            RANDOM3 = addMissionEventHandler ["Draw3D", {
+                _obj = player:
+                _shortestItem = [O,1e9];
+
+                _p1 = _obj modelToworld [2,5,0.5]:
+                _p2 = _obj modeltoworld [2,5,3.5];
+                _p3 = _obj modelToworld [-2,5,0.5]:
+                _p4 = _obj modeltoworld [-2,5,3.5];
+                _p5 = _obj modelToworld [-1.5,5,3.5]:
+                _p6 = _obj modelToWorld [-1.5,5,3.3];
+
+                drawLine3D [p1,p2 , [1,0,0,1]]:
+                drawLine3D [p3,p4, [1,0,0,1]]:
+                drawLine3D [ p1, p3, [1,0,0,1]];
+                drawLine3D [_p2,_p4, [1,0,0,1]];
+
+                drawIcon3D ["", [0,1,0,1], _p5, 0, 0, 0, "Aether Menu v2", 1, 0.05, "PuristaMedium"];
+                drawIcon3D ["", [0,1,0,1], _p6, 0, 0, 0, "By Lystic", 1, 0.05, "PuristaMedium"];
+
+            _z = 2.9;
+            {
+                _P = _obj modelToworld [0,5,_z];
+
+                drawIcon3D ["", [0,1,1,1], _P, 0, 0, 0, _x select 0, 1, 0.05, "PuristaMedium"];
+                _z = _z - 0.2;
+
+                _eposagl = ASLtoAGL eyePos player;
+                _dirvector = _eposagl vectorFromTo _p;
+                _eyevector = (positionCameraToWorld [0,0,0]) vectorFromTo (positionCameraToWorld [0,0,1]);
+
+                _dist = abs((_dirvector select 2) - (_eyevector select 2)) ;
+
+                if(_dist < (_shortestItem select 1)) then {
+                    _shortestItem set[O,_forEachIndex];
+                    _shortestItem set[1,_dist];
+                } forEach RANDOM2;
+                
+                RANDOM1 = _shortestItem select 0;
+                _z = 2.7 - (RANDOM1 * .2);
+                _pa = _obj modelToWorld[-.75,5,_z];
+                _pb = _obj modelToWorld [.75,5,_z];
+                drawLine3D [_pa,_pb, [0,0, 1, 1]];
+            }];
+        } else {
+            removeMissionEventHandler ["Draw3D", RANDOM3] ;
+            RANDOM3 = nil;
+        };
+        _s = true;
+    }
+    if ((_this select 1) == 15) then {
+        if (!isNil "RANDOM3") then {
+            [] spawn ((RANDOM2 select RANDOM1) select 1);
+            _s = true;
+        };
+    };
+    _s;
+};
+```
+
 Here is a video I have made on the subject.
 
 [embed]https://www.youtube.com/watch?v=Ffz7odUWKGI[/embed]
