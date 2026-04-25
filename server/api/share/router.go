@@ -51,7 +51,7 @@ func Register(api *echo.Group, hub *Hub) {
 		peer := &Peer{
 			room: room,
 			conn: ws,
-			send: make(chan frame, sendBufferSize),
+			send: make(chan []byte, sendBufferSize),
 		}
 
 		if !room.join(peer) {

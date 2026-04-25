@@ -49,11 +49,39 @@ Security notes:
 
 ## Relay semantics
 
-- Every frame received from one peer is forwarded verbatim (same WS opcode,
-  same bytes) to the other peer.
-- Payloads are treated as opaque ciphertext — never decoded, JSON-parsed,
-  logged, or persisted.
-- WebSocket ping/pong keep-alive is handled transparently.
+The wire protocol is JSON envelopes over WebSocket TextMessage frames. The
+server inspects only `type`, `to`, and `from` — `payload` is treated as
+opaque ciphertext and is never decoded, JSON-parsed, logged, or persisted.
+
+On join, each peer is assigned a server-minted `peerId` (a base64url random
+identifier) used as the routing identity in `from` and `to` fields.
+
+### Client → server
+
+```
+{ "type": "message", "to"?: "<peerId>", "payload": <opaque> }
+```
+
+If `to` is omitted the message is broadcast to the other peer(s) in the
+room; if present, delivery is restricted to the matching `peerId`.
+
+### Server → client
+
+```
+{ "type": "peer-joined", "peerId": "<peerId>" }
+{ "type": "peer-left",   "peerId": "<peerId>" }
+{ "type": "message",     "from": "<peerId>", "payload": <opaque> }
+{ "type": "error",       "message": "<human-readable>" }
+```
+
+`peer-joined` / `peer-left` are plaintext lifecycle signals the server emits
+when connections open and close. `message` carries the sender's payload
+through verbatim as a `json.RawMessage` — the server never reads or rewrites
+its bytes.
+
+Non-text WebSocket frames and envelopes with an unknown `type` are dropped
+and the peer receives a server `error` envelope. WebSocket ping/pong
+keep-alive is handled transparently.
 
 ## Lifetime
 
@@ -74,6 +102,7 @@ Security notes:
 - No auth middleware is required. Knowledge of the room ID alone grants relay
   access, but an attacker who joins without the fragment key can only observe
   opaque ciphertext.
-- Logs contain room IDs, connect/disconnect events, and byte counts. They
-  never contain payload bytes or any decoded metadata.
-- The server is intentionally dumb: it is a relay, not a signaling protocol.
+- Logs contain room IDs, peer IDs, connect/disconnect events, and byte
+  counts. They never contain payload bytes or any decoded metadata.
+- The server is a minimal routing relay: it inspects envelope `type`, `to`,
+  and `from` to move ciphertext between two peers and nothing more.

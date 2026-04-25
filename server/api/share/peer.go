@@ -1,6 +1,7 @@
 package share
 
 import (
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -15,31 +16,30 @@ const (
 	maxMessageSize = 1 * 1024 * 1024 // 1 MiB — signaling frames are small; media flows P2P
 )
 
-// frame carries a message across the send channel along with its WS opcode
-// so text/binary framing is preserved verbatim through the relay.
-type frame struct {
-	typ  int
-	data []byte
-}
-
-// Peer is a single WebSocket connection in a room.
+// Peer is a single WebSocket connection in a room. Every peer carries a
+// server-assigned `id` used as the routing identity in envelope `from`/`to`
+// fields.
 type Peer struct {
+	id   string
 	room *Room
 	conn *websocket.Conn
-	send chan frame
+	send chan []byte
 
 	bytesIn  int64
 	bytesOut int64
 }
 
-// readPump reads frames from the WebSocket and hands them to the room for
-// relay. Payload bytes are never decoded or logged.
+// readPump reads envelope frames from the WebSocket and hands them to the
+// room for routing. Only TextMessage frames are processed; the envelope
+// `payload` field is forwarded as an opaque json.RawMessage and never
+// decoded, parsed, or logged.
 func (p *Peer) readPump(hub *Hub) {
 	defer func() {
 		p.room.leave(hub, p)
 		p.conn.Close()
 		slog.Info("share peer disconnected",
 			"room", p.room.id,
+			"peer", p.id,
 			"bytes_in", p.bytesIn,
 			"bytes_out", p.bytesOut,
 		)
@@ -61,11 +61,30 @@ func (p *Peer) readPump(hub *Hub) {
 			return
 		}
 		p.bytesIn += int64(len(data))
-		p.room.relay(p, typ, data)
+
+		if typ != websocket.TextMessage {
+			// The signaling protocol is JSON-over-text. Binary frames (or
+			// anything else) are ignored rather than forwarded blindly.
+			continue
+		}
+
+		var env clientEnvelope
+		if err := json.Unmarshal(data, &env); err != nil {
+			p.sendError("malformed envelope")
+			continue
+		}
+
+		switch env.Type {
+		case "message":
+			p.room.relay(p, env.To, env.Payload)
+		default:
+			p.sendError("unknown envelope type")
+		}
 	}
 }
 
-// writePump pulls frames from the send channel and writes them to the peer.
+// writePump pulls envelope bytes from the send channel and writes them to
+// the peer as TextMessage frames. All server-generated envelopes are JSON.
 func (p *Peer) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -81,11 +100,11 @@ func (p *Peer) writePump() {
 				p.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := p.conn.WriteMessage(msg.typ, msg.data); err != nil {
+			if err := p.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 				slog.Error("share websocket write error", "error", err, "room", p.room.id)
 				return
 			}
-			p.bytesOut += int64(len(msg.data))
+			p.bytesOut += int64(len(msg))
 		case <-ticker.C:
 			p.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := p.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -93,4 +112,15 @@ func (p *Peer) writePump() {
 			}
 		}
 	}
+}
+
+// sendError enqueues a server-originated error envelope to this peer.
+// The peer is still alive (we're inside readPump), so writing to its
+// send channel without the room lock is safe.
+func (p *Peer) sendError(msg string) {
+	data, err := json.Marshal(errorEnvelope{Type: "error", Message: msg})
+	if err != nil {
+		return
+	}
+	deliver(p, data, p.room.id)
 }
