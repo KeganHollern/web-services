@@ -21,7 +21,7 @@ export function SharePage() {
             <Header breadcrumbItems={breadcrumbs} />
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 flex justify-center items-center w-full p-4">
-                    {isViewer ? <ViewerPanel hash={hash} /> : <SharerPanel />}
+                    {isViewer ? <ViewerPanel key={hash} hash={hash} /> : <SharerPanel />}
                 </div>
             </main>
         </>
