@@ -45,9 +45,9 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
     const [peerRelayRequested, setPeerRelayRequested] = useState(false);
     const [relayEnabled, setRelayEnabled] = useState(false);
     const [transport, setTransport] = useState<Transport>("unknown");
+    const [stream, setStream] = useState<MediaStream | null>(null);
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
-    const streamRef = useRef<MediaStream | null>(null);
     const clientRef = useRef<SignalingClient | null>(null);
     const sessionRef = useRef<PeerSession | null>(null);
     const bridgeRef = useRef<WireBridge | null>(null);
@@ -139,8 +139,8 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                     if (cancelled) return;
                     setRelayPromptOpen(true);
                 },
-                onStream: (stream) => {
-                    streamRef.current = stream;
+                onStream: (s) => {
+                    setStream(s);
                 },
             });
             sessionRef.current = session;
@@ -183,7 +183,6 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
             clientRef.current?.close();
             clientRef.current = null;
             bridgeRef.current = null;
-            streamRef.current = null;
         };
     }, [hash]);
 
@@ -242,10 +241,10 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
     }, [phase, localConfirmed, remoteConfirmed]);
 
     useEffect(() => {
-        if (phase === "live" && videoRef.current && streamRef.current) {
-            videoRef.current.srcObject = streamRef.current;
+        if (phase === "live" && videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
         }
-    }, [phase]);
+    }, [phase, stream]);
 
     useEffect(() => {
         if (phase !== "live") return;
