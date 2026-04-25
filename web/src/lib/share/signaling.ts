@@ -24,6 +24,7 @@ export type SignalingEventMap = {
     "peer-joined": PeerEvent;
     "peer-left": PeerEvent;
     "message": SignalingMessage;
+    "reconnecting": { attempt: number };
     "error": { message: string };
     "close": { reason: string };
 };
@@ -65,11 +66,13 @@ export async function createRoom(opts: SignalingClientOptions = {}): Promise<str
 }
 
 export class SignalingClient {
+    private static readonly RECONNECT_BACKOFFS_MS = [500, 1000, 2000] as const;
+
     private ws: WebSocket | null = null;
     private cryptoKey: CryptoKey | null = null;
     private readonly rawKey: RoomKey;
     private roomId: string | null = null;
-    private reconnectUsed = false;
+    private reconnectAttempt = 0;
     private intentionalClose = false;
     private readonly listeners: {
         [K in keyof SignalingEventMap]?: Set<Listener<K>>;
@@ -190,17 +193,26 @@ export class SignalingClient {
 
     private async handleClose(): Promise<void> {
         if (this.intentionalClose) return;
-        if (this.reconnectUsed) {
-            this.emit("close", { reason: "reconnect exhausted" });
-            return;
+
+        const backoffs = SignalingClient.RECONNECT_BACKOFFS_MS;
+        while (this.reconnectAttempt < backoffs.length) {
+            const delay = backoffs[this.reconnectAttempt];
+            this.reconnectAttempt += 1;
+            this.emit("reconnecting", { attempt: this.reconnectAttempt });
+
+            await new Promise<void>((r) => setTimeout(r, delay));
+            if (this.intentionalClose) return;
+
+            try {
+                await this.openSocket();
+                this.reconnectAttempt = 0;
+                return;
+            } catch (e) {
+                this.emit("error", { message: e instanceof Error ? e.message : "reconnect failed" });
+            }
         }
-        this.reconnectUsed = true;
-        try {
-            await this.openSocket();
-        } catch (e) {
-            this.emit("error", { message: e instanceof Error ? e.message : "reconnect failed" });
-            this.emit("close", { reason: "reconnect failed" });
-        }
+
+        this.emit("close", { reason: "reconnect exhausted" });
     }
 }
 

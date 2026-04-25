@@ -40,6 +40,33 @@ class MockWebSocket {
     }
 }
 
+// Variant that errors out instead of opening — used to simulate failed reconnects.
+class FailingWebSocket {
+    static OPEN = 1;
+    readyState = 0;
+    url: string;
+    private listeners: Record<string, Set<(ev: unknown) => void>> = {};
+
+    constructor(url: string) {
+        this.url = url;
+        queueMicrotask(() => {
+            this.readyState = 3;
+            this.listeners["error"]?.forEach((h) => h({}));
+        });
+    }
+
+    addEventListener(type: string, handler: (ev: unknown) => void): void {
+        (this.listeners[type] ??= new Set()).add(handler);
+    }
+
+    removeEventListener(type: string, handler: (ev: unknown) => void): void {
+        this.listeners[type]?.delete(handler);
+    }
+
+    send(): void {}
+    close(): void {}
+}
+
 describe("SignalingClient", () => {
     it("never leaks the room key to the WebSocket", async () => {
         const key = generateRoomKey();
@@ -98,6 +125,89 @@ describe("SignalingClient", () => {
 
         expect(joined).toHaveBeenCalledWith({ peerId: "p1" });
         expect(left).toHaveBeenCalledWith({ peerId: "p1" });
+    });
+
+    it("retries with backoff and resets attempt counter after a successful reconnect", async () => {
+        vi.useFakeTimers();
+        try {
+            const key = generateRoomKey();
+            const sockets: MockWebSocket[] = [];
+            const client = new SignalingClient(key, {
+                baseUrl: "http://localhost",
+                wsFactory: (url) => {
+                    const s = new MockWebSocket(url);
+                    sockets.push(s);
+                    return s as unknown as WebSocket;
+                },
+            });
+
+            const reconnecting = vi.fn();
+            const closed = vi.fn();
+            client.on("reconnecting", reconnecting);
+            client.on("close", closed);
+
+            await client.connect("r");
+            expect(sockets.length).toBe(1);
+
+            // First drop — counter goes 0→1.
+            sockets[0].close();
+            await vi.advanceTimersByTimeAsync(500);
+            expect(sockets.length).toBe(2);
+            expect(reconnecting).toHaveBeenLastCalledWith({ attempt: 1 });
+
+            // Second drop — counter must have reset on the prior success,
+            // so this attempt is 1 again, not 2.
+            sockets[1].close();
+            await vi.advanceTimersByTimeAsync(500);
+            expect(sockets.length).toBe(3);
+            expect(reconnecting).toHaveBeenLastCalledWith({ attempt: 1 });
+            expect(reconnecting).toHaveBeenCalledTimes(2);
+            expect(closed).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("emits close only after retries are exhausted", async () => {
+        vi.useFakeTimers();
+        try {
+            const key = generateRoomKey();
+            let n = 0;
+            const liveSockets: MockWebSocket[] = [];
+            const client = new SignalingClient(key, {
+                baseUrl: "http://localhost",
+                wsFactory: (url) => {
+                    if (n === 0) {
+                        n += 1;
+                        const s = new MockWebSocket(url);
+                        liveSockets.push(s);
+                        return s as unknown as WebSocket;
+                    }
+                    n += 1;
+                    return new FailingWebSocket(url) as unknown as WebSocket;
+                },
+            });
+
+            const reconnecting = vi.fn();
+            const closed = vi.fn();
+            client.on("reconnecting", reconnecting);
+            client.on("close", closed);
+
+            await client.connect("r");
+            liveSockets[0].close();
+
+            // Advance past all three backoffs (500 + 1000 + 2000ms).
+            await vi.advanceTimersByTimeAsync(3500);
+
+            expect(reconnecting).toHaveBeenCalledTimes(3);
+            expect(reconnecting).toHaveBeenNthCalledWith(1, { attempt: 1 });
+            expect(reconnecting).toHaveBeenNthCalledWith(2, { attempt: 2 });
+            expect(reconnecting).toHaveBeenNthCalledWith(3, { attempt: 3 });
+            expect(closed).toHaveBeenCalledTimes(1);
+            expect(closed).toHaveBeenCalledWith({ reason: "reconnect exhausted" });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("decrypts incoming message envelopes before emitting", async () => {
