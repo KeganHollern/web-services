@@ -35,6 +35,7 @@ interface ViewerPanelProps {
 export function ViewerPanel({ hash }: ViewerPanelProps) {
     const [phase, setPhase] = useState<Phase>("connecting");
     const [error, setError] = useState<string | null>(null);
+    const [errorCanRetry, setErrorCanRetry] = useState(false);
     const [sas, setSas] = useState<string | null>(null);
     const [localConfirmed, setLocalConfirmed] = useState(false);
     const [remoteConfirmed, setRemoteConfirmed] = useState(false);
@@ -55,10 +56,24 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
     useEffect(() => {
         let cancelled = false;
         let fingerprintTimer: number | null = null;
+        let watchdogTimer: number | null = null;
 
-        const fail = (msg: string) => {
+        const clearTimers = () => {
+            if (fingerprintTimer != null) {
+                clearInterval(fingerprintTimer);
+                fingerprintTimer = null;
+            }
+            if (watchdogTimer != null) {
+                clearTimeout(watchdogTimer);
+                watchdogTimer = null;
+            }
+        };
+
+        const fail = (msg: string, canRetry = false) => {
             if (cancelled) return;
+            clearTimers();
             setError(msg);
+            setErrorCanRetry(canRetry);
             setPhase("error");
         };
 
@@ -135,10 +150,7 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                 const local = session.getLocalFingerprint();
                 const remote = session.getRemoteFingerprint();
                 if (local && remote) {
-                    if (fingerprintTimer != null) {
-                        clearInterval(fingerprintTimer);
-                        fingerprintTimer = null;
-                    }
+                    clearTimers();
                     void computeSAS(local, remote).then((code) => {
                         if (cancelled) return;
                         setSas(code);
@@ -146,11 +158,20 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                     });
                 }
             }, 100);
+
+            watchdogTimer = window.setTimeout(() => {
+                if (cancelled) return;
+                if (session.getRemoteFingerprint() != null) return;
+                fail(
+                    "The share session did not start. Ask the sharer to try again or reload this page.",
+                    true,
+                );
+            }, 30000);
         })();
 
         return () => {
             cancelled = true;
-            if (fingerprintTimer != null) clearInterval(fingerprintTimer);
+            clearTimers();
             sessionRef.current?.dispose();
             sessionRef.current = null;
             clientRef.current?.close();
@@ -275,8 +296,16 @@ export function ViewerPanel({ hash }: ViewerPanelProps) {
                     <CardTitle>{BadLinkTitle}</CardTitle>
                     <CardDescription>{error}</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Button asChild className="w-full">
+                <CardContent className="space-y-2">
+                    {errorCanRetry && (
+                        <Button
+                            className="w-full"
+                            onClick={() => window.location.reload()}
+                        >
+                            Retry
+                        </Button>
+                    )}
+                    <Button asChild variant={errorCanRetry ? "outline" : "default"} className="w-full">
                         <Link to="/">
                             <Home /> Back to share
                         </Link>
