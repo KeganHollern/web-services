@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
+
+import { Header } from "@/components/page-header";
+
 import { H, JUMP_VELOCITY, W } from "./game/constants";
 import { animatePaddle, setPaddleAnimation } from "./game/animation";
 import { applyPhysics, checkCollision, checkGameOver } from "./game/physics";
@@ -10,12 +13,16 @@ import { loadHighscore, updateHighscore } from "./game/highscore";
 import { play, preload, resume } from "./game/audio";
 
 export function PingPage() {
+    const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const navigate = useNavigate();
 
+    const breadcrumbs = [{ label: "ping.lystic.dev" }];
+
     useEffect(() => {
+        const container = containerRef.current;
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!container || !canvas) return;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
@@ -23,37 +30,30 @@ export function PingPage() {
 
         void preload();
 
-        const applyLetterboxTransform = () => {
+        const resize = () => {
             const dpr = window.devicePixelRatio || 1;
-            const cssWidth = window.innerWidth;
-            const cssHeight = window.innerHeight;
-            canvas.width = Math.round(cssWidth * dpr);
-            canvas.height = Math.round(cssHeight * dpr);
+            const rect = container.getBoundingClientRect();
+            const availW = Math.max(1, Math.floor(rect.width));
+            const availH = Math.max(1, Math.floor(rect.height));
+
+            // Largest 16:9 (W:H) box that fits inside the container.
+            const fit = Math.min(availW / W, availH / H);
+            const cssWidth = Math.max(1, Math.floor(W * fit));
+            const cssHeight = Math.max(1, Math.floor(H * fit));
+
             canvas.style.width = `${cssWidth}px`;
             canvas.style.height = `${cssHeight}px`;
+            canvas.width = Math.round(cssWidth * dpr);
+            canvas.height = Math.round(cssHeight * dpr);
 
-            const scale = Math.min(cssWidth / W, cssHeight / H);
-            const offsetX = (cssWidth - W * scale) / 2;
-            const offsetY = (cssHeight - H * scale) / 2;
-
-            // Paint letterbox bars black, then set the scaled transform so
-            // game-coordinate drawing fills the play area.
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, cssWidth, cssHeight);
-            ctx.setTransform(
-                dpr * scale,
-                0,
-                0,
-                dpr * scale,
-                dpr * offsetX,
-                dpr * offsetY,
-            );
+            // Scale game-coordinate drawing to fill the canvas exactly.
+            const scale = cssWidth / W;
+            ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
         };
 
-        applyLetterboxTransform();
-        window.addEventListener("resize", applyLetterboxTransform);
-        window.addEventListener("orientationchange", applyLetterboxTransform);
+        resize();
+        const resizeObserver = new ResizeObserver(resize);
+        resizeObserver.observe(container);
 
         const update = (dt: number) => {
             if (!state.isPlaying) return;
@@ -97,21 +97,28 @@ export function PingPage() {
         return () => {
             loop.stop();
             detachInput();
-            window.removeEventListener("resize", applyLetterboxTransform);
-            window.removeEventListener("orientationchange", applyLetterboxTransform);
+            resizeObserver.disconnect();
         };
     }, [navigate]);
 
     return (
-        <canvas
-            ref={canvasRef}
-            style={{
-                display: "block",
-                width: "100vw",
-                height: "100vh",
-                background: "#000",
-                touchAction: "none",
-            }}
-        />
+        <>
+            <Header breadcrumbItems={breadcrumbs} />
+            <main className="flex flex-1 flex-col overflow-hidden">
+                <div
+                    ref={containerRef}
+                    className="flex-1 flex justify-center items-center w-full p-4 min-h-0 min-w-0"
+                >
+                    <canvas
+                        ref={canvasRef}
+                        style={{
+                            display: "block",
+                            background: "#000",
+                            touchAction: "none",
+                        }}
+                    />
+                </div>
+            </main>
+        </>
     );
 }
