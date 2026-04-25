@@ -32,6 +32,17 @@ export function Post({ children, title, description, image }: BlogPostProps) {
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="container mx-auto py-6 space-y-6">
                     <Suspense fallback={<div className="flex-1 flex justify-center items-center w-full"><Loader /></div>}>
+                        {image && (
+                            <div className="mx-auto max-w-3xl px-6">
+                                <img
+                                    src={image}
+                                    alt=""
+                                    className="w-full aspect-[16/9] object-cover rounded-lg"
+                                    loading="eager"
+                                    decoding="async"
+                                />
+                            </div>
+                        )}
                         <MDXProvider components={mdxComponents}>
                             <div className="mx-auto max-w-3xl">
                                 <div className="p-6">{children}</div>

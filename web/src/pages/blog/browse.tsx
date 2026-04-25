@@ -27,6 +27,17 @@ export function BrowsePage() {
 
                             return (
                                 <div className={cn("mx-auto max-w-3xl", idx > 0 ? "border-t-2 pt-6" : "")} key={metadata.slug}>
+                                    {metadata.image && (
+                                        <Link to={{ pathname: `/${metadata.slug}` }} className="block mb-4">
+                                            <img
+                                                src={metadata.image}
+                                                alt=""
+                                                className="w-full aspect-[16/9] object-cover rounded-lg"
+                                                loading="lazy"
+                                                decoding="async"
+                                            />
+                                        </Link>
+                                    )}
                                     <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight">
                                         <Link to={{ pathname: `/${metadata.slug}` }} className="flex items-center gap-2">
                                             {metadata.title} <Hyperlink className="h-3 w-3" />
