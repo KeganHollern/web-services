@@ -5,11 +5,10 @@ description: |
     In this one, I wanted to continue on the Direct Memory Access (DMA) train of thought 
     and cover something much more complex than simple pointer swapping...
 slug: dma-code-execution
+image: /blog/dma-code-execution/cover.png
 ---
 
 # DMA Code Execution
-
-> **NOTE: THIS ARTICLE IS INCOMPLETE AND NEEDS REVIEWED**
 
 Hi everyone! It's been some time since my last post. 
 In this one, I wanted to continue on the Direct Memory Access (DMA) 
@@ -290,10 +289,217 @@ namespace LiquidPlumr {
 }
 ```
 
-> I never got around to finishing this post
+---
 
-Sorry for the abrupt end - I wanted to unlock this so new readers can learn a 
-bit about some more interesting uses for DMA. 
+The `Run` overload that takes no arguments is the smallest version of the loop, and a good place to start.
+
+```cpp
+uint64_t FunctionRunner::Run(uint64_t function) {
+	run_struct run_data;
+	run_data.do_exec = false;
+	run_data.function_address = function;
+	run_data.arguments_pointer = NULL;
+	run_data.return_value = NULL;
+
+	if (!this->initRunner(0)) return 0;
+	// write the struct first with do_exec = false so the function pointer
+	// lands before we flip the trigger
+	if (!this->_app->Write(this->_data, run_data)) return 0;
+	// now flip do_exec to true to fire the call
+	if (!this->_app->Write(this->_data, true)) return 0;
+
+	run_struct result;
+	result.do_exec = true;
+	while (result.do_exec) {
+		Sleep(1);
+		result = this->_app->Read<run_struct>(this->_data, false);
+	}
+
+	return result.return_value;
+}
+```
+
+Two writes, in that order: struct first, trigger second. If we collapsed them into one we'd be racing the victim's tick — `do_exec` could land before `function_address` and the shellcode would dereference a stale pointer. After flipping the trigger we just spin-poll the same `.data` region until our shellcode flips `do_exec` back to false. Once it does, `return_value` holds whatever the target function returned and we're done.
+
+The variadic overload is the same loop wrapped around argument marshalling.
+
+```cpp
+uint64_t FunctionRunner::Run(uint64_t function, uint32_t count, ...) {
+	va_list vl;
+	va_start(vl, count);
+	std::vector<uint64_t> function_args;
+	for (uint32_t i = 0; i < count; i++) {
+		function_args.push_back(va_arg(vl, uint64_t));
+	}
+	va_end(vl);
+
+	run_struct run_data;
+	run_data.do_exec = false;
+	run_data.function_address = function;
+	run_data.arguments_pointer = NULL;
+	run_data.return_value = NULL;
+
+	if (count <= 1) {
+		// single-arg case lives in the 8 bytes that follow run_struct in .data
+		run_data.arguments_pointer = this->_data + sizeof(run_struct);
+	} else {
+		run_data.arguments_pointer = this->Malloc(sizeof(uint64_t) * count);
+		if (run_data.arguments_pointer == NULL) return 0;
+	}
+
+	if (!this->initRunner(count)) return 0;
+	if (!this->_app->Write(run_data.arguments_pointer, function_args.data(), function_args.size() * sizeof(uint64_t))) return 0;
+	if (!this->_app->Write(this->_data, run_data)) return 0;
+	if (!this->_app->Write(this->_data, true)) return 0;
+
+	run_struct result;
+	result.do_exec = true;
+	while (result.do_exec) {
+		Sleep(1);
+		result = this->_app->Read<run_struct>(this->_data, false);
+	}
+
+	if (count > 1) this->Free(run_data.arguments_pointer);
+	return result.return_value;
+}
+```
+
+The `count <= 1` branch is the reason `run_struct` had those trailing 8 bytes back when we were laying it out. For a single argument we don't need to allocate anything — `arguments_pointer` just points at the byte that comes immediately after `return_value` in the same `.data` region we already own.
+
+For two or more arguments we have to allocate a packed `uint64_t[count]` somewhere on the victim's heap. Which is awkward, because we don't have a heap allocator yet — we have the ability to call functions, and that's it.
+
+`Malloc` and `Free` solve this by being thin wrappers around `Run` itself.
+
+```cpp
+uint64_t FunctionRunner::Malloc(size_t size) {
+	uint64_t fMalloc = this->_app->GetExport("ucrtbase.dll", "malloc");
+	if (!fMalloc) return 0;
+	return this->Run(fMalloc, 1, size);
+}
+bool FunctionRunner::Free(uint64_t address) {
+	uint64_t fFree = this->_app->GetExport("ucrtbase.dll", "free");
+	this->Run(fFree, 1, address);
+	return true;
+}
+```
+
+`malloc` takes one argument, so it falls into the `count <= 1` branch and never recurses — it lives entirely off the static `.data` region. That's the bootstrap. Once `Malloc` works, every other variadic `Run` call can allocate a real argument buffer on the victim's heap.
+
+---
+
+That leaves `initRunner`. Its job is to look at the current state of the victim and produce a `.text` payload that's exactly the right size for `argcount`. The shellcode for a 0-arg call is meaningfully shorter than the shellcode for an 8-arg call, and we want both to fit and behave correctly.
+
+The first thing it does is figure out whether we're patching a fresh call or re-patching one we've already touched.
+
+```cpp
+uint8_t cinst[5];
+if (!this->_app->Read(this->_call, cinst, sizeof(cinst), false)) return false;
+
+bool do_hijack = true;
+if (cinst[0] != 0xE8) {
+	if (cinst[0] != 0xE9) return false; // neither CALL nor our JMP
+	do_hijack = false;
+}
+```
+
+If the first byte is `0xE8`, it's still a real `CALL` — this is the first time through, so we'll need to recreate that call inside our shellcode and then overwrite the original instruction with our `JMP`. If it's `0xE9`, we already replaced it on a previous `initRunner` (e.g. we initialised for 1 arg, ran something, and now need 6 args). In that case the recreated call already exists at the start of the `.text` buffer; we leave the first 5 bytes alone and only rewrite the shellcode that follows it.
+
+The shellcode itself is built byte-by-byte into a `std::vector<uint8_t>`, branching on `argcount` as it goes. The interesting block is the argument-loading region — this is what actually scales.
+
+```cpp
+//--- set arg registers
+this->push(assembly, { 0x49, 0x8b, 0x0b });             // mov rcx, [r11]
+if (argcount > 1) {
+	this->push(assembly, { 0x49, 0x8b, 0x53, 0x08 });   // mov rdx, [r11+0x8]
+}
+if (argcount > 2) {
+	this->push(assembly, { 0x4d, 0x8b, 0x43, 0x10 });   // mov r8,  [r11+0x10]
+}
+if (argcount > 3) {
+	this->push(assembly, { 0x4d, 0x8b, 0x4b, 0x18 });   // mov r9,  [r11+0x18]
+}
+//--- push the rest onto the stack in reverse order
+if (argcount > 4) {
+	for (int i = argcount; i > 4; i--) {
+		uint8_t offset = 0x8 * (i - 1);
+		this->push(assembly, { 0x4d, 0x8b, 0x53, offset }); // mov r10, [r11+OFFSET]
+		this->push(assembly, { 0x41, 0x52 });               // push r10
+	}
+}
+//--- call function
+this->push(assembly, { 0xff, 0xd0 });                   // call rax
+//--- pop the stack args back off after the call returns
+if (argcount > 4) {
+	for (int i = argcount; i > 4; i--) {
+		this->push(assembly, { 0x41, 0x5a });           // pop r10
+	}
+}
+```
+
+For a 0-arg call this entire block collapses down to `call rax`. For a 6-arg call we get four register loads, two `mov r10 / push r10` pairs in reverse order, the call, and two matching `pop r10`s after it. Same payload shape — different size. The same conditional pattern wraps the args-pointer null check earlier in the buffer, so a 0-arg shellcode skips it entirely. The hard cap is 15 — beyond that the basic loop can't keep the stack honest, so `initRunner` just refuses.
+
+The one knot left is the conditional jumps to the register-restoration label. We don't know that label's absolute address until the whole shellcode is assembled, so the emitter writes a placeholder `0F 84 00 00 00 00` at each `je` site and a second pass scans the buffer for the placeholder and overwrites it with a real relative `JE`.
+
+```cpp
+std::vector<uint8_t> je_pattern = { 0x0f, 0x84, 0x0, 0x0, 0x0, 0x0 };
+for (int i = 0; i < assembly.size() - je_pattern.size(); i++) {
+	bool match = true;
+	for (int j = 0; j < je_pattern.size(); j++) {
+		if (assembly[i + j] != je_pattern[j]) { match = false; break; }
+	}
+	if (match) {
+		std::vector<uint8_t> new_je = this->__je(shellcode_address + i, shellcode_address + register_restoration);
+		for (int k = 0; k < new_je.size(); k++) assembly[i + k] = new_je[k];
+		i += (new_je.size() - 1);
+	}
+}
+```
+
+Once the buffer is finalised it gets written into the `.text` region. If this is a fresh init we also overwrite the original `CALL` with our `JMP` into `.text`. After that, the victim's tick thread does the rest of the work for us — every time it hits the patched call site it lands in our shellcode, checks the trigger flag, and either runs our function or falls straight through to register restoration.
+
+---
+
+Wired up against an actual game it looks like this:
+
+```cpp
+this->_pRunner = new FunctionRunner(
+    this->_pGame,
+    this->_pGame->GetBase() + DayZ::Offsets::UnusedDataBuffer,
+    this->_pGame->GetBase() + DayZ::Offsets::CallHijack,
+    this->_pGame->GetBase() + DayZ::Offsets::ServerOnlyTextBuffer
+);
+```
+
+A quick smoke test that exercises the whole pipeline — the variadic `Run`, the bootstrap `Malloc`, the heap-backed arg buffer, the spin-poll, and `Free`:
+
+```cpp
+uint64_t page = this->_pRunner->Malloc(0x1000);
+if (!page) return; // malloc failed
+this->_pRunner->Free(page);
+```
+
+The interesting case is sending an authenticated network packet. DayZ's server-RPC dispatcher is a 6-argument function, so we allocate a params buffer on the victim, fill it from our side, and call the dispatcher directly:
+
+```cpp
+void RemoteDayZ::SendRPC(uint32_t iType, uint64_t pTarget, uint64_t pParams) {
+    uint64_t pCGame = this->_pGame->Read<uint64_t>(
+        this->_pGame->GetBase() + DayZ::Offsets::pCGame
+    );
+    this->_pRunner->Run(
+        this->_pGame->GetBase() + DayZ::Offsets::fSendRPC,
+        6,
+        pCGame, pTarget, iType, pParams, true, NULL
+    );
+}
+```
+
+From the server's perspective the packet is indistinguishable from one the real client would have sent. Encryption, session token, anti-tamper — they all pass, because the call really is happening inside the legitimate process from the legitimate function pointer. We just provided the arguments.
+
+---
+
+That's the whole trick. We started with two problems — sending network messages and reaching _guarded pointers_ — and ended up with a way to call any function in the victim process with up to fifteen arguments and read its return value back, all by smuggling a few hundred bytes of shellcode into otherwise-dead segments of the binary.
+
+Anyway, that's it. Stay safe.
 
 {/* reference links */}
 [guarded regions]: https://www.unknowncheats.me/forum/valorant/457396-guarded-regions.html
