@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run check:posts && tsc -b && vite build",
     "lint": "eslint .",
+    "check:posts": "node scripts/check-blog-frontmatter.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },
