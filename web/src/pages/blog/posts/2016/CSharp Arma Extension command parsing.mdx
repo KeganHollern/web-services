@@ -1,30 +1,129 @@
-I spent a good portion of time last year working with server extensions in arma 3. I wanted to create a simple way to interface the script and the extension and to make adding functions into the extension as simple as possible. I came up with Command Requests as a solution. I use the format "Command|Parameter1~Parameter2~Parameter3" to make requests in the extension. I simplified the RVExtension down to just 5 lines of code. I am taking this code from a project I am actively working on so some functions called are not described.
+---
+title: C# Arma Extension command parsing
+description: |
+    I spent a good portion of time last year working with server extensions in [Arma 3].
+    I wanted a simple way to interface the script and the extension, and to make adding functions into the extension as easy as possible.
+slug: c-arma-extension-command-parsing
+image: /blog/c-arma-extension-command-parsing/cover.png
+---
 
-<img class="aligncenter" src="https://i.gyazo.com/982cb73750d7797fd42fa66df6fbab21.png" width="906" height="205" />I created the CommandRequest and Command classes in order to simplify how the commands are handled. The CommandRequest class parses the string into its Command and Parameters. The Command class is a base class to every command that is added into the server extension (more on this down below)
+# C# Arma Extension command parsing
 
-The CommandRequest class is very simple.
+I spent a good portion of time last year working with server extensions in [Arma 3].
+I wanted a simple way to interface the script and the extension, and to make adding functions into the extension as easy as possible.
+What I came up with is a tiny string protocol — `Command|Parameter1~Parameter2~Parameter3` — and a pair of classes that hide the parsing entirely.
+The whole `RVExtension` entry point ends up at five lines.
 
-<img class="aligncenter" src="https://i.gyazo.com/ade3a946d4edf3ebf78425589f4b9ff3.png" width="580" height="300" />
+This is pulled from a project I'm actively working on, so a few helper functions called below aren't shown.
 
-The constructor splits the strings and formats the Parameters that are not blank into a string[]
+---
 
-The Command class gets only a tiny bit more complicated.
+```csharp
+[DllExport("_RVExtension@12", CallingConvention = System.Runtime.InteropServices.CallingConvention.Winapi)]
+public static void RVExtension(StringBuilder output, int outputSize, [MarshalAs(UnmanagedType.LPStr)] string function)
+{
+    outputSize--;
 
-<img class="aligncenter" src="https://i.gyazo.com/ebb1204b533d63d3fc2cc215d0c0118d.png" width="437" height="358" />
+    CommandRequest request = new CommandRequest(function);
+    Command command = Command.getCommand(request.Command);
+    string result = command.execute(request.Parameters);
 
-The static getCommand function returns the class that is represented by the command sent into the extension or it returns an empty command class.
-Execute however is a virtual function. This is so we can override that function inside of classes like UpdatePlayers (more info below).
+    output.Append(result);
+}
+```
 
-All that is left is to extend Command from our UpdatePlayers class and override the execute function.
+`CommandRequest` parses the raw string into a command name and a parameter array.
+`Command.getCommand` looks up the right `Command` subclass for that name (or returns a no-op base instance), and `.execute` runs it.
+The result is written back into the buffer Arma handed us.
 
-<img class="aligncenter" src="https://i.gyazo.com/bc509294020dc945bf1a12b03216eacf.png" width="614" height="317" />
+---
 
-Now, when "UpdatePlayers|Player1" is sent to the extension via CallExtension, the function execute(string[] parts) inside of the UpdatePlayers class is called with the parameter {"Player1"}
+`CommandRequest` is essentially a glorified split.
 
-Most of my newer extensions inside arma run off of this method. I am by no means great at c# but I found this simple and easy to work with.
+```csharp
+class CommandRequest
+{
+    public string Command { get; }
+    public string[] Parameters { get; }
+    public CommandRequest(string input)
+    {
+        string[] parts = input.Split('|');
+        Command = parts[0];
+        if (parts.Count() == 2)
+        {
+            List<string> p = parts[1].Split('~').ToList<string>();
+            while (p.Remove("")) { }; //--- remove all black entires
+            Parameters = p.ToArray();
+        }
+    }
+}
+```
 
-&nbsp;
+The constructor splits on the pipe, keeps the first half as the command name, then splits the second half on `~` and uses `List.Remove("")` in a `while` loop to chew through any blank entries before handing the rest back as an array.
 
-<hr />
+---
 
-I used the info from Maca134's github to create the base project (<a href="https://github.com/maca134/ARMAExtCS/tree/master">more info on that here</a>).
+The `Command` base class is only a little more interesting.
+
+```csharp
+class Command
+{
+    public static Command getCommand(string input)
+    {
+        switch(input)
+        {
+            case "updatePlayers":
+            {
+                return new UpdatePlayers();
+            }
+        }
+        return new Command();
+    }
+
+    public virtual string execute(string[] parts)
+    {
+        return "";
+    }
+}
+```
+
+`getCommand` is a flat `switch` over the command name that returns an instance of the matching subclass, or a bare `Command` as a no-op fallback.
+`execute` is virtual so each subclass can override it with whatever it actually needs to do.
+
+---
+
+Adding a new command is then just a subclass and an override.
+
+```csharp
+class UpdatePlayers : Command
+{
+    public override string execute(string[] parts)
+    {
+        //--- Send online player list to server
+        if(parts.Count() > 0)
+        {
+            Globals.PController.updatePlayerInfo(parts);
+        }
+
+        PlayerInfo[] players = Globals.PController.getOnlinePlayers();
+
+        //--- parse playerinfo into a webrequest and send api request
+
+        return API.request(APIRequestType.updatePlayers, "");
+    }
+}
+```
+
+Now when `"updatePlayers|Player1"` comes in via [callExtension], `UpdatePlayers.execute` runs with `{ "Player1" }` as its parameter.
+New commands cost a single subclass plus one extra `case` in `getCommand`.
+
+---
+
+Most of my newer extensions inside Arma run off this pattern. I'm by no means great at C#, but I found this simple and easy to work with.
+
+The base project came from Maca134's [ARMAExtCS] repo, which is what I'd recommend starting from if you're going down this road yourself.
+
+{/* references */}
+[Arma 3]: https://arma3.com/
+[callExtension]: https://community.bistudio.com/wiki/callExtension
+[ARMAExtCS]: https://github.com/maca134/ARMAExtCS
