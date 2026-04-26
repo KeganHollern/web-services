@@ -36,36 +36,9 @@ See [web/README.md](web/README.md) for frontend configuration.
 ## TODO
 
 - file converter (ideally in-browser using WebAssembly)
-- enable mongodb secret sharing and horizontal scaling
-- enable mongodb for editor
+- enable redis secret sharing and horizontal scaling
+- enable redis for editor
 - support horizontal scaling for pods w/ collaborative editor
-- finish the Ping game and add a leaderboard
+- ping game multiplayer
 
 Feel free to add a PR suggesting new services!
-
-## Blog Post Migration TODO
-
-Posts that need updating from legacy format to modern MDX style.
-
-### Full migration needed (legacy WordPress/HTML format)
-
-- [ ] 2016/Advanced script variable hiding — needs: frontmatter
-- [ ] 2016/ArmA 3 UI Execution Exploit - In Detail — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/Blocking Scripted Remote Execution — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/CSharp Arma Extension command parsing — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/Having AI run after and kill you — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/How do Anticheats work — needs: frontmatter, HTML→markdown (ol/li/strong/em/hr), Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/How to detect hint menus — needs: frontmatter, HTML→markdown, Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/Manipulating vehicle locality — needs: frontmatter, HTML→markdown (ol/li), Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/Securing publicVariableEventHandlers — needs: frontmatter, HTML→markdown (ol/li), Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/Server password bruteforcing — needs: frontmatter, HTML→markdown (a/strong), Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-- [ ] 2016/What do cheaters use on ArmA 3 servers — needs: frontmatter, HTML→markdown (a/strong/em/hr), Gyazo→lystic images, WordPress markup cleanup, code screenshots→code blocks
-
-### Partial migration needed
-
-- [ ] 2017/extDB2 Exploit And Why You Should Use SQL_CUSTOM_V2 — needs: HTML img→markdown, WordPress classes cleanup, code screenshots→code blocks (has TODOs in file)
-
-### Content WIP / Incomplete
-
-- [ ] 2022/DMA Code Execution — marked "THIS ARTICLE IS INCOMPLETE AND NEEDS REVIEWED"
-- [ ] 2026/Creating Your First PCB — stub only, `visible: false`, no content, description is "TODO"
