@@ -125,20 +125,19 @@ In short, the aesthetic is high-contrast stenciled propaganda-poster illustratio
 1. **Draft the post first.** Title, description, and body must be settled before deriving a visual.
 2. **Derive a `Subject:` clause** from the post's title, frontmatter description, and a skim of the body. Concrete and visual: name the silhouette(s), the action, where the red-orange accent lands. No brand names. No text-the-model-might-letter.
 3. **Build the full prompt** by prepending the style anchor from `.claude/blog-cover-style.md` to your `Subject:` clause, exactly per that file's "Per-post prompt structure" section.
-4. **Show the proposed prompt to the user and wait for approval before invoking the API.** Image generation costs real money per call — never skip this step, even on rewrites. If the user wants edits, iterate on the prompt text only.
-5. **Invoke `generate-image`** once approved:
+4. **Invoke `generate-image`** directly — no approval step needed. State the prompt in your reply for transparency, then run:
 
    ```sh
    .claude/skills/generate-image/generate.sh \
-       --prompt "<approved prompt>" \
+       --prompt "<full prompt>" \
        --aspect-ratio 16:9 \
        --resolution 2k \
        --name <slug>-cover
    ```
 
-   (Default model — do not override.) Capture the printed `/tmp/...` path.
-6. **Move the file to the canonical location:** `web/public/blog/<slug>/cover.png`. Create the per-slug directory if needed. Rename to `cover.png` regardless of the source extension — the file is served as-is and the `.png` name is the convention even when the bytes are JPEG.
-7. **Set the frontmatter `image` field** to `/blog/<slug>/cover.png` (note: leading `/`, no `web/public` prefix — that's the public-served path).
+   (Default model — do not override.) Capture the printed `/tmp/...` path. Only ask first if the user has explicitly told you to gate cover generation, or the post's subject is genuinely ambiguous.
+5. **Move the file to the canonical location:** `web/public/blog/<slug>/cover.png`. Create the per-slug directory if needed. Rename to `cover.png` regardless of the source extension — the file is served as-is and the `.png` name is the convention even when the bytes are JPEG.
+6. **Set the frontmatter `image` field** to `/blog/<slug>/cover.png` (note: leading `/`, no `web/public` prefix — that's the public-served path).
 
 ### Missing `XAI_API_KEY`
 
