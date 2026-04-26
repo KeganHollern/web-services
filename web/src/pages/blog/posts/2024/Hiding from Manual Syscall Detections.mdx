@@ -1,0 +1,178 @@
+---
+title: Hiding from Manual Syscall Detections
+description: |
+    The last few weeks I have been taking a closer look at instrumentation callbacks and how I can avoid them when making manual syscalls.
+    If you haven't already, read my previous post on manual syscalls to get up to speed.
+slug: hiding-from-manual-syscall-detections
+date: 2024-01-14
+image: /blog/hiding-from-manual-syscall-detections/cover.png
+tags: [windows, cheats, anticheat, reverse-engineering]
+visible: true
+---
+
+# Hiding from Manual Syscall Detections
+
+The last few weeks I have been taking a closer look at instrumentation callbacks and how I can avoid them when making manual syscalls.
+If you haven't already, read [my previous post on manual syscalls] to get up to speed.
+
+Manual syscalls let me sidestep user-mode hooks on **NtDll** by issuing the `syscall` instruction myself. That's only half the battle. An anticheat can register an [instrumentation callback] with the kernel and get a `CONTEXT` snapshot every time *any* syscall returns to user mode. From inside that callback, the anticheat is free to inspect `RIP`, `RSP`, and the entire stack — and decide whether the caller looks legitimate.
+
+I can't really _disable_ instrumentation callbacks, because an anticheat could very well check for that. I also don't want to walk into the kernel and intercept the callback there. So if I can't disable or intercept it, I have to obfuscate my way through it. Flying _under the radar_ is my preference when dealing with anticheat measures — it's almost always far easier to slip past a detection than to fight it.
+
+The result is **ShadowJmp**, a small proof-of-concept I put together to walk through three layered tricks for hiding a manual syscall from an instrumentation callback. The full source lives at [ShadowJmp on GitHub].
+
+---
+
+To trip detections on demand, I built a sample app around a basic Windows keylogger driven by `NtUserSetWindowsHookEx` and friends. Each keyboard event burns through a handful of syscalls, which gives me lots of opportunities to inspect the callback's view of the world.
+
+The instrumentation callback itself is straightforward — register it via `NtSetInformationProcess` with class `0x28`, point it at a small assembly bridge, and recover the real `Rip` / `Rsp` / `Rcx` from the TEB:
+
+```c
+void callback(CONTEXT* ctx) {
+    uint64_t teb = (uint64_t)NtCurrentTeb();
+
+    // these get clobbered when the callback fires; pull them back from the TEB
+    ctx->Rip = *(uint64_t*)(teb + 0x02d8);
+    ctx->Rsp = *(uint64_t*)(teb + 0x02e0);
+    ctx->Rcx = ctx->R10;
+
+    // dump the stack from the anticheat's perspective and bail back out
+    PrintStackAI(ctx);
+    RtlRestoreContext(ctx, NULL);
+}
+```
+
+With that wired up, I can dump the stack from the anticheat's perspective every time a syscall fires. This is exactly the view a real instrumentation callback would have. If it looks bad here, I'd be banned.
+
+---
+
+The first detection is `RIP`. After a manual syscall, `RIP` points at whatever instruction follows the `syscall` in my own code. Under any normal program, that address would land inside a Windows library — almost always **NtDll**. Mine doesn't.
+
+```text
+STACK DUMP:
+        [19344] stack[0]: 0x00007FF74A98586D syscall_idx        <--- BAD
+        [19344] stack[1]: 0x00007FF74A9858F1 make_syscall       <--- BAD
+```
+
+Both frames sit inside my module. Easy ban.
+
+The fix from my previous post still works here: instead of running `syscall` in my own code, I find a `syscall; ret;` instruction pair that already exists inside `NtDll` and `jmp` to it. The kernel returns to that address, and from the callback's point of view `RIP` lands neatly back inside `NtDll`.
+
+```asm
+syscall_idx PROC
+    xor rax, rax
+    mov r10, rcx
+    mov eax, r12d
+    jmp ntSyscall              ; -> syscall; ret;
+syscall_idx ENDP
+```
+
+To find `ntSyscall` at runtime I just scan forward from a known export until I see the bytes `0F 05 C3`:
+
+```c
+unsigned char pattern[3] = {
+    0x0F, 0x05,   //  syscall;
+    0xC3          //  ret;
+};
+unsigned char* addr = (unsigned char*)GetProcAddress(hNtdll, "ZwClearEvent");
+while (addr[0] != pattern[0] || addr[1] != pattern[1] || addr[2] != pattern[2])
+    addr++;
+```
+
+After that change, `stack[0]` is now a legitimate `NtDll` address. But `stack[1]` is still `make_syscall`. The callback can stack-walk past `RIP` and find me anyway.
+
+```text
+STACK DUMP:
+        [30920] stack[0]: 0x00007FF9E006FB34 NtClearEvent       <--- GOOD
+        [30920] stack[1]: 0x00007FF7DF3D58F1 make_syscall       <--- BAD
+```
+
+---
+
+The second detection is `RSP`. The stack contains a lot of valuable information about *who* is making the syscall, and an instrumentation callback is free to peek at as much of it as it wants.
+
+To hide `RSP`, I _pivot_ before the syscall. A [stack pivot] swaps the real stack pointer with a pointer to memory I control — a fake stack with no incriminating return addresses — and I swap it back after.
+
+```asm
+lea r13, [fakeStack+99900h]
+xchg rsp, r13              ; pivot to the fake stack
+syscall
+xchg rsp, r13              ; restore the real stack
+ret
+```
+
+By itself, this hides `RSP` but breaks the `RIP` trick. The anticheat sees a clean stack but a bad return address.
+
+```text
+STACK DUMP:
+        [41868] stack[0]: 0x00007FF7F325361E syscall_idx        <--- BAD
+```
+
+---
+
+Combining the two is where it gets interesting. If I pivot first and then `jmp` into `NtDll`'s `syscall; ret;`, the `ret` pops a return target from whatever stack it's currently on — and that's my fake stack. There is no return address there. Crash.
+
+```asm
+xchg rsp, r13              ; pivot
+jmp ntSyscall              ; -> syscall; ret;
+                           ;    ret pops from the fake stack -- explodes
+```
+
+The fix is a [ROP chain]. Before jumping into `NtDll`, I plant a gadget address at `[rsp]` on the fake stack so that the `ret` inside `NtDll` returns into a small piece of code that restores my real stack and returns to my caller. For ShadowJmp I hardcoded a perfect gadget so the chain is one entry long:
+
+```asm
+; the gadget — restore RSP, then return to the original caller
+test_rop_gadget PROC
+    xchg rsp, r13
+    ret
+test_rop_gadget ENDP
+```
+
+The full pivot-and-jump path inside `syscall_idx` looks like this:
+
+```asm
+; pivot to the fake stack (real RSP saved in r13)
+lea r13, [fakeStack+99900h]
+xchg rsp, r13
+
+; install the ROP gadget at [rsp] so the ret inside NtDll lands on it
+mov r12, ropGadget
+mov [rsp], r12
+
+; jmp into ntdll's `syscall; ret;`
+jmp ntSyscall
+```
+
+Control flow goes: `NtDll` runs `syscall`, then its `ret` pops my gadget address off the fake stack. The gadget runs `xchg rsp, r13` to restore the real stack, and its own `ret` returns into my caller as if nothing happened. The instrumentation callback, which fires _before_ any of that unwinding, sees a clean `RIP` inside `NtDll` and a stack that points at the gadget instead of my code:
+
+```text
+STACK DUMP:
+        [41348] stack[0]: 0x00007FF9E006FB34 NtClearEvent               <--- GOOD
+        [41348] stack[1]: 0x00007FF70AAA1262 ILT+605(test_rop_gadget)   <--- GOOD
+```
+
+In a real implementation the gadget wouldn't be a function I shipped — it would be an instruction sequence found inside an existing legitimate module so `stack[1]` looks like ordinary code, too.
+
+---
+
+This isn't flawless. A few things it does *not* defeat:
+
+1. _Deep stack walks._ The callback can keep walking past `stack[1]`. ShadowJmp gives me control over the first couple of frames; everything below that depends on how far I'm willing to extend the ROP chain and where the gadgets come from.
+2. _Module-region checks on the gadget._ If the gadget address isn't inside a region that looks plausible — loaded module, sensible permissions, near a real export — a determined anticheat will flag it.
+3. _Kernel-side checks._ Anything done from a kernel driver — thread inspection, MSR-based syscall hooks, `PspCreateThreadNotify`-style callbacks — sees through all of this. ShadowJmp is purely a user-mode dodge against a user-mode signal.
+4. _Fake-stack memory._ The fake stack is a static buffer in my module's `.data`. That's a pretty weak hiding spot if anyone goes looking.
+
+It's also worth noting the syscall IDs are hardcoded in the demo (`virtual_alloc = 24`, `create_thread = 199`, etc.). For anything beyond a proof of concept you'd resolve these at runtime by parsing `NtDll` from disk — see the previous post for how.
+
+---
+
+The full proof of concept, including the keylogger harness and the instrumentation callback I used to verify each step, is at [ShadowJmp on GitHub]. I'd recommend stepping through it under a debugger and watching the stack dump change as you toggle each technique on — it's a much better demo than reading the README.
+
+Anyway, that was a fun rabbit hole. Stay curious.
+
+{/* references */}
+[my previous post on manual syscalls]: /blog/manual-syscalls-on-windows
+[instrumentation callback]: https://winternl.com/detecting-manual-syscalls-from-user-mode/
+[stack pivot]: https://ir0nstone.gitbook.io/notes/types/stack/stack-pivoting
+[ROP chain]: https://www.ired.team/offensive-security/code-injection-process-injection/binary-exploitation/rop-chaining-return-oriented-programming
+[ShadowJmp on GitHub]: https://github.com/KeganHollern/ShadowJmp
