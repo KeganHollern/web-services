@@ -9,7 +9,7 @@ export function SwapRouter() {
         <SwapWeb3Provider>
             <Routes>
                 <Route path="/" element={<SwapPage />} />
-                <Route path="*" element={<PageNotFound domain="swap.lystic.dev" />} />
+                <Route path="*" element={<PageNotFound domain="lystic.dev/swap" />} />
             </Routes>
         </SwapWeb3Provider>
     )

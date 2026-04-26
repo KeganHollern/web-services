@@ -52,7 +52,7 @@ export function BlogRouter() {
             {routes}
 
             {/* for any blog post route not defined */}
-            <Route path="*" element={<PageNotFound domain="blog.lystic.dev" />} />
+            <Route path="*" element={<PageNotFound domain="lystic.dev/blog" />} />
         </Routes >
     )
 }

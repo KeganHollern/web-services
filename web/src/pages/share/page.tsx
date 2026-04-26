@@ -10,7 +10,7 @@ export function SharePage() {
     const { hash } = useLocation();
     const isViewer = hash.length > 1;
 
-    const breadcrumbs = [{ label: "share.lystic.dev" }];
+    const breadcrumbs = [{ label: "lystic.dev/share" }];
 
     return (
         <>

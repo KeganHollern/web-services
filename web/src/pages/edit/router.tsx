@@ -7,7 +7,7 @@ export function EditRouter() {
     return (
         <Routes>
             <Route path="/" element={<EditPage />} />
-            <Route path="*" element={<PageNotFound domain="edit.lystic.dev" />} />
+            <Route path="*" element={<PageNotFound domain="lystic.dev/edit" />} />
         </Routes>
     )
 }

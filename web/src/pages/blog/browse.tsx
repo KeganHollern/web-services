@@ -25,7 +25,7 @@ function useAvailableTags() {
 
 export function BrowsePage() {
     const breadcrumbs = [
-        { label: "blog.lystic.dev" },
+        { label: "lystic.dev/blog" },
     ];
 
     const [searchParams] = useSearchParams();

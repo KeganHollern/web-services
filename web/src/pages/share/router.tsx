@@ -8,7 +8,7 @@ export function ShareRouter() {
     return (
         <Routes>
             <Route path="/" element={<SharePage />} />
-            <Route path="*" element={<PageNotFound domain="share.lystic.dev" />} />
+            <Route path="*" element={<PageNotFound domain="lystic.dev/share" />} />
         </Routes>
     );
 }

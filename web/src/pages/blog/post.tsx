@@ -31,7 +31,7 @@ function formatPublishDate(date: string): string | null {
 
 export function Post({ children, title, description, image, date, tags }: BlogPostProps) {
     const breadcrumbs = [
-        { label: "blog.lystic.dev", href: "/" },
+        { label: "lystic.dev/blog", href: "/" },
         { label: title }
     ];
     const formattedDate = date ? formatPublishDate(date) : null;

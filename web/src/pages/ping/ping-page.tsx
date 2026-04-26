@@ -18,7 +18,7 @@ export function PingPage() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const navigate = useNavigate();
 
-    const breadcrumbs = [{ label: "ping.lystic.dev" }];
+    const breadcrumbs = [{ label: "lystic.dev/ping" }];
 
     useEffect(() => {
         const container = containerRef.current;

@@ -6,7 +6,7 @@ export function PingRouter() {
     return (
         <Routes>
             <Route path="/" element={<PingPage />} />
-            <Route path="*" element={<PageNotFound domain="ping.lystic.dev" />} />
+            <Route path="*" element={<PageNotFound domain="lystic.dev/ping" />} />
         </Routes>
     )
 }

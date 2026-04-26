@@ -569,7 +569,7 @@ const TABS: { id: Tab; label: string }[] = [
 export function SwapPage() {
     const [activeTab, setActiveTab] = useState<Tab>("swap");
 
-    const breadcrumbs = [{ label: "swap.lystic.dev" }];
+    const breadcrumbs = [{ label: "lystic.dev/swap" }];
 
     return (
         <>

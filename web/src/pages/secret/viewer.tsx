@@ -23,7 +23,7 @@ export function SecretViewerPage() {
     }, [error]);
 
     const breadcrumbs = [
-        { label: "secret.lystic.dev", href: "/" },
+        { label: "lystic.dev/secret", href: "/" },
         { label: id }
     ];
 

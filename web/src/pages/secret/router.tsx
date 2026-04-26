@@ -9,7 +9,7 @@ export function SecretRouter() {
         <Routes>
             <Route path="/" element={<SecretEditorPage />} />
             <Route path="/s/:id" element={<SecretViewerPage />} />
-            <Route path="*" element={<PageNotFound domain="secret.lystic.dev" />} />
+            <Route path="*" element={<PageNotFound domain="lystic.dev/secret" />} />
         </Routes>
     )
 }

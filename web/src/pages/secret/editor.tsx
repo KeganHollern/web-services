@@ -17,7 +17,7 @@ export function SecretEditorPage() {
     const { shareLink } = useLinkShare();
 
     const breadcrumbs = [
-        { label: "secret.lystic.dev" },
+        { label: "lystic.dev/secret" },
     ];
 
     // this ref holds the monaco editor so we can call functionality on it like `getValue()` to get the content
