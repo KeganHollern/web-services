@@ -1,5 +1,6 @@
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
+import { Badge } from "@/components/ui/badge";
 import { MDXProvider } from "@mdx-js/react";
 import { ArrowLeft, Loader } from "lucide-react";
 import { Suspense } from "react";
@@ -13,6 +14,7 @@ type BlogPostProps = {
     description?: string
     image?: string
     date?: string
+    tags?: string[]
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -27,7 +29,7 @@ function formatPublishDate(date: string): string | null {
     return dateFormatter.format(new Date(Date.UTC(y, m - 1, d)));
 }
 
-export function Post({ children, title, description, image, date }: BlogPostProps) {
+export function Post({ children, title, description, image, date, tags }: BlogPostProps) {
     const breadcrumbs = [
         { label: "blog.lystic.dev", href: "/" },
         { label: title }
@@ -60,9 +62,12 @@ export function Post({ children, title, description, image, date }: BlogPostProp
                         <MDXProvider components={mdxComponents}>
                             <div className="mx-auto max-w-3xl">
                                 <div className="p-6">
-                                    {formattedDate && (
-                                        <div className="text-sm text-muted-foreground mb-4">
-                                            {formattedDate}
+                                    {(formattedDate || (tags && tags.length > 0)) && (
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 text-sm text-muted-foreground">
+                                            {formattedDate && <span>{formattedDate}</span>}
+                                            {tags && tags.map((tag) => (
+                                                <Badge key={tag} variant="secondary">{tag}</Badge>
+                                            ))}
                                         </div>
                                     )}
                                     {children}

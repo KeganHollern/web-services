@@ -24,6 +24,7 @@ description: |
 slug: kebab-case-slug
 date: 2026-04-26
 image: /blog/kebab-case-slug/cover.png
+tags: [arma, sqf, security]
 visible: true
 ---
 ```
@@ -33,6 +34,7 @@ visible: true
 - `slug`: kebab-case, used as the URL path
 - `date`: Publish date in ISO 8601 `YYYY-MM-DD`. Rendered human-readably on the post page (e.g. `April 26, 2026`). For new posts use today's date; do not quote the value.
 - `image`: Path (under `web/public/`) to the cover image. Wired to `og:image` / `twitter:image` via `<PageMeta>` automatically. See **Cover image** below. Omit if no cover exists yet.
+- `tags`: Inline YAML array of lowercase, hyphenated topic tags. Pick 2–5 from the existing vocabulary established in other posts (e.g. `arma`, `sqf`, `dayz`, `tarkov`, `enfusion`, `enscript`, `dma`, `cheats`, `anticheat`, `exploit`, `security`, `windows`, `hardware`, `firmware`, `pcb`, `crypto`, `ethereum`, `web3`, `reverse-engineering`, `modding`). Reuse before inventing — grep `web/src/pages/blog/posts/**/*.mdx` for existing tags first. Tags are rendered as badges next to the date on the post page.
 - `visible`: Set to `false` for drafts; omit or set `true` for published posts
 
 ## Post Structure

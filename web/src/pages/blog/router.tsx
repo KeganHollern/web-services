@@ -23,7 +23,7 @@ export function BlogRouter() {
         return (
             <Route path={`:year?/:month?/:day?/${metadata.slug}`}>
                 <Route index element={
-                    <Post title={metadata.title} description={metadata.description} image={metadata.image} date={metadata.date}>
+                    <Post title={metadata.title} description={metadata.description} image={metadata.image} date={metadata.date} tags={metadata.tags}>
                         <LazyPost />
                     </Post>
                 } />
