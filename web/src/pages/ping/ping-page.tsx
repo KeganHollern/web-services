@@ -4,14 +4,14 @@ import { useNavigate } from "react-router";
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
 
-import { H, JUMP_VELOCITY, W } from "./game/constants";
 import { animatePaddle, setPaddleAnimation } from "./game/animation";
+import { play, preload, resume } from "./game/audio";
+import { H, JUMP_VELOCITY, W } from "./game/constants";
+import { loadHighscore, updateHighscore } from "./game/highscore";
+import { attachInput } from "./game/input";
+import { createLoop } from "./game/loop";
 import { applyPhysics, checkCollision, checkGameOver } from "./game/physics";
 import { createInitialState, resetState } from "./game/state";
-import { createLoop } from "./game/loop";
-import { attachInput } from "./game/input";
-import { loadHighscore, updateHighscore } from "./game/highscore";
-import { play, preload, resume } from "./game/audio";
 
 export function PingPage() {
     const containerRef = useRef<HTMLDivElement | null>(null);

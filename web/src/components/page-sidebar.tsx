@@ -43,7 +43,7 @@ export function Sidebar({ children }: SidebarProps) {
         },
         {
             title: "Ping",
-            url: "https://lystic.dev/ping",
+            url: "/ping",
             icon: Gamepad2,
         },
     ];
