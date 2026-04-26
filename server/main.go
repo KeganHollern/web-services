@@ -20,6 +20,11 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+func serveRSS(c echo.Context) error {
+	c.Response().Header().Set(echo.HeaderContentType, "application/rss+xml; charset=utf-8")
+	return c.File("dist/rss.xml")
+}
+
 func main() {
 	// Configure log level from environment
 	level := slog.LevelInfo
@@ -49,7 +54,7 @@ func main() {
 	e := echo.New()
 
 	// Global Middleware
-	e.Use(middleware.Logger())
+	e.Use(middleware.Logger()) //nolint:staticcheck // pre-existing; migration to RequestLogger is out of scope here
 	e.Use(middleware.Recover())
 
 	// Redirect www.lystic.dev → lystic.dev (301)
@@ -74,6 +79,10 @@ func main() {
 	// NOTE: nginx also restricts body size, this is just a second layer of protection
 	// to prevent large requests from hitting the server.
 	e.Use(middleware.BodyLimit("100M"))
+
+	// Serve the RSS feed with the correct Content-Type. Go's default mime
+	// table maps .xml → text/xml, but feed readers expect application/rss+xml.
+	e.GET("/rss.xml", serveRSS)
 
 	// Serve react SPA
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
