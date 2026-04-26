@@ -15,6 +15,7 @@ import (
 	"github.com/KeganHollern/web-services/server/api/secret"
 	"github.com/KeganHollern/web-services/server/api/share"
 	"github.com/KeganHollern/web-services/server/db"
+	"github.com/KeganHollern/web-services/server/redirect"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -63,6 +64,12 @@ func main() {
 			return next(c)
 		}
 	})
+
+	// Redirect known service subdomains (blog., secret., edit., swap.,
+	// share., ping.) to their canonical /<name>/ subpath on the apex.
+	// Runs before static serving and /api/* registration; /api/* paths
+	// are passed through so WebSocket handshakes keep working.
+	e.Pre(redirect.Subdomain())
 
 	// NOTE: nginx also restricts body size, this is just a second layer of protection
 	// to prevent large requests from hitting the server.
