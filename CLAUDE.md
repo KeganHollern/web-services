@@ -27,6 +27,8 @@ There is no root-level package manager — all commands run inside `server/` or 
 
 **Combined dev (VS Code):** the `Compound` launch config in [.vscode/launch.json](.vscode/launch.json) starts `Launch Server` + `Web UI` together.
 
+**Available tooling:** `tesseract` (5.5.2, via Homebrew) is installed on this machine — use it for OCR when the user provides an image and you need its text content.
+
 ## Architecture essentials
 
 ### Subdomain-based SPA routing
