@@ -12,13 +12,27 @@ type BlogPostProps = {
     title: string
     description?: string
     image?: string
+    date?: string
 }
 
-export function Post({ children, title, description, image }: BlogPostProps) {
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+});
+
+function formatPublishDate(date: string): string | null {
+    const [y, m, d] = date.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return dateFormatter.format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+export function Post({ children, title, description, image, date }: BlogPostProps) {
     const breadcrumbs = [
         { label: "blog.lystic.dev", href: "/" },
         { label: title }
     ];
+    const formattedDate = date ? formatPublishDate(date) : null;
 
     return (
         <>
@@ -45,7 +59,14 @@ export function Post({ children, title, description, image }: BlogPostProps) {
                         )}
                         <MDXProvider components={mdxComponents}>
                             <div className="mx-auto max-w-3xl">
-                                <div className="p-6">{children}</div>
+                                <div className="p-6">
+                                    {formattedDate && (
+                                        <div className="text-sm text-muted-foreground mb-4">
+                                            {formattedDate}
+                                        </div>
+                                    )}
+                                    {children}
+                                </div>
                             </div>
                         </MDXProvider>
                         <div className="mx-auto max-w-4xl">

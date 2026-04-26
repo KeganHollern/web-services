@@ -10,7 +10,7 @@ export interface PostMetadata {
     description: string
     visible: boolean
     image?: string
-    // TODO: date?
+    date: string
     // TODO: tags[]
 }
 export interface PostModule {
@@ -33,6 +33,8 @@ export const Modules = Object.entries(_modules).map(([filePath, importFn]): Post
     const description = rawMetadata["description"] ?? "";
     const visible = rawMetadata["visible"] ?? "true"
     const image: string | undefined = rawMetadata["image"];
+    const rawDate = rawMetadata["date"];
+    const date: string = rawDate instanceof Date ? rawDate.toISOString().slice(0, 10) : (rawDate ?? "");
 
 
     return {
@@ -43,6 +45,7 @@ export const Modules = Object.entries(_modules).map(([filePath, importFn]): Post
             description,
             visible,
             image,
+            date,
         },
         importFn,
     }
