@@ -1,11 +1,20 @@
-I needed to find a new way to hide global variables from being accessed, 
-or even found for that matter, from threads that are not created by me.
+---
+title: Advanced Script Variable Hiding
+description: |
+    I needed a new way to hide global variables from being accessed — or even found, for that matter — by threads that aren't created by me.
+    This is useful for anticheats because it lets them access and modify values from multiple threads without exposing those values to any malicious thread.
+slug: advanced-script-variable-hiding
+image: /blog/advanced-script-variable-hiding/cover.png
+---
 
-This is useful for Anticheats as it allows them to access and modify values
-from multiple threads without subjecting those values to being accessed
-from any malicious threads.
+# Advanced Script Variable Hiding
 
-Now this code is a little complicated, so I will do my best to explain it.
+I needed a new way to hide global variables from being accessed — or even found, for that matter — by threads that aren't created by me.
+This is useful for anticheats because it lets them access and modify values from multiple threads without exposing those values to any malicious thread.
+
+The code is a little dense, so I'll do my best to walk through it.
+
+---
 
 ```sqf
 _GLOBAL_ARRAY = [[], []];
@@ -54,28 +63,16 @@ _set = {
 };
 ```
 
-So the key to this entire system is `_GLOBAL_ARRAY`. This variable stores the
-values of our "global variables". I will be referencing them as such as they
-essentially act in the same fashion.
+The key to the entire system is `_GLOBAL_ARRAY`. It stores the values of our _global variables_ — I'll keep referring to them that way since they essentially behave the same.
 
-now the `_get` and `_set` functions do all of the heavy lifting. 
-These are what manipulate the `_GLOBAL_ARRAY` so that this system works.
+`_get` and `_set` do all the heavy lifting, manipulating `_GLOBAL_ARRAY` so the rest of the system works.
 
-the `_get` function is the simplest by far, so I will explain that first. 
-We start off by finding the variable name in the global list and if the 
-variable does not exist we return the default value passed in the 
-`_data` parameter. If it is found we simply return the value from the 
-global array.
+`_get` is the simplest by far, so I'll explain it first. It looks up the variable name in the name list, and if the variable doesn't exist it returns the default value passed in `_data`. If it's found, it returns the value from the parallel value list.
 
-the `_set` function does the hardest work. It needs to modify the global 
-value without creating a second instance of the array. No copying, just 
-modifying. If the name isn't found within the value list we add the name to
-the name list and the value in the value list. If it is found, we use the
-`set` command to modify the value without creating a second instance.
+`_set` does the harder work. It needs to modify the global value without creating a second instance of the array — no copying, just mutating. If the name isn't in the name list, push the name onto the name list and the value onto the value list. If it is, use `set` to overwrite the value in place.
 
-Below those functions I included the first test I ran on this code.
-Works perfectly, every second it flips the value of the variable
-"test" from true to false.
+Below those functions is the first test I ran on this. Works perfectly — every second it flips the value of `"test"` from true to false.
 
-I consider this some of my best work. A neat little function that is
-very useful for anticheats.
+---
+
+I consider this some of my best work. A neat little function that's very useful for anticheats.
