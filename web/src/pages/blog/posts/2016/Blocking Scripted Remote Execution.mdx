@@ -1,15 +1,57 @@
-Recently, there have been a lot of server file leaks. The way cheaters obtain server files has always been the same. Remote Execute some code up to the server that retrieves data and returns it back to the cheater's client. Upon receiving data the cheater writes it to their log file or profilenamespace or something similar.
+---
+title: Blocking Scripted Remote Execution
+description: |
+    Recently, there have been a lot of server file leaks.
+    The way cheaters obtain server files has always been the same — Remote Execute some code up to the server that retrieves data and returns it back to the cheater's client.
+slug: blocking-scripted-remote-execution
+image: /blog/blocking-scripted-remote-execution/cover.png
+---
 
-Well, after years of cheating, I figured out the most effective use of an RE is to install some sort of unloggable backdoor. Some way to get messages up to the server without being at the mercy of the Scripts.txt filter. This is where markers come into play.
+# Blocking Scripted Remote Execution
 
-By setting the text of a marker, the cheater can send messages to all clients without having any filters to worry about.
+Recently, there have been a lot of server file leaks.
+The way cheaters obtain server files has always been the same — Remote Execute some code up to the server that retrieves data and returns it back to the cheater's client.
+On receipt the cheater writes the data into [profileNamespace] or a log file or wherever else they like.
 
-The cheater creates a thread on the server using some loggable Remote Execution (createUnit / addMPEventHandler / ect.) that looks for the text of a specific marker to change and executes the text within it.
+After enough time on both sides of this, I've come to think the most effective use of an RE isn't pulling files at all — it's installing some sort of unloggable backdoor.
+A way to push messages up to the server without being at the mercy of the [Scripts.txt] filter.
+That's where _markers_ come in.
 
-Without getting into gritty details of how the Remote Execution actually works, this is a way I came up with to block it. Look and then I will explain.
+Setting the text of a marker broadcasts a string to every connected client without tripping any of the script filtering.
+The cheater seeds a long-running thread on the server using whatever loggable RE they can land — `createUnit`, `addMPEventHandler`, and friends — and that thread watches a specific marker for text changes and executes whatever shows up.
+The expensive, traceable part happens once; everything after is invisible.
 
-<img class="aligncenter" src="https://i.gyazo.com/5c778df254574428b805f6c057671ba9.png" width="830" height="218" />
+---
 
-So this loops through all markers. It checks if that marker is invisible and has blank text. It then sets the text of the marker to "RTEXT = true;". If this marker is being exploited for a remote execution then the code RTEXT = true; will execute. We wait one second and check to see if that code did in fact execute. It then deletes the marker to prevent further exploitation of the Remote Execution.
+Without going further into how the RE itself lands, here's an approach I came up with to break the marker side of it:
 
-Now this code is incomplete. It needs to reset the RTEXT variable and it needs a way to log when an Remote Execution has been detected.
+```sqf
+//--- lystic's re blocker (this blocks the RE that caused the mass server file leak)
+{
+    if (markerAlpha _x == 0 && markerText _x == "") then {
+        _x setMarkerText "RTEXT = true;";
+        uiSleep 1;
+        if (missionNamespace getVariable ["RTEXT", false]) then {
+            deleteMarker _x;
+            //--- Prevent marker from reappearing ?
+        };
+    };
+} forEach allMapMarkers;
+```
+
+It walks every map marker and looks for ones that are invisible and have empty text — exactly the shape of a marker being used as a covert channel.
+Each candidate gets its text overwritten with `RTEXT = true;`.
+If the cheater's server-side thread is doing what I think it's doing, it will execute that string and flip `RTEXT` on the mission namespace.
+After a one-second pause we check the variable, and if it came back true the marker was actively being used and we delete it.
+
+---
+
+This isn't finished.
+It needs to reset `RTEXT` between iterations, and it needs a way to actually log when an RE has been detected so you have something to act on.
+But as a first cut against the technique, it's enough to break the loop.
+
+That's it. Stay safe.
+
+{/* references */}
+[Scripts.txt]: https://community.bistudio.com/wiki/scripts.txt
+[profileNamespace]: https://community.bistudio.com/wiki/profileNamespace
