@@ -1,6 +1,7 @@
 import mdx from "@mdx-js/rollup";
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import matter from "gray-matter";
 import fs from "node:fs/promises";
 import path from "path";
 import remarkFrontmatter from "remark-frontmatter";
@@ -52,6 +53,94 @@ function emitWebpVariants(): Plugin {
   };
 }
 
+// Generates web/dist/rss.xml from MDX frontmatter under src/pages/blog/posts.
+// Mirrors the visibility/slug/description filter used by the runtime post
+// loader so the feed and the rendered blog stay in sync.
+function generateRssFeed(): Plugin {
+  const SITE = 'https://lystic.dev';
+  const escapeXml = (s: string): string =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const cdata = (s: string): string =>
+    `<![CDATA[${s.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
+
+  return {
+    name: 'generate-rss-feed',
+    apply: 'build',
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      async handler() {
+        const postsDir = path.resolve(__dirname, 'src/pages/blog/posts');
+        const outDir = path.resolve(__dirname, 'dist');
+
+        const mdxFiles: string[] = [];
+        async function walk(dir: string): Promise<void> {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) await walk(full);
+            else if (entry.isFile() && entry.name.endsWith('.mdx')) mdxFiles.push(full);
+          }
+        }
+        await walk(postsDir);
+
+        type Item = { slug: string; title: string; description: string; date: Date };
+        const items: Item[] = [];
+
+        for (const file of mdxFiles) {
+          const raw = await fs.readFile(file, 'utf8');
+          const { data } = matter(raw);
+
+          const visible = data.visible ?? true;
+          if (!visible) continue;
+
+          const slug: string = data.slug ?? path.basename(file, '.mdx');
+          const description: string = (data.description ?? '').toString().trim();
+          if (!slug || !description) continue;
+
+          const title: string = data.title ?? slug.replaceAll('-', ' ');
+          const rawDate = data.date;
+          const date = rawDate instanceof Date ? rawDate : new Date(rawDate);
+          if (Number.isNaN(date.getTime())) continue;
+
+          items.push({ slug, title, description, date });
+        }
+
+        items.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+        const lastBuildDate = new Date().toUTCString();
+        const itemsXml = items.map((it) => {
+          const link = `${SITE}/blog/${it.slug}`;
+          return `    <item>
+      <title>${escapeXml(it.title)}</title>
+      <link>${escapeXml(link)}</link>
+      <guid isPermaLink="true">${escapeXml(link)}</guid>
+      <pubDate>${it.date.toUTCString()}</pubDate>
+      <description>${cdata(it.description)}</description>
+    </item>`;
+        }).join('\n');
+
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Lystic Blog</title>
+    <link>${SITE}/blog</link>
+    <description>Posts from Lystic on security, reverse engineering, and software development.</description>
+    <language>en-us</language>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>
+    <atom:link href="${SITE}/rss.xml" rel="self" type="application/rss+xml"/>
+${itemsXml}
+  </channel>
+</rss>
+`;
+
+        await fs.mkdir(outDir, { recursive: true });
+        await fs.writeFile(path.join(outDir, 'rss.xml'), xml);
+      },
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -74,6 +163,7 @@ export default defineConfig({
       webp: { quality: 80 },
     }),
     emitWebpVariants(),
+    generateRssFeed(),
   ],
   resolve: {
     alias: {
