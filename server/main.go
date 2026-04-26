@@ -86,6 +86,24 @@ func main() {
 		Filesystem: nil,
 	}))
 
+	// SPA fallback: HTML5 mode does not rescue requests that resolve to a
+	// directory with no index.html (e.g. /blog, because public/blog/<slug>/
+	// assets materialize a dist/blog/ directory). Catch those 404s here and
+	// serve the SPA shell so the React router can take over.
+	defaultErrorHandler := e.HTTPErrorHandler
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		he, ok := err.(*echo.HTTPError)
+		if ok && he.Code == http.StatusNotFound {
+			req := c.Request()
+			if req.Method == http.MethodGet && !strings.HasPrefix(req.URL.Path, "/api/") {
+				if ferr := c.File("dist/index.html"); ferr == nil {
+					return
+				}
+			}
+		}
+		defaultErrorHandler(err, c)
+	}
+
 	// Initialize editor store with MongoDB, falling back to in-memory
 	var editorStore editor.EditorStore
 	if database != nil {
