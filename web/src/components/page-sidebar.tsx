@@ -1,6 +1,6 @@
 
 import { Sidebar as BaseSidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import { ArrowLeftRight, BookLock, Code, Home, MonitorUp, Newspaper } from "lucide-react";
+import { ArrowLeftRight, BookLock, Code, Gamepad2, Home, MonitorUp, Newspaper } from "lucide-react";
 import React from "react";
 
 type SidebarProps = {
@@ -40,6 +40,11 @@ export function Sidebar({ children }: SidebarProps) {
             title: "Share",
             url: "https://share.lystic.dev",
             icon: MonitorUp,
+        },
+        {
+            title: "Ping",
+            url: "https://lystic.dev/ping",
+            icon: Gamepad2,
         },
     ];
 
