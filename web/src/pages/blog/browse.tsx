@@ -88,7 +88,7 @@ export function BrowsePage() {
                                         )}
                                     >
                                         {metadata.image && (
-                                            <picture>
+                                            <picture className="contents">
                                                 {webpSibling(metadata.image) && <source srcSet={webpSibling(metadata.image)!} type="image/webp" />}
                                                 <img
                                                     src={metadata.image}
