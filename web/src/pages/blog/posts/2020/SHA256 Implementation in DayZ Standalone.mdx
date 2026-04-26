@@ -71,20 +71,21 @@ exactly what i needed. For Greater Than, I found another StackOverflow post cove
 
 For Right Shift, this method I came up with on my own. Let me try to describe
 this issue in a bit more detail. DayZ uses signed integers, with signed integers
-the last bit is a flag for the sign, a 1 bit represents a negative number.
-When right shifting signed integers, the sign is kept, meaning the last bit
-is always 1, and every shift to the right will shift more 1s. Here is a great
-diagram that helped me understand it.
+the most significant bit is a flag for the sign, a 1 bit represents a negative number.
+When right shifting signed integers, the sign is kept, meaning the sign bit is
+duplicated into the high-order bits being shifted in, so every shift to the right
+on a negative number introduces more 1s on the left. Here is a great diagram that
+helped me understand it.
 
 ![img](https://ss.lystic.zip/Legacy/POHdaLHq/clncu0Yo8o2R8RlR.png) 
 
-In this image, the b7 bit is being duplicated and shifted. For unsigned integers,
-this right shift does not do this duplication step. Instead, a 0 is placed into
-the bit we shift away from, much like the left shift shown above. In order to
-recreate an unsigned right shift in DayZ, we need to undo this duplication step.
-To do this, we shift right once, and set the left most bit, our sign bit, to 0.
-From this point on, any further shifts to the right will place a 0 into the left
-bit, matching the functionality of unsigned integers. 
+In this image, the b7 bit (the sign bit) is being duplicated and shifted into
+the high-order bits. For unsigned integers, this right shift does not do this
+duplication step. Instead, a 0 is placed into the high bit we shifted away from.
+In order to recreate an unsigned right shift in DayZ, we need to undo this
+duplication step. To do this, we shift right once, and clear the left most bit,
+our sign bit, to 0. From this point on, any further shifts to the right will
+place a 0 into the left bit, matching the functionality of unsigned integers. 
 
 Here is that functionality in DayZ:
 
@@ -103,9 +104,9 @@ static uint ShiftRight(uint x, int amount)
 }
 ```
 
-After we shift right once, we use `& 0x7FFFFFFF` to flip only the very last bit
-to 0, every other bit will retain its value. From this point on, we shift right
-the remaining amount and return our value. 
+After we shift right once, we use `& 0x7FFFFFFF` to clear only the most
+significant bit to 0, every other bit will retain its value. From this point on,
+we shift right the remaining amount and return our value. 
 
 Here is the complete unsigned integer implementation. Note that you do see the
 usage of the byte object, I'll explain that next. You'll also see some of the

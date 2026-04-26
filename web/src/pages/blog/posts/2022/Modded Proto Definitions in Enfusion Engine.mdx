@@ -47,7 +47,7 @@ All of these steps are fully implemented in Infinity.
 - Build out a plugin system
 
 Enfusion Engine is nice enough to provide an easy way to load libraries 
-via [CVE-2016-480]. This exploit exists in libcurl and causes the game to load 
+via [CVE-2016-4802]. This exploit exists in libcurl and causes the game to load 
 **secur32.dll** from the game directory before looking in `c:\system32`.
 I used an open-source project [DLLProxyGenerator] to create a [Proxy Dll] of secur32. 
 This will let me build a library that loads into **ArmaReforgerServer** and
@@ -327,7 +327,7 @@ I think the way [Infinity] and [interceptAR] do this is the most intuitive.
 {/* reference links */}
 [interceptAR]: https://github.com/intercept/interceptAR
 [Infinity]: https://github.com/KeganHollern/Infinity
-[CVE-2016-480]: https://curl.se/docs/CVE-2016-4802.html
+[CVE-2016-4802]: https://curl.se/docs/CVE-2016-4802.html
 [DLLProxyGenerator]: https://github.com/nitrog0d/DLLProxyGenerator
 [Proxy Dll]: https://kevinalmansa.github.io/application%20security/DLL-Proxying/
 [IDA Pro]: https://hex-rays.com/ida-pro/

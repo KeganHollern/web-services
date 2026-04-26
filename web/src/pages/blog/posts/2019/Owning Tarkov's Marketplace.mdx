@@ -30,8 +30,8 @@ to any requests being processed. When you log in through the launcher, this
 session is created and is subsequently passed off to the game application when
 you click play. Initially, the API was on the HTTP protocol, so as long as I
 had the session, I could send the request from just about anywhere. With the
-later updates, this was moved to TLS v1.0 and TLS v1.2, HTTPS. HTTPS forced me
-to take a different route, but that will come up down the line.
+later updates, this was moved to HTTPS (over TLS v1.0 and later TLS v1.2).
+HTTPS forced me to take a different route, but that will come up down the line.
 
 With that intro out of the way, let's own the market.
 
@@ -136,7 +136,7 @@ from cross-account banning me. So this is nice. Here are the request structures:
 ![structs](https://ss.lystic.zip/Legacy/43fCDaVI/LyLPM4fmJk3mwM42.png)
 
 But this login request requires a few things. Version Info, some other integrity checks,
-an MD5 encrypted password, and a hardware id. Breaking this down step by step.
+an MD5 hash of the password, and a hardware id. Breaking this down step by step.
 
 _Version Info_: You can grab this from the applications Manifest file. 
 Pop `EscapeFromTarkov.Exe` into a resource viewer or editor and grab these from the version info.
@@ -153,8 +153,8 @@ anything for this and it will not auto-ban your account.
 _User/Password_: The Email field is not really an email, it is the username
 tied to the account. You can get this by logging into your account on
 Tarkov's website and viewing the name under your profile details.
-The Password field is just the MD5 of your password, we can just do this on
-the fly inside our bot, so no big deal.
+The Password field is just the MD5 hash of your password, we can just do this
+on the fly inside our bot, so no big deal.
 
 Now the integrity checks are weird. Since the time I began this project, 
 [FenceKiller] has had the correct values for this. However, they are stored

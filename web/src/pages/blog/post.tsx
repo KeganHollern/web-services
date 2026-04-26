@@ -63,11 +63,15 @@ export function Post({ children, title, description, image, date, tags }: BlogPo
                             <div className="mx-auto max-w-3xl">
                                 <div className="p-6">
                                     {(formattedDate || (tags && tags.length > 0)) && (
-                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 text-sm text-muted-foreground">
+                                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 text-sm text-muted-foreground">
                                             {formattedDate && <span>{formattedDate}</span>}
-                                            {tags && tags.map((tag) => (
-                                                <Badge key={tag} variant="secondary">{tag}</Badge>
-                                            ))}
+                                            {tags && tags.length > 0 && (
+                                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                                    {tags.map((tag) => (
+                                                        <Badge key={tag} variant="secondary">{tag}</Badge>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     {children}
