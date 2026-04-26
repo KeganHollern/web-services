@@ -1,18 +1,30 @@
-This post comes after I asked /r/ArmADev for suggestions and subsequently got down voted to hell for what, in my opinion, is a fair dislike towards me in the community.
-<a href="https://www.reddit.com/r/armadev/comments/4yru8h/i_started_a_website_for_arma_development_which/"><img class="aligncenter" src="https://i.gyazo.com/47079a633553af3df16257640976a9fd.png" width="976" height="91" /></a>I will be responding to the suggestion posted by /u/otherworldlyBuffoon
-Here is the post.
-<img class="aligncenter" src="https://i.gyazo.com/31d222e8104bd006e4a75cd1ef2c4ecd.png" width="846" height="114" />So what kind of attacks do cheaters use on arma 3 servers? What are servers often vulnerable too? I am going to break this down into a few categories and cover each separately while providing a few examples directly from my own work. (Warning: I am only going to be covering scripts in this post. Memory cheats are more complicated and I will do another post covering those in the near future)
+---
+title: What do cheaters use on ArmA 3 servers?
+description: |
+    What kind of attacks do cheaters actually use on Arma 3 servers, and what are servers most often vulnerable to?
+    I'm going to break it down into a few categories and cover each separately, with examples drawn directly from my own work.
+slug: what-do-cheaters-use-on-arma-3-servers
+image: /blog/what-do-cheaters-use-on-arma-3-servers/cover.png
+---
 
-<hr />
+# What do cheaters use on ArmA 3 servers?
 
-<strong>Self Boosting Scripts</strong>
+What kind of attacks do cheaters actually use on Arma 3 servers, and what are servers most often vulnerable to?
+I'm going to break it down into a few categories and cover each separately, with examples drawn directly from my own work.
 
-These are the most basic cheats, the "No Recoil", "Unlimited Ammo", and "God Mode" type cheats. These are detected with anticheats and scripts.txt filters.
+Heads up: I'm only covering scripts in this post. Memory cheats are more involved and I'll save those for a separate post.
 
-To start off I will cover no recoil. InfiSTAR anticheat blocks this so any server running it won't need to worry about this.
-<img class="aligncenter" src="https://i.gyazo.com/825cb672b47330bd893b91cb0e77dd60.png" width="411" height="157" />Some mods, such as desolation mod, modify the units recoil to create a more realistic effect. Cheaters will use this to gain a very unfair edge on the other players in combat.
+---
 
-Unlimited ammo is much more difficult to detect. InfiSTAR does a decent job of detecting it but with a slight delay added to the loop infiSTAR becomes ineffective.
+The first category is _self-boosting_ scripts — the most basic stuff: "No Recoil", "Unlimited Ammo", "God Mode". These are the cheats anticheats and `scripts.txt` filters were designed to catch.
+
+No recoil is straightforward. [InfiSTAR] blocks it, so any server running InfiSTAR doesn't really need to worry about it. Some mods like _Desolation_ legitimately modify a unit's recoil to be more realistic, and cheaters lean on this to gain an edge in firefights.
+
+```sqf
+player setUnitRecoilCoefficient 0;
+```
+
+Unlimited ammo is harder to detect. InfiSTAR catches the obvious cases, but adding a small delay to the loop is enough to slip past it:
 
 ```sqf
 while{true} do {
@@ -21,9 +33,9 @@ while{true} do {
 };
 ```
 
-In my personal opinion, using scripts.txt is the most effective way to ban for this. Adding the line "5 setVehicleAmmo" would detect a majority of the cheats currently available.
+The most effective ban is a `scripts.txt` filter — adding `5 setVehicleAmmo` will catch most of the cheats currently in circulation.
 
-God mode is something that is also very difficult to detect. There are many ways to do it. Here is a few ordered  from most effective to least effective.
+God mode is also tricky because there are several different ways to do it. Here are a few, ordered roughly from most to least effective:
 
 ```sqf
 player allowDamage false;
@@ -35,15 +47,13 @@ while{true} do {
 };
 ```
 
-all of these really have no easy way to detect. The most effective method for banning is, once again, a scripts.txt filter.
+None of these have an easy detection path. Once again the most reliable defense is a `scripts.txt` filter.
 
-<hr />
+---
 
-<strong>Trolling Scripts</strong>
+The next category is _trolling_ scripts — still pretty basic, but the goal is to mess with the rest of the server. "Teleport All" and "Explode All" both live here.
 
-These are still pretty basic, but the goal of these is to mess with other players. Scripts like "Teleport all" and "Explode All" are included in this category.
-
-Teleport all is quite common and can be achieved several ways. I use the following method to teleport everyone.
+Teleport all is common, and there are a few ways to write it. I use this one:
 
 ```sqf
 {
@@ -52,9 +62,9 @@ Teleport all is quite common and can be achieved several ways. I use the followi
 } forEach allPlayers;
 ```
 
-BattlEye hoped that the implementation of the setpos count restriction would stop these kind of scripts. They were wrong. the line "uiSleep 0.1;" solves all issues with the restriction. Once again it is the servers job to stop this. Teleport all is pretty detrimental to the community. If this keeps happening to a server players will eventually just stop playing on the server.
+BattlEye hoped a `setPos` count restriction would stop these. They were wrong — `uiSleep 0.1;` defeats it. It's on the server to filter this. Teleport all is genuinely poisonous to a community: if it keeps happening, players just stop showing up.
 
-Explode all can also be achieved multiple ways. There are a lot of explosive objects and arma has this <em>wonderful </em>networking bug that causes local explosions to damage remote units. Here is an example of an explode all.
+Explode all also has multiple flavors. Arma has _wonderful_ networking behavior where local explosions damage remote units, so you can spawn an explosive object locally on every player's position:
 
 ```sqf
 {
@@ -63,26 +73,25 @@ Explode all can also be achieved multiple ways. There are a lot of explosive obj
 } forEach allPlayers;
 ```
 
-This is actually so dumb on Bohemia Interactive's part. This is not logged by createVehicle.txt and therefore the best measure against this is, once again, scripts.txt
+This one is actually dumb on Bohemia's part — `createVehicleLocal` isn't logged by `createVehicle.txt`, so the only real defense is, again, `scripts.txt`.
 
-<hr />
+---
 
-<strong>Remote Execution Scripts</strong>
+The third category is _remote execution_ — by far the most complex of the bunch. These exploit a server's networking to run code on other players or on the server itself: "Kill Target", "Freeze Target", "Admin Disabler", and so on.
 
-These are some of the most complex scripts as they use a networking vulnerability in servers to run code on other players and the server. These include "Kill Target, "Freeze Target", and "Admin Disabler".
+Remote executions are born from holes in a server's networking and BattlEye filters. There are too many variants to cover individually, but the most common one I've seen is `createUnit` remote execution. Patching it comes down to `remoteexec.txt`. Without strong remote-exec filters, a server is essentially guaranteed to have these scripts run on it.
 
-Remote executions are created from flaws in a servers networking and its battleye filters. There are far to many different ways to cover so I will only cover the one way that has been the most common. CreateUnit remote execution. Using the remoteexec.txt filters can patch this. Without strong remotexec.txt filters a server is pretty much doomed to have these kind of scripts run on it.
+---
 
-<hr />
+The last category is _server destruction_ scripts — the nastiest of the bunch. Anything from "Crash Server" to "Database Injection" lives here. The goal is to ruin the server and make it unplayable.
 
-<strong>Server Destruction Scripts</strong>
+Crashing a server is most often done by mass desync. Desync can be triggered so many ways that detecting it directly is very difficult. In practice, a combination of `createVehicle` and `scripts.txt` filters tends to ban the cheaters using these tools long before they pull the desync lever — the rest of their cheat trips other filters first.
 
-These are some of the nastiest scripts for you server. They range anywhere from "Crash Server" to "Database Injection". They cover a broad range but all have one goal. To ruin the server and make it unplayable.
+Database injection started as a proof of concept I built for _Altis Life_. When it lands, it can take a server down for weeks. If you keep noticing the same script running on your server every time you log in, check your database.
 
-Crash server can be done a few ways. Mass desync is by far the most common way. Desyncing can be achieved through so many different ways that it is VERY difficult to detect. If a combination of createVehicle and scripts filters are used then most cheaters who would use something like this would be detected and banned for other features in their cheat.
+---
 
-Database Injection was originally a proof of concept I made for altis life. When it's used it can take down entire servers for weeks on end. This stuff is nasty. If you notice the same script running on your server every time you play, check your database.
+That's the menu. Knowing what cheaters actually use is the first step to actually stopping them.
 
-<hr />
-
-So these are the scripts that every arma 3 server is going to be subjected to the most often. Knowing what cheaters use is VERY important when you go to stop their attacks.
+{/* references */}
+[InfiSTAR]: https://infistar.de/
