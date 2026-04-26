@@ -1,6 +1,7 @@
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
 import { Badge } from "@/components/ui/badge";
+import { webpSibling } from "@/lib/utils";
 import { MDXProvider } from "@mdx-js/react";
 import { ArrowLeft, Loader } from "lucide-react";
 import { Suspense } from "react";
@@ -50,13 +51,16 @@ export function Post({ children, title, description, image, date, tags }: BlogPo
                     <Suspense fallback={<div className="flex-1 flex justify-center items-center w-full"><Loader /></div>}>
                         {image && (
                             <div className="mx-auto max-w-3xl px-6">
-                                <img
-                                    src={image}
-                                    alt=""
-                                    className="w-full aspect-[16/9] object-cover rounded-lg"
-                                    loading="eager"
-                                    decoding="async"
-                                />
+                                <picture>
+                                    {webpSibling(image) && <source srcSet={webpSibling(image)!} type="image/webp" />}
+                                    <img
+                                        src={image}
+                                        alt=""
+                                        className="w-full aspect-[16/9] object-cover rounded-lg"
+                                        loading="eager"
+                                        decoding="async"
+                                    />
+                                </picture>
                             </div>
                         )}
                         <MDXProvider components={mdxComponents}>

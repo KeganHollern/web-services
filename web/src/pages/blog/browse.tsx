@@ -1,7 +1,7 @@
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, webpSibling } from "@/lib/utils";
 import { Link as Hyperlink } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -88,13 +88,16 @@ export function BrowsePage() {
                                         )}
                                     >
                                         {metadata.image && (
-                                            <img
-                                                src={metadata.image}
-                                                alt=""
-                                                className="w-40 sm:w-48 shrink-0 aspect-[16/9] object-cover rounded-md max-sm:w-full"
-                                                loading="lazy"
-                                                decoding="async"
-                                            />
+                                            <picture>
+                                                {webpSibling(metadata.image) && <source srcSet={webpSibling(metadata.image)!} type="image/webp" />}
+                                                <img
+                                                    src={metadata.image}
+                                                    alt=""
+                                                    className="w-40 sm:w-48 shrink-0 aspect-[16/9] object-cover rounded-md max-sm:w-full"
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                />
+                                            </picture>
                                         )}
                                         <div className="flex flex-col justify-center min-w-0">
                                             <h3 className="text-xl font-semibold tracking-tight flex items-center gap-2">
