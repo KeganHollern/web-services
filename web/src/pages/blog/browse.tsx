@@ -1,16 +1,41 @@
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Link as Hyperlink } from "lucide-react";
-import { Link } from "react-router";
+import { useMemo } from "react";
+import { Link, useSearchParams } from "react-router";
 import { Modules } from "./posts";
+
+const TAG_PARAM = "tag";
+
+function useAvailableTags() {
+    return useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const { metadata } of Modules) {
+            for (const tag of metadata.tags) {
+                counts.set(tag, (counts.get(tag) ?? 0) + 1);
+            }
+        }
+        return Array.from(counts.entries())
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([tag]) => tag);
+    }, []);
+}
 
 export function BrowsePage() {
     const breadcrumbs = [
         { label: "blog.lystic.dev" },
     ];
 
-    // TODO: post tags, order by date, etc
+    const [searchParams] = useSearchParams();
+    const activeTag = searchParams.get(TAG_PARAM);
+    const availableTags = useAvailableTags();
+
+    const visiblePosts = useMemo(() => {
+        if (!activeTag) return Modules;
+        return Modules.filter(({ metadata }) => metadata.tags.includes(activeTag));
+    }, [activeTag]);
 
     return (
         <>
@@ -22,8 +47,29 @@ export function BrowsePage() {
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="container mx-auto py-6 space-y-6">
                     <h1 className="scroll-m-20 text-center mx-auto text-4xl max-w-3xl font-extrabold tracking-tight text-balance mb-12 border-b-2 pb-6">Lystic's Blog</h1>
-                    {
-                        Modules.map(({ metadata }, idx) => {
+                    {availableTags.length > 0 && (
+                        <div className="mx-auto max-w-3xl flex flex-wrap gap-2">
+                            <Badge asChild variant={activeTag ? "outline" : "default"}>
+                                <Link to={{ pathname: "/", search: "" }}>all</Link>
+                            </Badge>
+                            {availableTags.map((tag) => {
+                                const isActive = tag === activeTag;
+                                return (
+                                    <Badge key={tag} asChild variant={isActive ? "default" : "outline"}>
+                                        <Link to={{ pathname: "/", search: isActive ? "" : `?${TAG_PARAM}=${encodeURIComponent(tag)}` }}>
+                                            {tag}
+                                        </Link>
+                                    </Badge>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {visiblePosts.length === 0 ? (
+                        <div className="mx-auto max-w-3xl text-center text-muted-foreground py-12">
+                            <p>No posts tagged <span className="font-mono">{activeTag}</span>.</p>
+                        </div>
+                    ) : (
+                        visiblePosts.map(({ metadata }, idx) => {
 
                             return (
                                 <div
@@ -57,12 +103,24 @@ export function BrowsePage() {
                                             <p className="leading-6 mt-2 text-muted-foreground line-clamp-2">
                                                 {metadata.description}
                                             </p>
+                                            {metadata.tags.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                    {metadata.tags.map((tag) => (
+                                                        <Badge
+                                                            key={tag}
+                                                            variant={tag === activeTag ? "default" : "secondary"}
+                                                        >
+                                                            {tag}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </Link>
                                 </div>
                             )
                         })
-                    }
+                    )}
                 </div>
             </main>
         </>
