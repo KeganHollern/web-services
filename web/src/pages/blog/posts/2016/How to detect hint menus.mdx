@@ -1,12 +1,50 @@
-<img class="alignright" src="https://i.gyazo.com/b323f99b7ec2a565edb3fc70a7ef08ef.png" width="295" height="381" />The worst nightmare for any anticheat developer is coming across a cheat that is nearly impossible to detect. Hint menus are one such cheat. There is no way to disable the "hint" command and no way to detect what is being displayed in the current hint. So how would an anticheat go about stopping people from using these cheats?
+---
+title: How to Detect Hint Menus
+description: |
+    The worst nightmare for any anticheat developer is coming across a cheat that's nearly impossible to detect.
+    Hint menus are one of those — there's no way to disable the `hint` command, and no built-in way to read what's currently being displayed.
+slug: how-to-detect-hint-menus
+image: /blog/how-to-detect-hint-menus/cover.png
+---
 
-The easiest and simplest way is to use strict BattlEye Filters. If the cheater can't run their menu then there is nothing to worry about.
+# How to Detect Hint Menus
 
-What if the anticheat wanted to not just kick, but also ban people for using a hint menu? How would that even be done? In order to even begin detecting these we need to use a mod. The ONLY way to detect what is in the contents of a hint is to modify the RscHint class located at
-<em>configFile &gt;&gt; "RscInGameUI" &gt;&gt; "RscHint"</em>
-and add
-<em>onLoad="uiNamespace setVariable ['displayhint',_this select 1]";
-</em>This will allow an anticheat to access the display for the hint dialog.
+The worst nightmare for any anticheat developer is coming across a cheat that's nearly impossible to detect.
+Hint menus are one of those — there's no way to disable the `hint` command, and no built-in way to read what's currently being displayed.
+So how would an anticheat go about stopping people from using these things?
 
-In an anticheat, all that needs to be done in order to ban for this is to run the following code on the clients:
-<img class="aligncenter" src="https://i.gyazo.com/3b15eed8e1bf80fa5050704fc4f9552e.png" width="607" height="180" />
+![Aether Hack hint menu listing options like God Mode, Infinite Ammo, and No Fatigue](https://i.gyazo.com/b323f99b7ec2a565edb3fc70a7ef08ef.png)
+
+The easiest and simplest answer is strict [BattlEye] filters. If the cheater can't run their menu in the first place, there's nothing to worry about.
+
+---
+
+What if you wanted to do more than kick — actually _ban_ for using a hint menu? That's harder, and it requires shipping a mod. The only way to read the contents of a hint at runtime is to modify the `RscHint` class at `configFile >> "RscInGameUI" >> "RscHint"` and add an `onLoad` handler:
+
+```cpp
+onLoad="uiNamespace setVariable ['displayhint',_this select 1]";
+```
+
+That stashes a reference to the hint display in the UI namespace the moment it loads. From there, an anticheat running on the client can grab the display, walk its controls, and pull text out of the structured-text control:
+
+```sqf
+while {true} do {
+    _display = uiNamespace getVariable ['displayhint', displayNull];
+    if (!isNull _display) then {
+        _structuredText = _display displayCtrl 102;
+        _text = toLower (ctrlText _structuredText);
+
+        //--- check _text for bad strings (like "god mode")
+    };
+    uiSleep 1;
+};
+```
+
+Once `_text` is lowercased, it's just substring matching against whatever signatures you care about — names of common menus, cheat features (`god mode`, `infinite ammo`, `esp`), or anything else that consistently shows up in popular hint-based hacks.
+
+---
+
+That's it. Hint menus go from "nearly impossible to detect" to trivial the moment you have a mod component on the client — the entire cheat is rendering itself in plain text into a control you now have a handle to.
+
+{/* references */}
+[BattlEye]: https://www.battleye.com/
