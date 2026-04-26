@@ -1,6 +1,67 @@
-I have been working on a Zombie-like system inside arma 3 and want to have the AI chase after my player and kill me. This should be very simple to do, however I failed to find a good way of doing it with the built-in AI scripting commands. I did a bit of research and came up with this segment of code.
-<img class="aligncenter" src="https://i.gyazo.com/ef07378ca0aeeae44588bcd3fab61def.png" width="1034" height="512" />Now the issue with AI in arma is that they don't like to run. There is also no easy way to have them go directly towards a targeted unit. I had to come up with a system that was not too heavy on performance but also made them move quite smoothly. I started with a simple VR mission. I added myself and an AI unit.
-<img class="aligncenter" src="https://i.gyazo.com/cc0bb3f1c66c4c482eaf155d6db9012f.png" width="493" height="537" />I then added "AI = this" into the ai's init field.
-<img class="aligncenter" src="https://i.gyazo.com/0dc0b5ca47bc7e7712b860db65a63550.png" width="567" height="689" />Now, back to the script.  Someone had posted on ArmAHolic with the event handler you see at the top of the code. What this does is change the standard movement animation into the running animation on the AI unit. I then create a thread that waits for the AI to become within a certain distance of the player and kill him. I use setDir to make it look as if they turned to face me. The while loop at the bottom is the bulk of the code however. This creates an area around the player that acts like a trigger. Once the player leaves that area the AI will recalculate the direction it should head in. This area shrinks as the AI moves closer to the player and thereby causes the AI to turn towards the player as it draws nearer. This creates a similar effect to the zombies in DayZ Mod from ArmA 2.
+---
+title: Having AI Run After and Kill You
+description: |
+    I had been working on a Zombie-like system inside Arma 3 and wanted the AI to chase down my player and kill me.
+    Should be very simple, but I couldn't find a clean way to do it with the built-in AI scripting commands.
+slug: having-ai-run-after-and-kill-you
+image: /blog/having-ai-run-after-and-kill-you/cover.png
+---
 
-Just a neat tidbit of code. Sorry for being inactive, just trying to look for interesting topics to post on.
+# Having AI Run After and Kill You
+
+I had been working on a Zombie-like system inside Arma 3 and wanted the AI to chase down my player and kill me.
+Should be very simple, but I couldn't find a clean way to do it with the built-in AI scripting commands.
+After a bit of digging I came up with this segment of code.
+
+```sqf
+[] spawn {
+    AI addEventHandler ["AnimChanged",
+    {
+        _aunit = _this select 0;
+        _curanim = _this select 1;
+        if (_curanim == "AmovPercMrunSnonWnonDf")  then {_aunit playmove "AmovPercMevaSnonWnonDf"};
+        if (_curanim == "AmovPercMrunSnonWnonDfl") then {_aunit playmove "AmovPercMevaSnonWnonDfl"};
+        if (_curanim == "AmovPercMrunSnonWnonDfr") then {_aunit playmove "AmovPercMevaSnonWnonDfr"};
+
+        if (_curanim == "AmovPknlMrunSnonWnonDf")  then {_aunit playmove "AmovPknlMevaSnonWnonDf"};
+        if (_curanim == "AmovPknlMrunSnonWnonDfl") then {_aunit playmove "AmovPknlMevaSnonWnonDfl"};
+        if (_curanim == "AmovPknlMrunSnonWnonDfr") then {_aunit playmove "AmovPknlMevaSnonWnonDfr"};
+
+        if (_curanim == "AmovPpneMrunSnonWnonDf")  then {_aunit playmove "AmovPpneMsprSnonWnonDf"};
+    }];
+    [] spawn {
+        while {true} do {
+            waitUntil {((AI distance player) <= 1.5)};
+            AI setDir ([AI, player] call BIS_fnc_DirTo);
+            player setDamage 1;
+        };
+    };
+    while {true} do {
+        _targetPos = getPos player;
+        AI doMove (position player);
+        waitUntil {(count (_targetPos nearEntities [typeOf player, (AI distance player) / 5]) == 0) && ((AI distance player) >= 1.5)};
+        doStop AI;
+        uiSleep 0.2;
+    };
+};
+```
+
+The issue with AI in Arma is that they don't like to run, and there's no easy way to point them directly at a target unit. I needed something cheap on performance but smooth enough to look natural.
+
+I started in a simple VR mission with myself and a single AI unit.
+
+![VR mission with player and AI unit](https://i.gyazo.com/cc0bb3f1c66c4c482eaf155d6db9012f.png)
+
+Then dropped `AI = this` into the AI's init field so the script could reference it.
+
+![AI = this in the init field](https://i.gyazo.com/0dc0b5ca47bc7e7712b860db65a63550.png)
+
+---
+
+Back to the script. The event handler at the top came from a post on ArmAHolic — it swaps the standard movement animation for the running animation on the AI unit, so they actually sprint instead of jogging. I then spawn a thread that waits for the AI to get within a certain distance of the player and kills them, using `setDir` to make it look as if the AI turned to face me first.
+
+The while loop at the bottom is the bulk of the script. It draws a virtual area around the player that acts like a trigger. Once the player leaves that area, the AI recalculates the direction it should head in. The area shrinks as the AI gets closer to the player, which causes the AI to turn toward the player as it draws nearer. The end result feels similar to the zombies in DayZ Mod from Arma 2.
+
+---
+
+Just a neat tidbit of code. Anyway, that's it.
