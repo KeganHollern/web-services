@@ -13,32 +13,32 @@ export function Sidebar({ children }: SidebarProps) {
     const items = [
         {
             title: "Home",
-            url: "https://lystic.dev",
+            url: "/",
             icon: Home,
         },
         {
             title: "Blog",
-            url: "https://blog.lystic.dev",
+            url: "/blog",
             icon: Newspaper,
         },
         {
             title: "Editor",
-            url: "https://edit.lystic.dev",
+            url: "/edit",
             icon: Code,
         },
         {
             title: "Secret",
-            url: "https://secret.lystic.dev",
+            url: "/secret",
             icon: BookLock,
         },
         {
             title: "Swap",
-            url: "https://swap.lystic.dev",
+            url: "/swap",
             icon: ArrowLeftRight,
         },
         {
             title: "Share",
-            url: "https://share.lystic.dev",
+            url: "/share",
             icon: MonitorUp,
         },
         {
