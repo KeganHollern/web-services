@@ -94,7 +94,8 @@ export function BrowsePage() {
                                                     src={metadata.image}
                                                     alt=""
                                                     className="w-40 sm:w-48 shrink-0 aspect-[16/9] object-cover rounded-md max-sm:w-full"
-                                                    loading="lazy"
+                                                    loading={idx === 0 ? "eager" : "lazy"}
+                                                    fetchPriority={idx === 0 ? "high" : undefined}
                                                     decoding="async"
                                                 />
                                             </picture>
