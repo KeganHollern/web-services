@@ -12,9 +12,14 @@ import { defineConfig, type Plugin } from 'vite';
 import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
-// Emits .webp siblings for PNG/JPEG files in the build output. Runs after
-// ViteImageOptimizer has compressed the originals, so the .webp is encoded
-// from the already-optimized source. Skipped when the .webp would be larger.
+// Emits resized .webp variants for PNG/JPEG files in the build output. Runs
+// after ViteImageOptimizer has compressed the originals, so each .webp is
+// encoded from the already-optimized source. For each input we emit one
+// variant per width in WEBP_VARIANT_WIDTHS, skipping widths larger than the
+// source (no upscaling) and skipping any output that ends up larger than the
+// original.
+const WEBP_VARIANT_WIDTHS = [384, 768, 1280] as const;
+
 function emitWebpVariants(): Plugin {
   return {
     name: 'emit-webp-variants',
@@ -39,11 +44,18 @@ function emitWebpVariants(): Plugin {
               continue;
             }
             if (!/\.(png|jpe?g)$/i.test(entry.name)) continue;
-            const webpPath = full.replace(/\.(png|jpe?g)$/i, '.webp');
-            const webpBuffer = await sharp(full).webp({ quality: 80 }).toBuffer();
             const originalSize = (await fs.stat(full)).size;
-            if (webpBuffer.byteLength < originalSize) {
-              await fs.writeFile(webpPath, webpBuffer);
+            const srcWidth = (await sharp(full).metadata()).width ?? 0;
+            for (const width of WEBP_VARIANT_WIDTHS) {
+              if (srcWidth && width > srcWidth) continue;
+              const variantPath = full.replace(/\.(png|jpe?g)$/i, `-${width}.webp`);
+              const buffer = await sharp(full)
+                .resize({ width, withoutEnlargement: true })
+                .webp({ quality: 80 })
+                .toBuffer();
+              if (buffer.byteLength < originalSize) {
+                await fs.writeFile(variantPath, buffer);
+              }
             }
           }
         }

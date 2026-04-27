@@ -1,7 +1,7 @@
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
 import { Badge } from "@/components/ui/badge";
-import { webpSibling } from "@/lib/utils";
+import { webpVariants } from "@/lib/utils";
 import { MDXProvider } from "@mdx-js/react";
 import { ArrowLeft, Loader } from "lucide-react";
 import { Suspense } from "react";
@@ -49,22 +49,31 @@ export function Post({ children, title, description, image, date, tags }: BlogPo
             <main className="flex flex-1 flex-col overflow-hidden">
                 <div className="container mx-auto py-6 space-y-6">
                     <Suspense fallback={<div className="flex-1 flex justify-center items-center w-full"><Loader /></div>}>
-                        {image && (
-                            <div className="mx-auto max-w-3xl px-6">
-                                <picture>
-                                    {webpSibling(image) && <source srcSet={webpSibling(image)!} type="image/webp" />}
-                                    <img
-                                        src={image}
-                                        alt=""
-                                        width={1280}
-                                        height={720}
-                                        className="w-full aspect-[16/9] object-cover rounded-lg"
-                                        loading="eager"
-                                        decoding="async"
-                                    />
-                                </picture>
-                            </div>
-                        )}
+                        {image && (() => {
+                            const variants = webpVariants(image);
+                            return (
+                                <div className="mx-auto max-w-3xl px-6">
+                                    <picture>
+                                        {variants && (
+                                            <source
+                                                srcSet={variants.srcSet}
+                                                sizes="(max-width: 768px) 100vw, 768px"
+                                                type="image/webp"
+                                            />
+                                        )}
+                                        <img
+                                            src={image}
+                                            alt=""
+                                            width={1280}
+                                            height={720}
+                                            className="w-full aspect-[16/9] object-cover rounded-lg"
+                                            loading="eager"
+                                            decoding="async"
+                                        />
+                                    </picture>
+                                </div>
+                            );
+                        })()}
                         <MDXProvider components={mdxComponents}>
                             <div className="mx-auto max-w-3xl">
                                 <div className="p-6">

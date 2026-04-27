@@ -1,7 +1,7 @@
 import { Header } from "@/components/page-header";
 import { PageMeta } from "@/components/page-meta";
 import { Badge } from "@/components/ui/badge";
-import { cn, webpSibling } from "@/lib/utils";
+import { cn, webpVariants } from "@/lib/utils";
 import { Link as Hyperlink } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -87,21 +87,30 @@ export function BrowsePage() {
                                             "max-sm:flex-col",
                                         )}
                                     >
-                                        {metadata.image && (
-                                            <picture className="contents">
-                                                {webpSibling(metadata.image) && <source srcSet={webpSibling(metadata.image)!} type="image/webp" />}
-                                                <img
-                                                    src={metadata.image}
-                                                    alt=""
-                                                    width={384}
-                                                    height={216}
-                                                    className="w-40 sm:w-48 shrink-0 aspect-[16/9] object-cover rounded-md max-sm:w-full"
-                                                    loading={idx === 0 ? "eager" : "lazy"}
-                                                    fetchPriority={idx === 0 ? "high" : undefined}
-                                                    decoding="async"
-                                                />
-                                            </picture>
-                                        )}
+                                        {metadata.image && (() => {
+                                            const variants = webpVariants(metadata.image);
+                                            return (
+                                                <picture className="contents">
+                                                    {variants && (
+                                                        <source
+                                                            srcSet={variants.srcSet}
+                                                            sizes="(max-width: 640px) 100vw, 192px"
+                                                            type="image/webp"
+                                                        />
+                                                    )}
+                                                    <img
+                                                        src={metadata.image}
+                                                        alt=""
+                                                        width={384}
+                                                        height={216}
+                                                        className="w-40 sm:w-48 shrink-0 aspect-[16/9] object-cover rounded-md max-sm:w-full"
+                                                        loading={idx === 0 ? "eager" : "lazy"}
+                                                        fetchPriority={idx === 0 ? "high" : undefined}
+                                                        decoding="async"
+                                                    />
+                                                </picture>
+                                            );
+                                        })()}
                                         <div className="flex flex-col justify-center min-w-0">
                                             <h3 className="text-xl font-semibold tracking-tight flex items-center gap-2">
                                                 {metadata.title} <Hyperlink className="h-3 w-3 shrink-0" />
