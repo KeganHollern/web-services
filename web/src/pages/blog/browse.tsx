@@ -93,6 +93,8 @@ export function BrowsePage() {
                                                 <img
                                                     src={metadata.image}
                                                     alt=""
+                                                    width={384}
+                                                    height={216}
                                                     className="w-40 sm:w-48 shrink-0 aspect-[16/9] object-cover rounded-md max-sm:w-full"
                                                     loading={idx === 0 ? "eager" : "lazy"}
                                                     fetchPriority={idx === 0 ? "high" : undefined}

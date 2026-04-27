@@ -56,6 +56,8 @@ export function Post({ children, title, description, image, date, tags }: BlogPo
                                     <img
                                         src={image}
                                         alt=""
+                                        width={1280}
+                                        height={720}
                                         className="w-full aspect-[16/9] object-cover rounded-lg"
                                         loading="eager"
                                         decoding="async"
