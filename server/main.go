@@ -83,6 +83,10 @@ func main() {
 	// Serve the RSS feed with the correct Content-Type. Go's default mime
 	// table maps .xml → text/xml, but feed readers expect application/rss+xml.
 	e.GET("/rss.xml", serveRSS)
+	// /feed[/] is the legacy blog.lystic.dev RSS path; serve identical content
+	// so existing subscribers keep working without forcing a redirect chain.
+	e.GET("/feed", serveRSS)
+	e.GET("/feed/", serveRSS)
 
 	// Serve react SPA
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{

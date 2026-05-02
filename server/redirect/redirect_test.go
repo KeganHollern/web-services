@@ -162,6 +162,21 @@ func TestHostCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestLegacyFeedPathPassthroughOnSubdomain(t *testing.T) {
+	// Legacy blog.lystic.dev/feed[/] must pass through so the apex /feed
+	// handler can serve RSS directly, instead of redirecting to
+	// /blog/feed/ where no handler exists.
+	for _, p := range []string{"/feed", "/feed/"} {
+		t.Run(p, func(t *testing.T) {
+			rec := do(t, "blog.lystic.dev", p)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status: got %d, want 200 (got Location=%q)",
+					rec.Code, rec.Header().Get("Location"))
+			}
+		})
+	}
+}
+
 func TestApiExactPathOnSubdomainPassthrough(t *testing.T) {
 	// "/api" exactly (no trailing slash) on a subdomain should also
 	// passthrough to avoid breaking any handler registered at that path.

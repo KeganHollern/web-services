@@ -43,6 +43,14 @@ func Subdomain() echo.MiddlewareFunc {
 				return next(c)
 			}
 
+			// Legacy RSS path: blog.lystic.dev/feed[/] was the original
+			// feed URL. Passthrough so the apex /feed handler serves the
+			// same RSS content directly, instead of double-redirecting
+			// through /blog/feed/.
+			if req.URL.Path == "/feed" || req.URL.Path == "/feed/" {
+				return next(c)
+			}
+
 			sub := matchSubdomain(req.Host)
 			if sub == "" {
 				return next(c)
