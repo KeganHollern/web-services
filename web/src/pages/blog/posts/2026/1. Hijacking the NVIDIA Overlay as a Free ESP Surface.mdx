@@ -1,0 +1,258 @@
+---
+title: Hijacking the NVIDIA Overlay as a Free ESP Surface
+description: |
+    A few years back I was working on a DMA cheat where the attacker box had no monitor of its own,
+    which meant I needed an ESP overlay rendered on top of the running game without hooking the
+    game itself. The two normal options didn't work, so I went looking for something that already
+    had permission to draw on top of every game in the world.
+slug: hijacking-the-nvidia-overlay-as-a-free-esp-surface
+date: 2026-05-02
+image: /blog/hijacking-the-nvidia-overlay-as-a-free-esp-surface/cover.png
+tags: [cheats, nvidia, reverse-engineering, overlay, dma]
+---
+
+# Hijacking the NVIDIA Overlay as a Free ESP Surface
+
+> This post is about a project from a few years back. The exact byte signatures
+> almost certainly do not match modern **NVIDIA Share** builds. The technique
+> is the point.
+
+A few years back I was working on a DMA cheat where the attacker box had no monitor of its own,
+which meant I needed an ESP overlay rendered on top of the running game without hooking the
+game itself. The two normal options didn't work, so I went looking for something that already
+had permission to draw on top of every game in the world.
+
+ESP, in case the term is new: bounding boxes, names, distances, and lines drawn over the running
+game. The data comes from somewhere — usually a [DMA cheat] — but the pixels still have to
+land on top of the game window somehow.
+
+The two paths I had ruled out:
+
+1. **Hook the game.** Inject a DLL, install a present-hook on D3D11 / DXGI / Vulkan, draw with [ImGui].
+   Effective, but it's also exactly what every anti-cheat in the world is looking for. Not a fight
+   I wanted on a daily-driver cheat.
+2. **Render on the attacker box.** Standard DMA approach — drive a second monitor wired to the
+   attacker, draw the overlay there. Great when you have two monitors; useless when the attacker
+   is a headless little machine sitting under the desk.
+
+I needed a render surface that was already on top of the game, signed by someone other than me,
+and uninteresting to the anti-cheat. That sounds absurd until you remember NVIDIA ships exactly
+that with every modern GeForce driver.
+
+---
+
+If you've ever pressed _Alt+Z_, that's the **NVIDIA GeForce Experience** overlay. It's rendered
+by `NVIDIA Share.exe`. Under the hood, the overlay is a Chromium-style web view sitting on top
+of every running game, populated by an HTML file shipped inside GFE's resources. It's how the
+share menu, the FPS counter, the screenshot UI, and the Highlights captures all paint themselves
+over your game without integrating with the game.
+
+That last bit is the interesting part. NVIDIA's overlay paints over _every game_, including ones
+with anti-cheat. Anti-cheats know about it and explicitly leave it alone — it's signed, it ships
+with the driver, and false-positiving it would brick GFE for everyone with a GeForce card. It is,
+by design, a vendor-blessed transparent render layer on top of every game on the system.
+
+So: if I can swap the overlay's `index.html` for my own, and I can convince GFE to keep painting
+it the way I want while a game has fullscreen focus, I get a free ESP surface. No game hooks,
+no second monitor, no DLL injection.
+
+Two things are in the way:
+
+- The overlay's render path bails out under certain conditions on a check that fails when we'd
+  most want it to draw.
+- The window itself has its layered/transparent extended-style bits stripped, so mouse input
+  doesn't behave the way I want when the game runs windowed.
+
+Both of those are bytes inside `NVIDIA Share.exe`, which means we can patch them.
+
+---
+
+Two patches. The first is the one that actually matters; the second is optional.
+
+**Patch 1 — the overlay render path.** This is the function that decides whether to paint the
+overlay surface on top of the foreground app. In its original form it does a virtual call,
+checks the result, and branches based on whether it returned zero. We replace the whole sequence
+with a constant zero and an unconditional jump that lands us in the path we want.
+
+The pattern lands us 8 bytes into a known prologue:
+
+```text
+SIG: 48 89 BC 24 ? ? ? ? FF 50 ? 8B F8 85 C0 74 ? E8
+OFF: 8
+```
+
+The original 12 bytes:
+
+```asm
+ff 50 68          call    qword [rax+0x68]
+8b f8             mov     edi, eax
+85 c0             test    eax, eax
+74 52             je      +0x52
+e8 71 15 ?? ??    call    sub_overlay_skip
+```
+
+The patched 12 bytes:
+
+```asm
+48 b8 00 00 00 00 00 00 00 00   mov     rax, 0
+eb 4f                            jmp     +0x4F
+```
+
+In plain English: the original code calls something through a vtable, treats the return value
+as a flag, and falls through to a different function call when that flag is non-zero. We force
+`rax` to a known state and unconditionally jump past the secondary call into the path that ends
+up actually painting the overlay. The net effect is that the overlay paints in cases where it
+would normally have refused — most importantly, while a game is fullscreen.
+
+Two things to notice. The patch is exactly the same length as the original, so nothing downstream
+shifts. And `mov rax, 0` is the lazy 10-byte form of zeroing `rax`; a real compiler would emit
+`xor eax, eax` in 2 bytes, but we _need_ the padding to land the `jmp` at the right offset.
+
+**Patch 2 — the WndProc input path.** This one is optional and only matters in windowed mode.
+The overlay's window-style code clears the `WS_EX_LAYERED` and `WS_EX_TRANSPARENT` bits before
+they reach `CreateWindowEx`, so the overlay HWND ends up grabbing mouse events from the game.
+That's correct for NVIDIA's normal use (you want to click the share menu) but ruinous for ours
+(we just want to draw — every mouse event needs to fall through).
+
+The original instruction is a bit-clear:
+
+```asm
+81 e6 df ff f7 ff   and     esi, 0xfff7ffdf
+```
+
+`0xfff7ffdf` is `~0x00080020`. `0x00080000` is `WS_EX_LAYERED`, `0x00000020` is `WS_EX_TRANSPARENT`.
+So the original is _stripping_ exactly those two bits from `esi` before the window gets created.
+That's why mouse events stop at the overlay.
+
+We replace it with a direct assignment:
+
+```asm
+be 20 00 08 00      mov     esi, 0x00080020
+90                  nop
+```
+
+Same six bytes, opposite outcome — instead of clearing layered+transparent, we _force_ them on.
+The trailing `nop` is just there to keep the byte count exact. Now the overlay HWND is a standard
+click-through layered window: paints what we want, eats no input.
+
+Both patches use `RemoteProcess::FindPattern` to locate the install site, read the original bytes
+back to confirm they match a known signature, and only then write the patch. If the read doesn't
+match the expected original, we abort — which is also how `-restore` knows whether the binary
+is still in a state it can roll back.
+
+---
+
+The patches alone aren't enough. They give us a _surface_; we still need the _content_.
+
+GFE loads the overlay's UI from an `index.html` inside its install directory. That HTML is a normal
+web page — DOM, JavaScript, canvas, websockets. Replace that file and the overlay renders whatever
+you put in it.
+
+The replacement HTML in `nvidia_overlay.html` is, structurally, a single fullscreen `<canvas>`
+plus a websocket client. On load it connects back to the attacker over `ws://${hostname}:1337`,
+where `hostname` is filled in at deploy time:
+
+```js
+var hostname = window.location.host;
+if (hostname == null || hostname == "") {
+    console.log("host not found. defaulting to hostname.");
+    hostname = "%HOSTNAME%"
+}
+const websocket_connection = `ws://${hostname}:1337`;
+```
+
+`%HOSTNAME%` is a string template the loader rewrites on disk. The DLL that drives the patches
+carries the HTML as an embedded Win32 resource and writes it to disk next to itself, with
+`%HOSTNAME%` replaced by the result of `gethostname()`:
+
+```cpp
+HRSRC res = FindResource(dll_hmod, MAKEINTRESOURCE(IDR_HTML1), RT_HTML);
+HGLOBAL hRes = LoadResource(dll_hmod, res);
+void* pOverlaySource = LockResource(hRes);
+
+std::ofstream ofs("nvidia_osc_index.html", std::ofstream::trunc);
+std::string contents = (const char*)pOverlaySource;
+size_t index = contents.find("%HOSTNAME%", 0);
+char buffer[MAX_PATH];
+if (!gethostname(buffer, MAX_PATH)) {
+    contents.replace(index, 10, std::string(buffer));
+    ofs << contents;
+    ofs.close();
+}
+```
+
+So the HTML the user drops into NVIDIA's resources directory is already pointed at the attacker
+machine. From there, the overlay just renders whatever the websocket sends it — boxes, circles,
+lines, text, images. The render loop on the page is the boring part:
+
+```js
+socket.onmessage = function(event) {
+    var obj = JSON.parse(event.data);
+    if (obj.__TYPE__ == "data") {
+        Connected = true;
+        CanvasData = obj.__DATA__;
+        if (IsRendering)
+            console.log("RENDERING TO SLOW TO KEEP UP");
+        else
+            OnFrame();
+    }
+};
+```
+
+`OnFrame` walks `CanvasData.renderqueue` and dispatches each entry by `type` to the matching
+`ctx.*` calls. Every primitive a normal ESP needs — `box`, `circle`, `line`, `text`, `image` —
+is a few lines of canvas API. The DMA cheat on the attacker side just packs whatever it would
+have drawn into JSON and ships it over the socket once per frame.
+
+---
+
+The full user flow that ships with the loader is six steps, baked into `do_exploit()`:
+
+1. Check whether `NVIDIA Share.exe` is already patched. If the byte sequence at the install site
+   matches our patched version, exit — nothing to do.
+2. Apply the **Overlay** patch. This is the always-on piece. If the read-back doesn't match the
+   original signature, bail with "patch location not found".
+3. Optionally apply the **WndProc** patch. The loader prompts for this — it's only useful in
+   windowed mode and a bad idea otherwise.
+4. Prompt the user to swap NVIDIA's `index.html` for the generated `nvidia_osc_index.html` (the
+   one with `%HOSTNAME%` already filled in).
+5. Prompt the user to terminate every `NVIDIA Share.exe` instance through Task Manager. GFE caches
+   the HTML on launch, so the swap doesn't take effect until the processes restart. They auto-respawn
+   within ~30 seconds.
+6. After the user is done playing, prompt them to restore the original `index.html`. The byte
+   patches are applied in memory and don't persist across reboots; the HTML swap is on disk and
+   does.
+
+Restoration is the same flow in reverse — `-restore` finds the patched signatures and writes the
+originals back. Because the three sibling NVIDIA Share processes share the same physical memory
+image, you only need to patch one — the others see the same bytes.
+
+---
+
+A few things worth saying out loud.
+
+This trick works because NVIDIA's overlay is a generic, programmable rendering surface that is
+_explicitly_ exempted from anti-cheat scrutiny. The same property that makes it useful to NVIDIA —
+paint anything on top of any game without integrating with the game — is the property that makes
+it useful as an ESP layer. There's no clever exploit primitive here; the whole thing is "what if
+we used the feature for a different purpose".
+
+If you're on the defending side of this, the lesson is that the trust boundary for game integrity
+does not stop at the game. Any signed, vendor-blessed process that can render on top of your game
+and connect outbound is a candidate for the same trick. NVIDIA isn't the only vendor who ships an
+overlay like this — Discord, Steam, AMD's equivalent, OBS, half a dozen others. The mitigation
+isn't "ban NVIDIA Share"; it's something like attesting the loaded resources of every overlay-capable
+process, which nobody currently does.
+
+If you're on the offensive side, don't expect the bytes in this post to match your local install.
+NVIDIA has rewritten the overlay multiple times since I did this work, and the GeForce Experience
+brand itself is being phased out in favour of the new NVIDIA App. The pattern of _using_ a vendor
+overlay as a cheat surface has a much longer half-life than any particular signature, though,
+because nobody who ships an overlay is going to design it to resist being repurposed by the user
+who installed it.
+
+Anyway, that's it. Stay safe.
+
+{/* reference links */}
+[DMA cheat]: /blog/dma-code-execution
+[ImGui]: https://github.com/ocornut/imgui
