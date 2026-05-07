@@ -153,6 +153,115 @@ ${itemsXml}
   };
 }
 
+// Emits dist/blog/<slug>/index.html for each visible blog post by cloning
+// dist/index.html and rewriting the SEO/OG/Twitter meta block with
+// post-specific values. Crawlers (Discord/Slack/Twitter) don't run JS, so
+// they only see static HTML — without this they'd get the default site meta
+// for every blog URL. React 19's metadata hoisting handles non-crawler
+// hydration on top of these.
+function generateBlogMetaPages(): Plugin {
+  const SITE = 'https://lystic.dev';
+  const SITE_NAME = 'lystic.dev';
+  const SITE_DEFAULT_OG_IMAGE = '/og-image.png';
+
+  const escapeHtml = (s: string): string =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const replaceMetaContent = (
+    html: string,
+    key: 'name' | 'property',
+    attrVal: string,
+    newContent: string,
+  ): string => {
+    const re = new RegExp(`(<meta\\s+${key}="${attrVal}"[^>]*?content=")[^"]*(")`);
+    return html.replace(re, `$1${newContent}$2`);
+  };
+
+  return {
+    name: 'generate-blog-meta-pages',
+    apply: 'build',
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      async handler() {
+        const postsDir = path.resolve(__dirname, 'src/pages/blog/posts');
+        const outDir = path.resolve(__dirname, 'dist');
+        const indexPath = path.join(outDir, 'index.html');
+
+        let baseHtml: string;
+        try {
+          baseHtml = await fs.readFile(indexPath, 'utf8');
+        } catch {
+          return;
+        }
+
+        const mdxFiles: string[] = [];
+        async function walk(dir: string): Promise<void> {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) await walk(full);
+            else if (entry.isFile() && entry.name.endsWith('.mdx')) mdxFiles.push(full);
+          }
+        }
+        await walk(postsDir);
+
+        for (const file of mdxFiles) {
+          const raw = await fs.readFile(file, 'utf8');
+          const { data } = matter(raw);
+
+          const visible = data.visible ?? true;
+          if (!visible) continue;
+
+          const slug: string = data.slug ?? path.basename(file, '.mdx');
+          const description: string = (data.description ?? '').toString().trim();
+          if (!slug || !description) continue;
+
+          const title: string = data.title ?? slug.replaceAll('-', ' ');
+          const fullTitle =
+            title === SITE_NAME || title.endsWith(` | ${SITE_NAME}`)
+              ? title
+              : `${title} | ${SITE_NAME}`;
+
+          const url = `${SITE}/blog/${slug}`;
+          const image: string | undefined = data.image;
+          const resolvedImage = image
+            ? image.startsWith('http')
+              ? image
+              : `${SITE}${image}`
+            : `${SITE}${SITE_DEFAULT_OG_IMAGE}`;
+
+          const fullTitleEsc = escapeHtml(fullTitle);
+          const descriptionEsc = escapeHtml(description);
+          const urlEsc = escapeHtml(url);
+          const imageEsc = escapeHtml(resolvedImage);
+
+          let html = baseHtml;
+          html = html.replace(/<title>[^<]*<\/title>/, `<title>${fullTitleEsc}</title>`);
+          html = replaceMetaContent(html, 'name', 'description', descriptionEsc);
+          html = replaceMetaContent(html, 'property', 'og:title', fullTitleEsc);
+          html = replaceMetaContent(html, 'property', 'og:description', descriptionEsc);
+          html = replaceMetaContent(html, 'property', 'og:type', 'article');
+          html = replaceMetaContent(html, 'property', 'og:image', imageEsc);
+          html = replaceMetaContent(html, 'name', 'twitter:title', fullTitleEsc);
+          html = replaceMetaContent(html, 'name', 'twitter:description', descriptionEsc);
+          html = replaceMetaContent(html, 'name', 'twitter:image', imageEsc);
+
+          const injection = `\n  <link rel="canonical" href="${urlEsc}" />\n  <meta property="og:url" content="${urlEsc}" />`;
+          html = html.replace(
+            /(<meta\s+name="twitter:image"[^>]*?\/>)/,
+            `$1${injection}`,
+          );
+
+          const slugDir = path.join(outDir, 'blog', slug);
+          await fs.mkdir(slugDir, { recursive: true });
+          await fs.writeFile(path.join(slugDir, 'index.html'), html);
+        }
+      },
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -176,6 +285,7 @@ export default defineConfig({
     }),
     emitWebpVariants(),
     generateRssFeed(),
+    generateBlogMetaPages(),
   ],
   resolve: {
     alias: {
