@@ -1,0 +1,161 @@
+---
+title: Reading Keys and Cursor over DMA Without Touching the Game
+description: |
+    DMA cheats are usually framed as "read the game's memory". That framing skips a useful
+    primitive — the player's keys and cursor are right there in physical memory too, and you
+    don't need a single hook in the game to read them.
+slug: reading-keys-and-cursor-over-dma
+date: 2026-05-07
+image: /blog/reading-keys-and-cursor-over-dma/cover.png
+tags: [dma, cheats, windows, reverse-engineering]
+---
+
+# Reading Keys and Cursor over DMA Without Touching the Game
+
+> Same DMA card, no game hook. The player's input is already in physical memory —
+> you just need to know which process the symbols resolve from.
+
+DMA cheats are usually framed as "read the game's memory". That framing skips a useful
+primitive — the player's keys and cursor are right there in physical memory too, and you
+don't need a single hook in the game to read them.
+
+I picked this up working on my own DMA framework. The standard DMA setup is two PCs — the
+_victim_ runs the game with the FPGA card plugged in, the _attacker_ runs the cheat and reads
+the victim's memory over PCIe. The keyboard and mouse stay on the victim, because that's the
+box you're actually playing on. Which means the cheat UI, which lives on the attacker, is
+always one step removed from your hands.
+
+The dumb fix is a KVM switch — physically swap your USB devices between the two boxes whenever
+you want to toggle ESP or aimbot. I did that for a while. It works, and it's terrible: there's
+a noticeable hitch every time USB renegotiates, and you can't change anything mid-fight. What I
+actually wanted was to keep my keyboard and mouse plugged into the victim permanently and have
+the attacker _mirror_ that input on demand. Press INSERT, the cheat menu pops up on the attacker
+and starts consuming my input; press ESCAPE, the menu closes and the game has my input back.
+The keyboard never moves.
+
+Keyboard alone is enough for a hotkey-driven menu. Once the cursor was in too, I could drop a
+real ImGui UI on the attacker, and with an HDMI fuser — or a capture card and OBS — compositing
+that overlay onto the live gameplay video, the whole experience felt exactly like a non-DMA
+in-process cheat. Full GUI on top of the game, no second monitor, no KVM, nothing inside the
+game itself.
+
+The obvious paths to that mirror were a kernel-mode keyboard filter or a hook in the focused
+window on the victim — both the first thing every anti-cheat looks at. So I went looking for
+somewhere Windows _already_ kept that state, in a process anti-cheat doesn't touch, where DMA
+could reach it.
+
+That place is **win32k**.
+
+---
+
+Windows centralizes async input state inside the windowing subsystem in two kernel-mode
+globals:
+
+- `gafAsyncKeyState` — a 64-byte bitmap, two bits per virtual-key code, holding the current
+  and "was-pressed-since-last-clear" state for every key in the active session. It's the same
+  data `GetAsyncKeyState` reads from user-mode.
+- `gptCursorAsync` — a `POINT` with the current cursor coordinates.
+
+Both live in `win32kbase.sys`. They're _session-scoped_ — every interactive user session has
+its own win32k image — which means you have to read the right session's copy. The clean way
+to anchor that is through a process that already has `win32kbase.sys` mapped into its symbol
+resolution context. **csrss.exe** does, because csrss is the user-mode peer of the windowing
+subsystem; every interactive session gets one and it has no reason to ever exit.
+
+A reasonable instinct is to anchor on `winlogon.exe` instead — also session-bound, also
+trusted, also boring to anti-cheat. It doesn't work as cleanly because the win32k PDB resolution
+through MemProcFS lands much more reliably out of csrss. So we go with csrss.
+
+The symbol lookup ends up being three lines:
+
+```cpp
+std::vector<uint64_t> pids = DMA::GetAllProcessIds("csrss.exe");
+// session 0 is system, the active user lives in the highest PID
+this->_csrss = new RemoteProcess("csrss.exe", pids[pids.size() - 1], debug);
+
+this->_gafAsyncKeyState_addr =
+    this->_csrss->GetExport("win32kbase.sys", "gafAsyncKeyState");
+this->_gptCursorAsync_addr   =
+    this->_csrss->GetExport("win32kbase.sys", "gptCursorAsync");
+```
+
+The "highest PID" trick is the only piece of session magic in the whole thing. There's always
+a session-0 csrss for the system and one for every interactive user. On a single-user box the
+human is essentially always on the latest session, so the largest PID is the right pick. You
+can do it more cleanly by walking session IDs in [MemProcFS], but the lazy version is fine
+when you know the layout.
+
+---
+
+Once you have those two addresses, an "input frame" is a single batched read:
+
+```cpp
+std::vector<uint64_t> addresses   = { _gptCursorAsync_addr, _gafAsyncKeyState_addr };
+std::vector<void*>    outBuffers  = { &_cursorPos, &_keyboardState };
+std::vector<uint64_t> sizes       = { sizeof(_cursorPos), sizeof(_keyboardState) };
+this->_csrss->ReadMany(addresses, outBuffers, sizes);
+```
+
+72 bytes total — `POINT` is 8, the bitmap is 64. On any half-decent FPGA card that's a single
+transaction, well under a millisecond round-trip. A 10ms poll loop runs at 100Hz with
+near-zero cost on the attacker side, which is already faster than anyone's hands.
+
+The bitmap format is the only piece of trivia worth memorising. Two bits per VK, packed eight
+VKs to a byte; bit 0 of the pair is "currently down", bit 1 is "was pressed since last
+clear". To read a key:
+
+```cpp
+bool is_down =
+    _keyboardState[(vk * 2 / 8)] & (1 << ((vk % 4) * 2));
+```
+
+Wired up against a victim it looks exactly like a local input poll, because that's what it
+effectively is:
+
+```cpp
+RemoteInput input(true, true);
+while (input.IsValid()) {
+    input.Update();
+    POINT  p     = input.GetCursorPos();
+    bool   shift = input.GetKeyState(VK_LSHIFT);
+    Sleep(10);
+}
+```
+
+There is no game in that loop. There is no injected DLL, no kernel-mode filter driver, no
+`SetWindowsHookEx`. The chain is _PCIe → physical memory → win32k globals_. The victim has
+no idea anything is reading.
+
+---
+
+The reason I think this deserves a tangent off the main [DMA series] is that it's a clean
+illustration of a more general property. DMA isn't a "cheat technique" — it's a way to
+passively observe a machine's RAM, and Windows centralises a _lot_ of state in RAM. Input is
+one example. The clipboard is another (`win32k`, again). Console screen buffers, RDP/Citrix
+session state, mounted filesystem caches, and most password-manager unlocked state all live
+in well-known process memory that a DMA card can read without leaving a trace anywhere on
+the victim.
+
+For a red-team operator with physical access — or any forensic capture pipeline that's
+already wired up to a live machine — that's a very different threat model than "EDR will
+catch the agent we drop". There is no agent. There is nothing to catch.
+
+---
+
+The usual caveats apply.
+
+`gafAsyncKeyState` and `gptCursorAsync` are stable export _names_ across every modern Windows
+10/11 build I've targeted, and because we resolve them by name through the win32k PDBs there
+is nothing offset-shaped to maintain — the version churn happens inside MemProcFS's symbol
+resolver, not in our code. The bitmap layout has been stable for years. The largest-PID trick
+obviously breaks the moment you have multiple interactive sessions, fast user switching, or
+RDP — in those cases you walk sessions properly. Server SKUs are where this is most likely
+to bite. Secure Desktop transitions (UAC, Ctrl+Alt+Del) will momentarily blank or freeze the
+read, which is the right behaviour — there is nothing to read while the secure desktop owns
+input.
+
+Anyway, that's it. Stay safe.
+
+{/* reference links */}
+[MemProcFS]: https://github.com/ufrisk/MemProcFS
+[DMA series]: /blog/dma-code-execution
