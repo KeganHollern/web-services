@@ -55,14 +55,4 @@ export const Modules = Object.entries(_modules).map(([filePath, importFn]): Post
         importFn,
     }
 }).filter((module) => module.metadata.visible && module.metadata.slug !== "" && module.metadata.description !== "" && module.metadata.description !== "")
-    .sort((a: PostModule, b: PostModule): number => {
-        const yearA = parseInt(a.filePath.split("/").reverse()[1]);
-        const yearB = parseInt(b.filePath.split("/").reverse()[1]);
-
-        if (yearA != yearB) {
-            return yearB - yearA
-        }
-
-        // years match, sort by something else
-        return a.filePath.localeCompare(b.filePath)
-    })
+    .sort((a, b) => b.metadata.date.localeCompare(a.metadata.date))
