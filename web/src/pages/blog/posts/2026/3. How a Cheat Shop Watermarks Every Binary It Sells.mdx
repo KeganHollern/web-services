@@ -1,0 +1,278 @@
+---
+title: How a Cheat Shop Watermarks Every Binary It Sells
+description: |
+    A few years back I ran a cheat shop where every buyer got their own custom-built copy of the loader.
+    Same source, different binary, with one fixed-length watermark threaded through the PE before
+    it ever left the build server.
+slug: watermarking-a-cheat-loader-per-buyer
+date: 2026-05-09
+image: /blog/watermarking-a-cheat-loader-per-buyer/cover.png
+tags: [cheats, windows, reverse-engineering, security]
+---
+
+# How a Cheat Shop Watermarks Every Binary It Sells
+
+> The interesting part of this project isn't the cheat. It's the build pipeline that
+> stamps a unique fingerprint into every copy of the loader before it goes out the door.
+
+A few years back I ran a cheat shop where every buyer got their own custom-built copy of the loader.
+Same source, different binary, with one fixed-length watermark threaded through the PE before
+it ever left the build server.
+
+The headline reason was leak attribution. If somebody ripped my loader, posted it on a competing
+forum, and we pulled their copy back, the watermark inside the binary mapped one-to-one to a row in
+the `users` table. The leaker outed themselves the moment they uploaded.
+
+But once you're already minting per-buyer binaries, you get a stack of secondary properties for free:
+
+- _Detection-set sharing breaks._ A signature pulled off Alice's loader doesn't match Bob's, because
+  the bytes around the watermark are different and — more importantly — the surrounding protector
+  wrap is different.
+- _Account revocation is a one-row UPDATE._ Watermark gets killed in the database; that user's
+  binary authenticates against nothing.
+- _Per-user feature gating costs nothing._ Every authenticated session already looks up the user
+  row; flipping a column toggles a feature for that one buyer.
+
+The whole thing is glued together with a Postgres queue, a tiny `PortableExecutable` class on the
+server, and a shell-out to [Themida]. The architecture is the post.
+
+---
+
+Start at the binary. The client source has exactly one symbol that's interesting to the server:
+
+```cpp
+// ClientToken.h
+const char g_ClientToken[] = {
+    "###############################\0"
+};
+```
+
+Thirty-two bytes of placeholder — thirty-one hashes plus the implicit null terminator. That's it. No
+HWID, no server endpoint, no public key — those are all compile-time constants in `Defines.h` and
+bake into the standard binary identically for every user. The only field the build server has to
+know how to find and rewrite is this one fixed-length string.
+
+Why fixed length and why a row of `#`? Because the patcher is an unrepentantly dumb substring search:
+
+```cpp
+for ( size_t i = 0; i < pPortableExecutable->GetSize( ); i++ )
+{
+    if ( memcmp( &pPortableExecutable->GetBuffer( )[i],
+                 "###############################", 32 ) == 0 )
+    {
+        memcpy( &pPortableExecutable->GetBuffer( )[i], szToken, 32 );
+        return true;
+    }
+}
+```
+
+A nicer implementation would walk the PE sections and write to the byte the linker actually placed
+`g_ClientToken` at. This implementation just brute-forces the buffer. It works because the
+placeholder is a sequence with effectively zero collision probability — no compiler-emitted
+constant, padding region, or import table is going to look like 31 hash characters in a row. The
+on-disk file is loaded into a `PortableExecutable` wrapper just to get an aligned `BYTE *` and a
+size; the actual edit is byte-level, not section-level.
+
+---
+
+The watermark itself — I'll call it the _token_ from here on — is a 32-character random
+alphanumeric string, generated on the build server with `std::shuffle` over a 62-char alphabet:
+
+```cpp
+std::string GenerateToken( )
+{
+    std::string str( "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" );
+    std::random_device rd;
+    std::mt19937 generator( rd( ) );
+    std::shuffle( str.begin( ), str.end( ), generator );
+    return str.substr( 0, 32 );
+}
+```
+
+Before it goes into the binary, the patcher XORs each byte with a position-dependent key:
+
+```cpp
+for ( size_t i = 0; i < 32; i++ )
+{
+    szToken[i] ^= 0xEC ^ ( i % 8 );
+}
+```
+
+The client decodes it at runtime with the exact same loop:
+
+```cpp
+// ConnectionHandler.cpp
+memcpy( szToken, g_ClientToken, sizeof( szToken ) - 1 );
+for ( size_t i = 0; i < sizeof( szToken ) - 1; i++ )
+{
+    szToken[i] ^= 0xEC ^ ( i % 8 );
+}
+PacketAuthentication auth( szToken, ..., ... );
+Connection::GetInstance( ).SendPacket( &auth, auth.GetSize( ) );
+```
+
+It's a trivial obfuscation, not encryption — the goal is just to make sure the token doesn't sit in
+the binary as printable ASCII you can grep out of a hex dump. The real protection comes from the
+layer above.
+
+---
+
+That layer is **Themida**. After the token's been patched in, the build pipeline shells out to
+`Themida64.exe` with a `.tmd` project file:
+
+```cpp
+Themida themida( "Themida/Themida64.exe" );
+auto result = themida.Protect( userCacheClientExe,
+                               userCacheClientOutputExe,
+                               clientThemidaConfig );
+```
+
+The project file is committed in the repo and pins which functions get virtualized and how hard.
+The client source sprinkles macro-pairs around sensitive code:
+
+```cpp
+#define VM_FAST_START      VM_TIGER_BLACK_START
+#define VM_MEDIUM_START    VM_LION_RED_START
+#define VM_SLOW_START      VM_SHARK_RED_START
+#define VM_EXTREME_START   VM_EAGLE_BLACK_START
+```
+
+The HWID collection routines get `VM_EXTREME`, the auth path gets `VM_MEDIUM`, the boring stuff
+stays untouched. Themida walks the binary, finds the marker bytes those macros emit, and replaces
+the wrapped functions with interpreted bytecode running on a per-build-randomized virtual machine.
+
+The reason this matters for watermarking: Themida's mutator is non-deterministic. Two runs against
+identical input produce different output. So even if Alice and Bob's pre-Themida binaries differed
+in only 32 bytes, their post-Themida binaries differ in many thousands. Diffing Alice's loader
+against Bob's to locate-and-strip the watermark is a non-starter — you'd have to first unwrap the
+protector, and unwrapping Themida is its own multi-week project that anti-cheat vendors pay
+full-time engineers to do.
+
+Stripping the watermark requires defeating the protector. That's the whole game.
+
+---
+
+Layered on top of that, the loader sanity-checks itself at runtime with a CRC32 implementation
+that's just slicing-by-8 with the polynomial `0xEBB28340`:
+
+```cpp
+// CRC.cpp — table init
+for ( uint32_t I = 0; I < 256; I++ )
+{
+    uint32_t C = I;
+    for ( uint32_t J = 0; J < 8; J++ )
+        C = ( C & 1 ) ? ( C >> 1 ) ^ 0xEBB28340 : ( C >> 1 );
+    this->m_iCRCTables[0][I] = C;
+}
+```
+
+I'm not going to publish where the CRC checks fire from or what regions they cover — anyone shipping
+a current product on this scaffolding deserves the day or two of breathing room — but the _shape_
+of the integrity check matters for the architecture. Critical regions of the binary get hashed at
+startup and again periodically; mismatches surface as a refusal to authenticate.
+
+So even if someone _did_ get past Themida and patch the watermark out, they'd land on a CRC that no
+longer matches and the loader would silently refuse to talk to the server. The CRC and the Themida
+wrap form the same "you can't surgically edit one byte" guarantee from two directions: Themida says
+you can't see the byte, CRC says you can't change it without also re-computing what the protector
+did to the surrounding region.
+
+---
+
+The server side is shorter and more boring, which is the point.
+
+There's a Postgres table called `client_build` with a state machine in five rows: `id`, `user_id`,
+`status` (0=queued, 1=building, 2=completed, 3=failed), and timestamps. The build handler is
+literally a polling loop:
+
+```cpp
+while ( Server::GetInstance( ).IsRunning( ) )
+{
+    const auto jobs = g_pDatabaseBuildHandler->GetConnection().execute(
+        "SELECT * FROM client_build WHERE STATUS = 0 ORDER BY id DESC LIMIT 1;" );
+    if ( jobs.empty( ) == false )
+    {
+        auto job = jobs.at( 0 );
+        BuildClient( job["id"].as<int32_t>(),
+                     job["user_id"].as<int32_t>() );
+    }
+    Sleep( 2000 );
+}
+```
+
+`BuildClient` does the whole pipeline for one user:
+
+1. Mark the job `status=1` (building).
+2. Create `Users/<userId>/` if it doesn't exist; copy `Client.exe` and `Client.map` in.
+3. Generate a fresh token, `DELETE FROM client_token WHERE user_id = $1`, insert the new token.
+4. Patch the token into the freshly-copied PE.
+5. Hand the patched PE to Themida; let it write `Client_Protected.exe` next to it.
+6. Mark the job `status=2` on success or `status=3` on failure, with `end_time = extract(epoch from now())`.
+
+The result is one folder per user, with one ready-to-ship binary inside. The binary stays on the
+build server's disk; it never gets pushed anywhere on its own.
+
+A separate listener thread on the same process accepts TCP connections from one specific IP — the
+forum/site server — and streams the cached `Client_Protected.exe` for a requested user ID:
+
+```cpp
+auto connectingIp = inet_ntoa( clientInfo.sin_addr );
+if ( forumIP.compare( connectingIp ) == 0 )
+{
+    HandleServerRequest( sSocket );
+}
+else
+{
+    Logging::GetInstance( ).Log( L"Access from other IP: %hs", connectingIp );
+}
+```
+
+The buyer's flow is _click download on the site_, which causes the site backend to open a TCP
+connection to the build server, which streams the bytes back, which the site then proxies to the
+buyer over HTTPS. The build server is never directly internet-facing. The forum knows who the
+logged-in user is and asks for their binary by user ID; the build server has no concept of HTTP
+auth and just trusts that the request came from the one IP it's allowed to talk to.
+
+---
+
+The mapping from token-to-user is the whole reason this exists. The server keeps it in
+`client_token (token, user_id)`, with the per-user `DELETE` happening in the same transaction as
+the new `INSERT`, so a fresh build invalidates the old binary's auth atomically. When a leaked
+binary turns up, the recovery flow is:
+
+1. Run the loader, sniff the `PacketAuthentication` payload going out, decode the XOR.
+2. Or — easier — give it to a friend who already has Themida unpacking tooling and have them dump
+   the decoded token from memory after `SendAuthentication` runs.
+3. `SELECT user_id FROM client_token WHERE token = $1`.
+4. That's the buyer.
+
+Once the build's been distributed, the server retains the mapping forever, but it doesn't need the
+binary itself — the binary's already out in the wild, and if you ever see a copy again you can
+fingerprint it offline.
+
+---
+
+Strip away the cheat-shop framing and what's left is a generic per-buyer-binary distribution
+pipeline. That pattern shows up in places that have nothing to do with cheats:
+
+- _Indie game beta keys._ Builds handed out to early-access testers get a per-tester token patched
+  into the resource section. Half a dozen leaks a year, and the publisher can usually point at the
+  leaker by the end of the day.
+- _Enterprise client distribution._ Vendor ships a desktop app to a regulated customer; the build
+  embeds the customer's tenant ID and a license blob signed against their tenant, both at known
+  offsets. Same idea — ciphertext is identical across customers, the watermark differs.
+- _Professional video review tooling._ Studios watermark per-reviewer screener copies as a matter
+  of course, with the watermark visible in the picture itself. Same threat model — leak attribution
+  — the difference is that studios accept that determined leakers will strip the watermark, while a
+  cheat shop hides behind Themida and pretends they can't.
+
+None of this is exotic. It's PE editing, a polling loop, a packer license, and one Postgres table.
+The reason it _feels_ exotic in the cheat-shop context is that nothing else in the cheat market is
+this disciplined — most loaders are one-binary-fits-all, signed with the same dev token for every
+buyer. The shops that bother to per-buyer-watermark are the same ones that take leak attribution
+seriously, which is the same property that lets them stay alive longer.
+
+Anyway, that's it. Same patterns, different domain.
+
+{/* reference links */}
+[Themida]: https://www.oreans.com/Themida.php
