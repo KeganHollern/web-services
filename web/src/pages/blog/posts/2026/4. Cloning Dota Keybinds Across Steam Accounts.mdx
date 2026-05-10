@@ -1,0 +1,257 @@
+---
+title: Cloning Dota Keybinds Across Steam Accounts
+description: |
+    Valve's cloud sync is per-account, which means switching to a smurf leaves you staring at a
+    fresh keymap with none of your bindings. So I built a tiny Windows tray app that watches the
+    registry for Steam to swap users and clones my keybinds over.
+slug: cloning-dota-keybinds-across-steam-accounts
+date: 2026-05-10
+image: /blog/cloning-dota-keybinds-across-steam-accounts/cover.png
+tags: [dota, windows, registry, csharp]
+visible: true
+---
+
+# Cloning Dota Keybinds Across Steam Accounts
+
+> Three small Windows-isms stitched together: a 100 ms registry poll, a 5-second sleep that
+> isn't laziness, and a 12-byte value that decides whether Task Manager calls your app
+> _Enabled_ or _Disabled_.
+
+Valve's cloud sync is per-account, which means switching to a smurf leaves you staring at a
+fresh keymap with none of your bindings. So I built a tiny Windows tray app that watches the
+registry for Steam to swap users and clones my keybinds over.
+
+Dota stores per-user settings in `Steam\userdata\<steamid>\570\`, where `570` is Dota's
+Steam app ID. Each Steam account gets its own folder; Steam Cloud only restores within that
+folder. The cloud doesn't know my main and my smurf are the same player, so it doesn't
+copy anything between them. That's correct behavior — it's just not what I wanted.
+
+The whole app is in C# / WinForms, sits in the tray, and is open source: [DotaKeyChanger].
+It's small enough that the entire interesting surface fits in this post. The thing I want
+to talk about isn't the zipping or the WinForms — it's the three engineering decisions that
+each took an embarrassingly long time to get right.
+
+---
+
+The first problem is _when_ to do the work. Steam doesn't expose a public "who is logged in"
+API I could find, and even if it did, I'd need to know when Dota launches, because writing
+keybinds while Dota is reading them goes about as well as you'd expect.
+
+So I went looking at side effects. Steam keeps a surprising amount of live state in the
+registry under `HKCU\SOFTWARE\Valve\Steam\`, and it updates as you use the client:
+
+```text
+HKCU\SOFTWARE\Valve\Steam\ActiveProcess\pid          # 0 if Steam isn't running
+HKCU\SOFTWARE\Valve\Steam\ActiveProcess\ActiveUser   # SteamID3, 0 if logged out
+HKCU\SOFTWARE\Valve\Steam\Apps\570\Installed         # 1 if Dota is installed
+HKCU\SOFTWARE\Valve\Steam\Apps\570\Running           # 1 if Dota is currently running
+```
+
+That's the entire surface I need. `ActiveUser` flips to the new SteamID the moment a different
+account finishes logging in. `Apps\570\Running` flips to `1` when the game process is up.
+Neither requires hooking Steam, injecting a DLL, or asking Valve for permission.
+
+The reads are one-liners against `Microsoft.Win32.Registry`:
+
+```csharp
+public static bool IsSteamRunning()
+{
+    RegistryKey? rk = Registry.CurrentUser.OpenSubKey(REGISTRY_ACTIVEPROCESS_PATH, false);
+    if (rk == null) return false;
+    int pid = (int?)rk.GetValue("pid", 0) ?? 0;
+    return pid != 0;
+}
+public static string GetSteamId()
+{
+    RegistryKey? rk = Registry.CurrentUser.OpenSubKey(REGISTRY_ACTIVEPROCESS_PATH, false);
+    if (rk == null) return "";
+    int activeUser = (int?)rk.GetValue("ActiveUser") ?? 0;
+    return activeUser == 0 ? "" : activeUser.ToString();
+}
+```
+
+The worker thread tails them in a 100 ms loop and turns level changes into events:
+
+```csharp
+while (true)
+{
+    currentDotaStatus = RegistryUtils.Steam.IsDotaRunning();
+    if (was_dota_running != currentDotaStatus)
+    {
+        was_dota_running = currentDotaStatus;
+        dotaChanged();
+    }
+
+    if (!RegistryUtils.Steam.IsSteamRunning() || !RegistryUtils.Steam.IsLoggedIn())
+        currentUserId = "";
+    else
+        currentUserId = RegistryUtils.Steam.GetSteamId();
+
+    if (last_user_id != currentUserId)
+    {
+        last_user_id = currentUserId;
+        accountChanged();
+    }
+
+    Task.Delay(100).Wait();
+}
+```
+
+100 ms is fast enough that the lag between "logged into smurf" and "keybinds present" is
+imperceptible, and slow enough that the registry reads don't show up in any profiler. Five
+HKCU lookups, ten times a second, against keys Steam itself writes to constantly — there's
+nothing to optimize.
+
+The two events the rest of the app cares about are `OnAccountChanged` and `OnDotaChanged`.
+Everything else hangs off those.
+
+---
+
+Here's where I lost an afternoon.
+
+The first version of `OnAccountChanged` did the obvious thing: account just changed, write
+my keybinds into the new user's `Steam\userdata\<id>\570\` folder, done. Logged in,
+keybinds appeared, Dota launched, my keymap was loaded. Perfect.
+
+Except it wasn't. Two seconds later Steam would silently rewrite the folder back to whatever
+it thought the user's settings should be, and my freshly-written keybinds were gone. I'd
+launch Dota, get into the menu, find a default keymap.
+
+I assumed for a while it was Steam Cloud yanking the files. It wasn't, or at least not only
+that — even with cloud sync disabled, Steam writes through this folder during login as part
+of bringing the userdata up to date. Whatever the mechanism, the order is _login completes_,
+_then_ Steam writes, and any change I made in between gets clobbered.
+
+The fix is to wait Steam out. From `Changer.cs`:
+
+```csharp
+private void _worker_OnAccountChanged(object? sender, AccountChangedEventArgs e)
+{
+    CurrentSteamId = e.SteamID;
+    OnAccountChanged?.Invoke(this, e);
+
+    if (e.SteamID != "")
+    {
+        // need to wait a few seconds otherwise our keybinds are overwritten again?!
+        Task.Delay(5000).ContinueWith(t =>
+        {
+            if (!FileUtils.AppData.HasBackup(CurrentSteamId))
+                CreateBackup();
+            WriteKeybinds();
+        });
+    }
+}
+```
+
+I left the comment in the source verbatim because that's what the code is doing — owning a
+magic constant I picked empirically. 5 seconds is comfortably past whatever Steam is doing,
+and it's well before any reasonable human gets into the lobby. I'd love to tell you it's
+keyed off some event I'm listening for. It isn't. It's a sleep.
+
+The interesting bit is that this is the thing that makes the app work. Before the delay,
+the project was a curiosity that "worked on my machine" the first time and then broke. After
+the delay, it Just Worked across every account I owned. A correct race-condition fix that's
+ugly is worth more than a slick architecture that races.
+
+---
+
+Next surprise. I wanted the tray app to auto-start at login, since the whole pitch is "this
+runs in the background and you forget about it". The classic way to do that is to write your
+exe path under:
+
+```text
+HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+```
+
+I did, rebooted, app came up in the tray, great. Then for unrelated reasons I opened Task
+Manager → _Startup_, and there it was, listed as **Disabled**.
+
+It wasn't disabled. It had just launched. But Task Manager said otherwise, and worse, the
+_Disable_ / _Enable_ buttons in that UI didn't appear to do anything I could measure. The
+classic Run key alone is, in Windows 8+, no longer the source of truth for the Startup UI.
+
+The actual source of truth is a parallel key:
+
+```text
+HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run
+```
+
+Each value here is a 12-byte blob where _byte 0_ is the enabled flag — `0x02` means enabled,
+`0x03` means disabled — and the remaining 11 bytes are a timestamp Windows fills in. There's
+essentially no Microsoft documentation on the format; everything I found on it was
+reverse-engineered by people who hit the same surprise.
+
+So `Startup.cs` writes both keys, with the StartupApproved blob spelled out as a byte array:
+
+```csharp
+const string REGISTRY_RUN_PATH     = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+const string REGISTRY_STARTUP_PATH = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
+static readonly byte[] STARTUP_VALUE_ENABLED  = { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static readonly byte[] STARTUP_VALUE_DISABLED = { 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+public static void Add()
+{
+    RegistryKey? rk = Registry.CurrentUser.OpenSubKey(REGISTRY_RUN_PATH, true);
+    rk.SetValue(RUN_ENTRY_NAME, $"\"{Application.ExecutablePath}\" -autostart");
+
+    rk = Registry.CurrentUser.OpenSubKey(REGISTRY_STARTUP_PATH, true);
+    if (rk.GetValue(RUN_ENTRY_NAME) == null)
+        rk.SetValue(RUN_ENTRY_NAME, new byte[]{ 0x03 });
+}
+public static void Enable(bool value)
+{
+    RegistryKey? rk = Registry.CurrentUser.OpenSubKey(REGISTRY_STARTUP_PATH, true);
+    rk.SetValue(RUN_ENTRY_NAME, value ? STARTUP_VALUE_ENABLED : STARTUP_VALUE_DISABLED);
+}
+```
+
+Now Task Manager and the app agree about whether autostart is on, and the user's _Disable_
+button works the way they expect because it's editing the key the OS actually respects. This
+is a 30-byte fix that took longer to find than to write.
+
+---
+
+The last piece is dumb but worth mentioning, because it shapes how everything else fits
+together. Keybinds are persisted as zip files in `%APPDATA%\DotaKeybindChanger\`:
+
+- `UserKeybinds.zip` — the canonical "this is what I want every account to use".
+- `KeybindsBackup_<steamid>.zip` — a per-account backup of whatever was there before the app
+  first touched the folder.
+
+Writing keybinds for a user is `ZipFile.ExtractToDirectory(UserKeybinds.zip, userdata\<id>\570\)`.
+Restoring an account's original settings is the same call against `KeybindsBackup_<steamid>.zip`.
+Promoting a user's current settings to the canonical keymap is a `File.Copy`. The zips are
+atomic enough that I can email one to a friend and they have my exact layout.
+
+The one gotcha worth a sentence: I originally used `Directory.Move` to set the backup aside
+during extraction. That blows up across drives — `%APPDATA%` is on C:, plenty of people
+install Steam on D:, and `.NET`'s `Directory.Move` refuses to cross drive letters. There's
+a `DirectoryCopy` fallback in `AppData.cs` that handles the cross-drive case, with a comment
+that asks the question more politely than I asked it at the time:
+
+```csharp
+// BUGFIX: cannot Directory.Move across drives... (why would these ever be in different drives? idk!)
+DirectoryCopy(backup_path, destination, true);
+```
+
+The answer, of course, is that everyone with an SSD + HDD setup keeps Steam off C:. The
+right thing was always copy-then-delete, not move. Cheap lesson, worth what it cost.
+
+---
+
+The pattern under all of this is that **when a vendor doesn't expose an API, their side
+effects usually are the API**. Steam doesn't ship a "who is logged in" callback, but it
+writes the answer to a registry key on every state change. Windows doesn't document its
+Startup-blob format, but the bytes are right there, two values you can flip. Dota's keybind
+file format is opaque, but the settings folder is just a folder full of files I can zip.
+
+None of these are unique to Steam, or Dota, or Windows. The next time some app you can't
+modify won't tell you what it's doing, watch where it writes — the registry, the filesystem,
+the network — and you'll usually find that the state you wanted is already there, in plain
+sight, waiting for a polling loop.
+
+Anyway, the whole thing is fifty kilobytes of C# and it's saved me more time than I'd like
+to admit. Source is up if you want to read it or steal from it.
+
+{/* reference links */}
+[DotaKeyChanger]: https://github.com/KeganHollern/DotaKeyChanger
