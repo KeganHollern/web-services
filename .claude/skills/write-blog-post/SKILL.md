@@ -40,7 +40,7 @@ visible: true
 ## Post Structure
 
 1. **H1 Title** - `# Title` matching the frontmatter title exactly
-2. **Optional epigraph** - A blockquote (`>`) with a relevant quote, definition, or callout. Not every post has one, but many do.
+2. **Optional epigraph** - A blockquote (`>`) only when you have a real quote from a source — documentation, a function name, an external article. Cite the source inline. Do NOT invent a poetic aphorism or punchy one-liner to put at the top; most posts don't have one at all. If you're writing the blockquote yourself, you're doing it wrong — delete it and open with the body.
 3. **Opening hook** - 1-3 paragraphs establishing personal context and the problem. Always first person. The first 1-2 sentences here must match the `description` frontmatter exactly.
 4. **Section breaks** - Use `---` horizontal rules to separate major sections (typically 2-5 per post)
 5. **Technical body** - Problem exploration, code examples, implementation details
@@ -76,6 +76,15 @@ visible: true
 - No excessive enthusiasm or hype language
 - No emoji except sparingly in closings (one is fine)
 - No self-referential meta-commentary about the post itself
+- **No punchy one-line jabs.** Kegan is witty but not punchy. Short staccato sentences at the end of a paragraph for rhetorical emphasis read as performative and he hates them. Concretely, avoid:
+  - "Same X, different Y." style enders (e.g. "Same shape, different DLL.")
+  - "X is the whole reason Y." aphorisms
+  - "The fix is the boring one: …"
+  - "Easy ban." / "Boom." / "Done." sign-offs after a beat
+  - Short imperative sentence fragments that exist purely to land a beat
+  - Wrap the same observation into a longer flowing sentence instead. The user's actual prose is matter-of-fact and explanatory — long sentences with em-dashes and subordinate clauses, not bullet-point one-liners.
+- **No grandiose framing.** Avoid "the foothold the whole series stands on", "in-place decryption engine", "the primitive that makes X possible", and similar phrases that try to make the technique sound bigger than it is. State plainly what the next post will cover.
+- **No staged epigraphs.** See structure note above — if you're writing the blockquote yourself, delete it.
 
 ## Code Blocks
 
