@@ -1,0 +1,375 @@
+---
+title: Hardening a JIT Hook
+description: |
+    Parts 1, 2, and 3 of this series built a working .NET method-protection pipeline: a JIT
+    hook, an in-place decrypter that runs inside that hook, and an offline IL rewriter that
+    produces the binaries the hook expects. This post is about everything that gets in the
+    way of an attacker who already knows what that pipeline does — how to keep them from
+    attaching a debugger, how to keep them from putting their own hook over ours, and how
+    to crash hard the moment they try.
+slug: hardening-a-jit-hook
+date: 2026-05-17
+image: /blog/hardening-a-jit-hook/cover.png
+tags: [dotnet, anti-debug, reverse-engineering]
+visible: true
+---
+
+# Hardening a JIT Hook
+
+Parts 1, 2, and 3 of this series built a working .NET method-protection pipeline: a JIT
+hook, an in-place decrypter that runs inside that hook, and an offline IL rewriter that
+produces the binaries the hook expects. This post is about everything that gets in the
+way of an attacker who already knows what that pipeline does — how to keep them from
+attaching a debugger, how to keep them from putting their own hook over ours, and how
+to crash hard the moment they try.
+
+If you haven't read [Hijacking the .NET JIT Compiler], [Decrypting .NET Methods at JIT
+Compile Time], or [Stripping IL with Mono.Cecil] yet, go read those first — everything
+below assumes the pipeline they describe is already in place.
+
+The threat model here is concrete. The attacker has the binary, has read the blog
+series or worked out the technique themselves, and is now sitting in front of dnSpy and
+a debugger trying to dump cleartext IL out of the JIT buffer at the moment of
+decryption. Every trick below is aimed at making one of two specific moves miserable
+for them: attaching a debugger to the running process, or installing their own hook on
+top of ours.
+
+---
+
+The dullest layer is also the easiest one to call. The .NET BCL and the Win32 API each
+expose a "is anyone debugging this process?" boolean, and there is no reason not to
+call all of them at startup and on a polling loop after:
+
+```csharp
+[DllImport("kernel32.dll")]
+private static extern bool IsDebuggerPresent();
+
+[DllImport("Kernel32.dll", SetLastError = true, ExactSpelling = true)]
+[return: MarshalAs(UnmanagedType.Bool)]
+private static extern bool CheckRemoteDebuggerPresent(
+    SafeHandle hProcess,
+    [MarshalAs(UnmanagedType.Bool)] ref bool isDebuggerPresent);
+
+private static bool DotNetDebugger()
+{
+    return Debugger.IsAttached;
+}
+```
+
+`Debugger.IsAttached` catches managed debuggers — Visual Studio, dnSpy in debug mode.
+`IsDebuggerPresent` is the user-mode equivalent for native debuggers and reads a single
+bit out of the PEB. `CheckRemoteDebuggerPresent` runs the same check via a syscall and
+is slightly harder to spoof from inside the target.
+
+None of these stop a serious reverse engineer for more than thirty seconds. Every
+standard .NET protection bypass tool patches all three before doing anything else.
+They are still worth calling, because the floor of "people trying to read your binary"
+includes a lot of curious tinkerers who never get past the floor, and a process that
+bails out the instant Visual Studio's debugger touches it is enough of a deterrent for
+most of that population.
+
+---
+
+Past the simplest checks is a less polite question. What is currently running on this
+machine, and does any of it look like a debugger or a memory editor?
+
+```csharp
+private static bool ProcessNames()
+{
+    string[] bad_proc_names = new string[] { "dnspy" };
+    foreach (string name in bad_proc_names)
+        if (Process.GetProcessesByName(name).Length > 0)
+            return true;
+    return false;
+}
+
+private static bool WindowTitles()
+{
+    string[] bad_window_names = new string[] { "dnspy", "cheat engine" };
+    foreach (Process p in Process.GetProcesses())
+        foreach (string name in bad_window_names)
+            if (p.MainWindowTitle.ToLower().Contains(name))
+                return true;
+    return false;
+}
+```
+
+The process-name scan catches anyone running the unmodified executable. The
+window-title scan catches the next tier up, who renamed the binary but didn't bother
+changing the application's main window text. Cheat Engine in particular puts its name
+in the window title regardless of the binary filename, which makes that one of the
+cheaper signals on the entire list.
+
+The obvious bypass on both lists is to rename the process and patch the window title
+before it ever shows up. That is a real bypass, and any attacker who has done this kind
+of work before will do it in their sleep. The reason the check is still here is the
+same reason `Debugger.IsAttached` is still here — the cost is one syscall per pass and
+most attackers will not bother. The few who do are the ones the rest of this post is
+aimed at.
+
+---
+
+This one is more interesting because it catches a category of attacker that the
+previous checks completely miss: somebody using hardware breakpoints to single-step
+through the JIT hook without anything visible to user-mode "is a debugger attached"
+queries.
+
+A hardware breakpoint is a breakpoint set by writing a target address into one of the
+CPU's debug registers, DR0 through DR3, and arming a corresponding bit in DR7. The CPU
+itself raises the fault when an instruction fetch or memory access hits that address.
+Nothing inside the process needs to be modified to install one. No `int3` byte gets
+written into the code, no `IsDebuggerPresent` flag flips. From the perspective of the
+target, the only evidence is the contents of its own debug registers, which is exactly
+what `GetThreadContext` will read back for you:
+
+```csharp
+private static bool ThreadContextCheck()
+{
+    CONTEXT64 ctx = new CONTEXT64();
+    ctx.ContextFlags = CONTEXT_FLAGS.CONTEXT_DEBUG_REGISTERS;
+    if (GetThreadContext(GetCurrentThread(), ref ctx))
+    {
+        if (ctx.Dr0 != 0 || ctx.Dr1 != 0 || ctx.Dr2 != 0 || ctx.Dr3 != 0)
+            return true;
+    }
+    return false;
+}
+```
+
+The standard `CONTEXT_DEBUG_REGISTERS` request against the current thread's context. If
+any of DR0–DR3 are non-zero, somebody set a hardware breakpoint. The vast majority of
+.NET reverse-engineering blog posts I read in 2022 didn't cover this; they stopped at
+`IsDebuggerPresent`. A non-trivial slice of attackers reach for hardware breakpoints
+specifically because of that gap, so even a one-function check that closes it is
+worth its weight.
+
+The version above only checks the calling thread. A more thorough sweep walks every
+thread in the process via `Thread32First` / `Thread32Next` and runs the same check on
+each, which is what you actually want once the JIT hook has spawned its own worker
+threads.
+
+All of the above feed into a single dispatch:
+
+```csharp
+public static bool DetectDebuggers()
+{
+    if (DotNetDebugger())     return true;
+    if (IsDebuggerPresent())  return true;
+    if (ProcessNames())       return true;
+    if (WindowTitles())       return true;
+    if (IsRemoteDebugger())   return true;
+    if (ThreadContextCheck()) return true;
+    return false;
+}
+```
+
+`DetectDebuggers` runs on a polling loop on a background thread and crashes the process
+the instant it returns true. The cadence is short enough that a debugger attaching
+mid-run is caught in well under a second, and the cost of each pass is dominated by the
+process enumeration, which is itself cheap on modern Windows.
+
+---
+
+The previous section keeps debuggers from attaching. The next one is about what to do
+if one is already attached and we haven't detected it yet, typically because the user
+attached before our checks armed, or because they patched the checks out:
+
+```csharp
+public static void StartForceBreak()
+{
+    Thread t = new Thread(() =>
+    {
+        while (true)
+        {
+            Debugger.Break();
+            DebugBreak();
+            AsmBreak();
+            Thread.Sleep(10);
+        }
+    });
+    t.IsBackground = true;
+    t.Start();
+}
+```
+
+A background thread spamming `Debugger.Break()` and the corresponding native
+`DebugBreak()` once every ten milliseconds. If no debugger is attached, both calls are
+no-ops — the breakpoint exception raises, the runtime swallows it, execution continues.
+If a debugger _is_ attached, every ten milliseconds the debugger gets a
+`BREAKPOINT_HIT` event from a thread it didn't choose to break on, halts everything,
+and the user has to manually resume past it before they can do anything else. After
+twenty resumes the cost of single-stepping through anything starts to outweigh
+whatever the attacker was hoping to learn, and most of them switch targets.
+
+`AsmBreak` is a third entrypoint that does the same thing through a different path.
+Its body is just another `Debugger.Break()`, but because the encrypter strips and
+re-emits the IL, the method the debugger ends up tripping over isn't named anything
+recognizable. Three breakpoints firing from three different methods in tight rotation
+are much harder to "ignore on hit" than one.
+
+This isn't a defence in any deep sense. It's a way of taxing the attacker's time —
+every minute they spend in the debugger costs them ten breakpoint-resumes of
+frustration, and that is sometimes enough to make them go find an easier target.
+
+---
+
+The hardest move for an attacker to defend against is the one that doesn't involve a
+debugger at all: installing their own JIT hook on top of ours. Our hook works by
+overwriting the function pointer at offset zero of the JIT vtable with a pointer to
+our trampoline. There is nothing stopping a second piece of code from doing the same
+thing — replacing our pointer with theirs, calling the original from inside their own
+hook, and quietly mirroring every cleartext IL byte we worked so hard to produce.
+
+The fix is to never treat hook installation as a one-shot act. It's a state, and the
+state has to be maintained. A background thread re-reads the vtable slot at a constant
+cadence and verifies it still points where we put it:
+
+```csharp
+private void ProtectVTable()
+{
+    while (true)
+    {
+        IntPtr pVTable = _addrProvider.VTableAddr;
+        IntPtr pCompileMethod = Marshal.ReadIntPtr(pVTable);
+
+        IntPtr desired_value = Marshal.GetFunctionPointerForDelegate(NewCompileMethod);
+        IntPtr actual_value  = Marshal.ReadIntPtr(pCompileMethod);
+
+        if (actual_value != desired_value)
+        {
+            Win32.Print("vTable Hook Broken!");
+            SafeCrash.ForceCrash();
+        }
+
+        byte[] required_bytes = new byte[]
+        {
+            0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48, 0x89, 0x68, 0x10,
+            0x48, 0x89, 0x70, 0x18, 0x48, 0x89, 0x78, 0x20, 0x41, 0x56, 0x48,
+            0x83, 0xEC, 0x60, 0x48, 0x8B, 0x3D
+        };
+        IntPtr og_address = Marshal.GetFunctionPointerForDelegate(OriginalCompileMethod);
+
+        for (int i = 0; i < required_bytes.Length; i++)
+        {
+            byte og_byte = Marshal.ReadByte(og_address + i);
+            if (og_byte != required_bytes[i])
+            {
+                Win32.Print("Modified ClrJit! Likely hooked!");
+                SafeCrash.ForceCrash();
+            }
+        }
+
+        System.Threading.Thread.Sleep(100);
+    }
+}
+```
+
+Two checks, both on a 100ms cadence.
+
+The first check is the direct one. Read the function pointer the JIT vtable currently
+holds; if it doesn't match the pointer we wrote into it, somebody has overwritten our
+hook with theirs, and we crash.
+
+The second check is more subtle. Even if a competing tool keeps our function pointer
+in the vtable, it can still patch the _original_ `compileMethod` itself, overwriting
+its prologue with a jump to its own code. Every time we forward to the original from
+inside our hook, we would actually be calling into the attacker. To catch that, we
+record the first 28 bytes of the original function prologue at install time and
+re-verify them on each pass. That exact byte pattern is the x64 prologue clrjit ships
+with: `mov rax, rsp; mov [rsp+8], rbx; mov [rsp+0x10], rbp; ...`. Any deviation from
+it on a fully-loaded `clrjit.dll` is somebody else's hook.
+
+Both crashes route through `SafeCrash.ForceCrash`, which is the next section.
+
+The thread is set `IsBackground = true` so it doesn't keep the process alive on its
+own. It also gets `PrepareMethod`'d in the install path (visible in
+`JITHook64<T>.Hook`) for the same chicken-and-egg reason the rest of the hook path
+does — we cannot afford for the watchdog itself to trigger a JIT compilation after
+the hook is armed.
+
+This generalizes well past JIT hooks. Any pointer slot, callback registration, or
+function table that lives in shared mutable state can be overwritten by anything else
+with the same write privilege. The only way to know it still holds the value you put
+there is to read it back and check, and the only way to know it stays that way is to
+keep checking.
+
+---
+
+Each of the failure paths above calls `SafeCrash.ForceCrash`. The body is short and
+the reasoning behind it is the interesting part:
+
+```csharp
+public static unsafe void ForceCrash()
+{
+    Thread crash_thread = new Thread(new ThreadStart(() =>
+    {
+        byte* value = (byte*)0x0;
+        *value = 0; // null ptr exception
+    }));
+    crash_thread.Start();
+    while (crash_thread.IsAlive)
+        Thread.Sleep(10);
+}
+```
+
+It spins up a new thread whose only instruction is to write a byte through a null
+pointer, with no handler around the write. The process dies with an access violation
+a moment later.
+
+The reason this runs on a fresh thread instead of just calling `Environment.FailFast`
+directly is that the original thread is, in many of these failure paths, sitting
+inside the JIT hook itself — holding pages mid-`VirtualProtect`, possibly with
+cleartext IL sitting in the JIT's input buffer, possibly halfway through patching it.
+A clean managed shutdown from that frame runs finalizers and disposes objects in a
+half-corrupted runtime state, which can hang or worse. An access violation raised
+from outside that frame is something the OS handles directly: Windows sees an unhandled
+thread fault, the process dies, no managed handlers run, no leftover state.
+
+The spin-loop on the original thread is a small concession to making the crash
+deterministic. Without it, the calling thread would return immediately and possibly
+continue executing past the point of detection while the crash thread was still
+spinning up. Sleeping until the crash thread is dead means the original thread is
+wedged in `Sleep(10)` when the process actually dies, which is exactly where we want
+it.
+
+There is no graceful path from inside a half-installed JIT hook back to a clean
+process death, and the right thing to do once detection fires is to hand the process
+to the OS and let it kill us.
+
+---
+
+Some of what's in this post still holds up in 2026 and some of it doesn't.
+
+The watchdog idea is the part that ages best. Anything you write into shared mutable
+state can be overwritten by anyone else with the same write privilege, and the only
+way to know it still says what you put there is to look — on a fast enough cadence
+that overwrites get caught before the attacker has used them for anything interesting.
+The exact application here is .NET-specific, but the pattern shows up anywhere a
+defender is competing with another piece of code for the same hook slot.
+
+The hardware breakpoint check is also still good. The set of attackers who reach for
+DR0–DR3 is small, but the set of protections that bother to look for them is somehow
+even smaller, so it remains a useful trip wire.
+
+The rest doesn't hold up the same way. The MD5-stretched-AES choice from part 2 looks
+worse the longer you stare at it. The `Debugger.Break()` spam loop is trivially
+patched out by anyone serious. The classic `IsDebuggerPresent` family was barely
+deterrent-grade in 2022 and the gap has only widened since. Modern .NET protection
+products do all of this and twenty other things on top: control-flow flattening,
+native AOT compilation, integrity attestation against a server. The gap between
+"1500-line PoC from a bedroom in 2022" and "production product in 2026" is most of
+those twenty things.
+
+If you landed on this post first, the rest of the series is the actual technique:
+[Hijacking the .NET JIT Compiler] is the hook, [Decrypting .NET Methods at JIT
+Compile Time] is what runs inside the hook, and [Stripping IL with Mono.Cecil] is the
+offline tool that produces the binaries the hook expects. The four parts together
+are a working method-protection pipeline, with all the rough edges of a project I
+wrote in a bedroom in 2022.
+
+Anyway, that's part four. Stay curious.
+
+{/* reference links */}
+[Hijacking the .NET JIT Compiler]: /blog/hijacking-the-dotnet-jit-compiler
+[Decrypting .NET Methods at JIT Compile Time]: /blog/decrypting-dotnet-methods-at-jit-compile-time
+[Stripping IL with Mono.Cecil]: /blog/stripping-il-with-monocecil
