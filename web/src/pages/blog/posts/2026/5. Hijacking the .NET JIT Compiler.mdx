@@ -1,0 +1,257 @@
+---
+title: Hijacking the .NET JIT Compiler
+description: |
+    Back in 2022 I wanted to ship a .NET binary that couldn't be trivially opened in dnSpy and
+    read line by line. The interesting trick — the one that actually works against a casual
+    reverse engineer — is to encrypt every method's IL at rest and decrypt it inside the JIT
+    compiler the moment the runtime tries to turn it into native code.
+slug: hijacking-the-dotnet-jit-compiler
+date: 2026-05-16
+image: /blog/hijacking-the-dotnet-jit-compiler/cover.png
+tags: [dotnet, csharp, reverse-engineering, jit]
+visible: true
+---
+
+# Hijacking the .NET JIT Compiler
+
+Back in 2022 I wanted to ship a .NET binary that couldn't be trivially opened in dnSpy and
+read line by line. The interesting trick — the one that actually works against a casual
+reverse engineer — is to encrypt every method's IL at rest and decrypt it inside the JIT
+compiler the moment the runtime tries to turn it into native code.
+
+That trick has prerequisites though. Before you can decrypt anything, you need a function
+that runs every time the runtime is about to compile a method, with the method's IL bytes
+sitting in your hands as a writable buffer. That's a JIT hook, and it is what this post is
+about — the encryption, the offline rewriter, and the anti-tamper hardening all come in
+later posts.
+
+The whole thing is one project called [NetProtect]. The hook scaffold I'm walking through
+here is built on top of [UbbeLoL's SJITHook], which is the canonical reference for this
+technique — credit where it's due.
+
+---
+
+The .NET runtime exposes its JIT compiler through a COM-ish unmanaged interface called
+`ICorJitCompiler`. There is exactly one instance of it per process, and it lives inside the
+JIT DLL that the runtime loads at startup — `clrjit.dll` on modern .NET, `mscorjit.dll`
+on the older .NET Framework. The interface they expose is identical, so the only thing that
+changes between the two runtimes is which DLL you P/Invoke against.
+
+You can't just `LoadLibrary("clrjit.dll")` and call `compileMethod` directly. Well, you
+_can_, but the instance you load is a fresh one that the actual runtime is not using, so
+hooking it does nothing for code your application runs. What we need is a pointer to the
+_singleton_ instance the runtime is already calling into for every method it compiles in
+this process.
+
+The JIT DLLs ship exactly one unmanaged export to make that possible: `getJit`. It returns
+a `void**` — a pointer to the JIT object's vtable, which is shared by every compilation
+the runtime ever performs in this process. From managed code that's a one-line P/Invoke:
+
+```csharp
+public sealed class ClrjitAddrProvider : VTableAddrProvider
+{
+    [DllImport("Clrjit.dll", CallingConvention = CallingConvention.StdCall, PreserveSig = true)]
+    private static extern IntPtr getJit();
+
+    public override IntPtr VTableAddr
+    {
+        get
+        {
+            IntPtr pVTable = getJit();
+            if (pVTable == IntPtr.Zero)
+                throw new Exception("Could not retrieve address for getJit");
+            return pVTable;
+        }
+    }
+}
+```
+
+The legacy Framework version is the same code with `mscorjit.dll` swapped in for the DLL
+name. I keep both providers around so the same hook can target either runtime, with the
+rest of the plumbing generic over which DLL the export came from.
+
+---
+
+`getJit()` hands back the vtable pointer. The thing at offset zero in that vtable is the
+function pointer for `compileMethod` — the function the runtime invokes once per method it
+needs to translate from IL to native code. That's the slot I want to replace.
+
+Reading the current value is one `Marshal.ReadIntPtr`:
+
+```csharp
+IntPtr pVTable        = _addrProvider.VTableAddr;
+IntPtr pCompileMethod = Marshal.ReadIntPtr(pVTable);
+```
+
+`pCompileMethod` is the address of the slot itself, not the function — read it again and
+you get the function pointer the runtime is currently using. That distinction matters
+because the swap is `Marshal.WriteIntPtr` to the same slot address.
+
+My first attempt skipped `VirtualProtect` and just wrote the new pointer in. It crashed
+instantly with an access violation, because the vtable lives in a read-only page of the
+JIT DLL, which makes sense given that the runtime relies on that function pointer for
+every method it ever compiles. To actually swap it we have to flip the page to
+`PAGE_EXECUTE_READWRITE`, write our new pointer in, and flip the protection back to
+`PAGE_EXECUTE_READ` after.
+
+```csharp
+if (!Data.VirtualProtect(pCompileMethod, (uint)IntPtr.Size,
+        Data.Protection.PAGE_EXECUTE_READWRITE, out uint old))
+    return false;
+
+OriginalCompileMethod = (Data.CompileMethodDel64)
+    Marshal.GetDelegateForFunctionPointer(
+        Marshal.ReadIntPtr(pCompileMethod),
+        typeof(Data.CompileMethodDel64));
+
+// ... PrepareDelegate / PrepareMethod calls, covered below ...
+
+Marshal.WriteIntPtr(pCompileMethod,
+    Marshal.GetFunctionPointerForDelegate(NewCompileMethod));
+
+return Data.VirtualProtect(pCompileMethod, (uint)IntPtr.Size,
+    Data.Protection.PAGE_EXECUTE_READ, out old);
+```
+
+Three things happen in order: I grab the existing function pointer and wrap it as a
+managed delegate (`OriginalCompileMethod`) so I can forward calls to the real JIT later, I
+marshal my own delegate to an unmanaged function pointer and write that into the slot, and
+I restore the page protection. After this returns, every call the runtime makes to
+`compileMethod` lands in my code instead.
+
+The only subtlety is `Marshal.GetFunctionPointerForDelegate` — it pins the delegate and
+generates a tiny native stub that calls into the managed method, but the stub only stays
+alive as long as the delegate itself does. So `NewCompileMethod` is held as a property on
+the hook class, not a local. If it gets GC'd, the next `compileMethod` call from the
+runtime jumps into freed memory and the process dies in a way that is _extremely_ hard to
+debug — about an hour of my life went into that lesson.
+
+---
+
+The signature of `compileMethod` is fixed by the unmanaged interface, so the matching
+managed delegate has to declare it exactly:
+
+```csharp
+[UnmanagedFunctionPointer(CallingConvention.StdCall, SetLastError = true)]
+public unsafe delegate int CompileMethodDel64(
+    IntPtr thisPtr,
+    [In]  IntPtr corJitInfo,
+    [In]  CorMethodInfo64* methodInfo,
+    CorJitFlag flags,
+    [Out] IntPtr nativeEntry,
+    [Out] IntPtr nativeSizeOfCode);
+```
+
+`thisPtr` is the implicit `this` for the COM-style call. `corJitInfo` is the runtime's
+callback object — the JIT uses it to ask the runtime for things like type info during
+compilation. `methodInfo` is the one we care about; among other things it carries
+`ilCode` (a pointer to the method's IL bytes) and `ilCodeSize`. `flags`, `nativeEntry`,
+and `nativeSizeOfCode` are how the original JIT communicates back out — none of which I
+want to fake.
+
+The reason this hooking approach doesn't require reimplementing the JIT is that none of
+those out-parameters need to be faked. After inspecting or rewriting `methodInfo->ilCode`
+we pass everything through unchanged to the original compiler, which fills in
+`nativeEntry` and `nativeSizeOfCode` for us:
+
+```csharp
+private unsafe int ClrCompile64(
+    IntPtr thisPtr,
+    [In]  IntPtr corJitInfo,
+    [In]  Data.CorMethodInfo64* methodInfo,
+    Data.CorJitFlag flags,
+    [Out] IntPtr nativeEntry,
+    [Out] IntPtr nativeSizeOfCode)
+{
+    // ... inspect or rewrite methodInfo->ilCode here ...
+
+    return _jitHook64.OriginalCompileMethod(
+        thisPtr, corJitInfo, methodInfo, flags, nativeEntry, nativeSizeOfCode);
+}
+```
+
+That in-place rewrite of `ilCode` before forwarding to the original is what every later
+post in this series will build on. We won't actually write anything in this post though —
+the goal here is just to confirm we can see the IL the runtime is about to compile.
+
+---
+
+The simplest hook you can write — and the one I recommend writing first to convince
+yourself the plumbing works — is a no-op that logs every method the runtime compiles and
+then forwards to the original.
+
+```csharp
+private unsafe int LoggingCompile(
+    IntPtr thisPtr,
+    [In]  IntPtr corJitInfo,
+    [In]  Data.CorMethodInfo64* methodInfo,
+    Data.CorJitFlag flags,
+    [Out] IntPtr nativeEntry,
+    [Out] IntPtr nativeSizeOfCode)
+{
+    Win32.Print(
+        $"JIT: token=0x{(*(ushort*)methodInfo->methodHandle):x4} " +
+        $"ilSize={methodInfo->ilCodeSize}");
+
+    return _jitHook64.OriginalCompileMethod(
+        thisPtr, corJitInfo, methodInfo, flags, nativeEntry, nativeSizeOfCode);
+}
+```
+
+Install that, run the program, and you'll see a torrent of method tokens and IL sizes
+scroll past — every type loaded, every property accessor, every framework method that
+gets touched. If you don't see your application's own methods in that stream, the hook is
+broken or installed too late, and you need to look at the chicken-and-egg problem next.
+
+---
+
+The chicken-and-egg problem is this: my hook is itself a managed method. The first time
+the runtime executes my call to `Hook(...)`, the JIT compiles `Hook` and `ClrCompile64`
+and everything they touch. _But my hook is what intercepts JIT compilations._ If
+`compileMethod` gets called as part of compiling my own hook, my hook is half-installed
+and the runtime ends up recursing into the half-installed hook, which itself needs to be
+JIT-compiled, which calls into the hook, and so on. The process dies in a stack overflow
+before it even finishes installing.
+
+The fix is to force every method the hook depends on to be JIT-compiled _before_ the
+swap. `RuntimeHelpers.PrepareMethod` and `PrepareDelegate` do exactly that — they walk
+the method, JIT it through the still-unhooked compiler, and pin the native code so it
+won't be re-JITted later.
+
+```csharp
+RuntimeHelpers.PrepareDelegate(NewCompileMethod);
+RuntimeHelpers.PrepareDelegate(OriginalCompileMethod);
+RuntimeHelpers.PrepareMethod(
+    GetType().GetMethod("UnHook").MethodHandle,
+    new[] { typeof(T).TypeHandle });
+```
+
+This is the easy version — you call `PrepareMethod` on every entry point your hook
+touches and trust that the transitive closure gets pulled in with it. In practice it
+isn't quite enough, because the runtime sometimes inlines or specialises deeper methods
+on first use, so a method you didn't think you called shows up in the JIT stream the
+first time your hook is invoked and the recursion bites you anyway. My favourite version
+of this fix is to construct a fake "trigger" payload and run the whole hook path against
+it _before_ installing, just to force the JIT to walk every branch you care about. That's
+what `PreJit` in the larger project does — it builds a fake `CorMethodInfo64`, threads it
+through the entire method-detection chain, and only then arms the real hook. We'll get
+into that in part 4.
+
+---
+
+That's it for the foothold. After `Hook` returns we have a function that runs every time
+the .NET runtime tries to compile a method — with the method's IL pointer in our hands,
+its byte size next to it, and the original compiler available as a managed delegate we
+can call whenever we're done snooping. The hook is installed in user space, requires no
+driver and no debugger privileges, and is invisible from inside the JIT itself because
+the vtable swap happens before the JIT gets a chance to look.
+
+What we haven't done is anything interesting with `ilCode`. In the next post we'll start
+encrypting methods offline so they ship as garbage bytes inside the assembly, and
+decrypting them in place during compilation using the hook we built here.
+
+Anyway, that's part one. Stay curious.
+
+{/* reference links */}
+[NetProtect]: https://github.com/KeganHollern/NetProtect
+[UbbeLoL's SJITHook]: https://github.com/UbbeLoL/SJITHook
