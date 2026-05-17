@@ -1,0 +1,346 @@
+---
+title: Decrypting .NET Methods at JIT Compile Time
+description: |
+    In part 1 of this series we hooked the .NET JIT compiler. In this post we
+    use that hook to make _encrypted methods_ a real thing — IL that ships as
+    garbage bytes inside the assembly and only becomes valid during the brief
+    window between the runtime asking for compilation and the JIT handing back
+    native code.
+slug: decrypting-dotnet-methods-at-jit-compile-time
+date: 2026-05-16
+image: /blog/decrypting-dotnet-methods-at-jit-compile-time/cover.png
+tags: [dotnet, reverse-engineering, jit, obfuscation]
+visible: true
+---
+
+# Decrypting .NET Methods at JIT Compile Time
+
+In part 1 of this series we hooked the .NET JIT compiler. In this post we
+use that hook to make _encrypted methods_ a real thing — IL that ships as
+garbage bytes inside the assembly and only becomes valid during the brief
+window between the runtime asking for compilation and the JIT handing back
+native code.
+
+The thing that makes this approach pleasant to think about is that the
+"encrypted method" abstraction doesn't really exist anywhere on disk or in any
+long-lived memory buffer. The original IL is ciphertext in the assembly,
+ciphertext as the runtime reads it off disk, ciphertext when the JIT calls our
+hook — and then for a few microseconds inside our hook it becomes plaintext,
+the original `compileMethod` walks it, native code lands somewhere else
+entirely, and the buffer is dead.
+
+If you haven't read [Hijacking the .NET JIT Compiler] yet, do that first —
+everything below assumes we already have a function that runs on every JIT
+compilation with a writable pointer to `ilCode` in its hands.
+
+---
+
+The way a method gets marked as encrypted is the boring part: a custom
+attribute the C# compiler doesn't care about and our hook does.
+
+```csharp
+[ClrEncrypted(EncryptionType.aes, false)]
+[MethodHash("E1A3...")]
+private string ReadLicenceKey() { ... }
+```
+
+`ClrEncrypted` is the "this method's IL is ciphertext on disk" marker, with a
+flag for which cipher to use and a second flag — `streamed` — for whether the
+ciphertext lives inside the assembly as a resource or comes off the network.
+`MethodHash` is the tamper-detection complement, carrying the MD5 of the
+_original_ IL recorded at build time. Both attributes are dull:
+
+```csharp
+public class ClrEncrypted : Attribute
+{
+    public ClrEncrypted(EncryptionType _type, bool _streamed)
+    {
+        this.Type = _type;
+        this.Streamed = _streamed;
+    }
+    public EncryptionType Type;
+    public bool Streamed;
+}
+```
+
+`EncryptionType` is one of `aes`, `xor`, or `rsa` — only AES is interesting in
+practice; XOR is for quick testing during development, and the RSA branch is
+a `TODO` I never came back to.
+
+---
+
+At startup, before the hook is installed, we walk every loaded assembly and
+build two dictionaries — one of encrypted methods, one of hashed methods —
+keyed on `HMODULE + metadata token`.
+
+```csharp
+foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+{
+    foreach (Module module in asm.GetModules())
+    {
+        IntPtr hModule = module.GetHMODULE();
+        foreach (MethodInfo method in module.GetMethods())
+            MapMethod(method, hModule, module);
+        foreach (Type t in module.GetTypes())
+            foreach (MethodInfo method in t.GetRuntimeMethods())
+                MapMethod(method, hModule, module);
+    }
+}
+```
+
+`MapMethod` looks up each attribute and slots a match into either dictionary:
+
+```csharp
+ClrEncrypted encryption = method.GetCustomAttribute<ClrEncrypted>(false);
+if (encryption != null)
+{
+    int token = method.MetadataToken;
+    JitMethodBase entry = new EncryptedMethod(hModule, token, method, encryption);
+    EncryptedMethods.Add(entry.Token + entry.hMODULE.ToInt64(), entry);
+}
+```
+
+The key shape — module handle plus metadata token, summed — is the only
+choice that matters in this scan. Those two values are exactly what we can
+reconstruct from inside the JIT hook with no allocations and no reflection,
+which is what makes the lookup on the hot path cheap.
+
+---
+
+Inside our hooked `compileMethod` the runtime doesn't hand us a `MethodBase`.
+It hands us a `CORINFO_METHOD_INFO*` — an unmanaged struct with an opaque
+`methodHandle` pointer, a module handle, a pointer to the method's IL, and
+its byte length. Mapping that back to "which `[ClrEncrypted]` method is
+this?" is the part that took a bit of reverse engineering.
+
+It turns out that the first two bytes at `*methodHandle` are the RID — the
+row index of this method in the assembly's metadata table. The full
+metadata token for a method-def is `0x06000000 | RID`, so adding the table
+prefix gives back the exact `MetadataToken` value we recorded during the
+startup scan. Combine that with `moduleHandle` and we have the dictionary
+key:
+
+```csharp
+private unsafe JitMethodBase[] FindMethods(Data.CorMethodInfo64* methodInfo)
+{
+    if (methodInfo->methodHandle == IntPtr.Zero)
+        return new JitMethodBase[0];
+
+    long value = methodInfo->moduleHandle.ToInt64()
+               + (0x06000000 + *(ushort*)methodInfo->methodHandle);
+
+    var methods = new List<JitMethodBase>();
+    if (EncryptedMethods.ContainsKey(value)) methods.Add(EncryptedMethods[value]);
+    if (HashedMethods.ContainsKey(value))    methods.Add(HashedMethods[value]);
+    return methods.ToArray();
+}
+```
+
+A method can sit in both dictionaries — encrypted and hashed — which is the
+normal case for "decrypt this and also verify nobody patched the ciphertext."
+Anything that returns the empty array is a method we have no opinion on,
+which is the vast majority of them, and we forward it straight to the
+original JIT untouched.
+
+---
+
+When `FindMethods` returns a hit, the ciphertext for that method has to come
+from somewhere. The library supports two sources, picked by the `streamed`
+flag on the attribute:
+
+```csharp
+protected byte[] GetEncryptedSource()
+{
+    if (this.Encryption.Streamed)
+    {
+        if (DOWNLOAD_URL == "")
+            DOWNLOAD_URL = "http://dev.lystic.net/netprotect/test.php";
+        using (WebClient wc = new WebClient())
+            return wc.DownloadData(DOWNLOAD_URL + "?m=src_" + this.Method.Name);
+    }
+    else
+    {
+        using (Stream s = Method.Module.Assembly.GetManifestResourceStream(this.Method.Name))
+        {
+            byte[] buf = new byte[s.Length];
+            s.Read(buf, 0, buf.Length);
+            return buf;
+        }
+    }
+}
+```
+
+Streamed mode is for the "ship the binary without ever distributing the
+most-sensitive method bodies" case — license validation, server-side-only
+logic, anything you wanted to be able to revoke without recalling the
+binary. The client requests the ciphertext over HTTP at JIT time, decrypts
+it locally, and the cleartext IL is gone again well before the response
+socket has closed. Non-streamed mode is what you actually want most of the
+time: the ciphertext lives as a manifest resource on the assembly itself,
+named after the method, and the read is a single in-memory stream off the
+already-loaded module.
+
+That hardcoded fallback URL, `dev.lystic.net/netprotect`, is where I hosted
+the development backend for this thing in 2022. I still own `lystic.net`,
+but the `dev` subdomain and the PHP backend behind it are long gone;
+`lystic.dev`, where this blog lives, is where everything eventually moved.
+
+Once we have ciphertext, the actual decryption is a one-line dispatch on the
+cipher type. The AES path is where the 2022-isms show up:
+
+```csharp
+internal static byte[] DecryptAES(byte[] data, string passphrase)
+{
+    var AES = new RijndaelManaged();
+    byte[] hash = new byte[32];
+    byte[] temp = new MD5CryptoServiceProvider()
+        .ComputeHash(Encoding.ASCII.GetBytes(passphrase));
+    Array.Copy(temp, 0, hash, 0, 16);
+    Array.Copy(temp, 0, hash, 15, 16);
+    AES.Key = hash;
+    AES.Mode = CipherMode.ECB;
+    return AES.CreateDecryptor().TransformFinalBlock(data, 0, data.Length);
+}
+```
+
+Three things in there I would write differently today. The key stretch is
+MD5 of an ASCII passphrase, which is exactly the cargo-culted "hash the
+password to get a key" pattern of that era — a real KDF (Argon2, or
+PBKDF2 with a high iteration count) is the modern answer. The mode is ECB,
+which is also the cargo-culted "I want AES" default of that era; AES-GCM
+with an explicit nonce and the ciphertext authenticated would be the
+honest version. And the second `Array.Copy(temp, 0, hash, 15, 16)` has a
+quiet off-by-one at the destination offset — it overwrites byte 15 of the
+first copy, leaving the high half of the 32-byte key as a 1-byte-shifted
+duplicate of the low half. Accidental in 2022; load-bearing now, because
+any binary that ever shipped against this implementation has ciphertext
+that decrypts only with that exact bug intact.
+
+None of this mattered for the threat model the library was actually built
+for, which was "stop a casual user from opening the binary in dnSpy and
+reading it line by line." Against a real adversary the AES is barely AES.
+Against a casual one, AES with anything plausibly key-shaped on the front
+is overkill.
+
+The passphrase itself never lives in the binary. At runtime, the library
+checks for a `DECRYPTION.key` file in the working directory and falls back
+to a `Microsoft.VisualBasic.Interaction.InputBox` prompt if it's not there
+— the binary is inert on its own and only does anything once the operator
+supplies the key.
+
+---
+
+Now the part that earns the whole exercise. We have ciphertext, we have a
+key, we have plaintext IL in a managed byte array — and we have a writable
+buffer the JIT is about to compile, sitting at `methodInfo->ilCode`. The
+swap is a `VirtualProtect`-write-`VirtualProtect` sandwich:
+
+```csharp
+if (!Win32.VirtualProtect(methodInfo->ilCode, methodInfo->ilCodeSize,
+        Protection.PAGE_EXECUTE_READWRITE, out Protection old))
+    SafeCrash.ForceCrash();
+
+byte[] decrypted = ecr_method.Decrypt();
+
+for (uint i = 0; i < methodInfo->ilCodeSize; i++)
+{
+    byte* address = ((byte*)methodInfo->ilCode) + i;
+    *address = decrypted[i];
+}
+
+Array.Clear(decrypted, 0, decrypted.Length);
+
+Win32.VirtualProtect(methodInfo->ilCode, methodInfo->ilCodeSize,
+    old, out Protection ignore);
+```
+
+The IL buffer the runtime hands us is read-only by default, which is why
+the first `VirtualProtect` flips it to `PAGE_EXECUTE_READWRITE` for the
+duration of the write. The byte-by-byte copy is historical noise — a
+single `Marshal.Copy(decrypted, 0, methodInfo->ilCode, decrypted.Length)`
+does the same thing in one P/Invoke, and is what I'd write today. The
+`Array.Clear` afterwards is a small concession to forensics-paranoia: by
+the time the call returns, no managed-side byte array still holds the
+cleartext. The unmanaged page is still cleartext until the original JIT
+finishes with it, but that window closes on the order of microseconds
+later.
+
+When `HandleCompile` returns, control falls through to the original
+`compileMethod` call from the part-1 hook — same `thisPtr`, same
+`corJitInfo`, same `methodInfo` (now pointing at real IL instead of
+garbage), same out-parameters. The original JIT reads the cleartext IL
+exactly once, in the exact call frame it was expecting to read it in, and
+emits native code into `nativeEntry`. From that point forward nothing in
+the process has any further interest in the IL page.
+
+---
+
+The other half of the attribute pair is the integrity check. After
+decryption — or, for methods that ship as cleartext but still want
+tamper-detection, directly on the IL the JIT just handed us — we MD5 the
+bytes and compare against the recorded hex:
+
+```csharp
+public void VerifyHash(byte[] compiling_msil)
+{
+    string computed;
+    using (MD5 md5 = MD5.Create())
+    {
+        byte[] result = md5.ComputeHash(compiling_msil);
+        var sb = new StringBuilder();
+        for (int i = 0; i < result.Length; i++)
+            sb.Append(result[i].ToString("X2"));
+        computed = sb.ToString();
+    }
+    if (computed != this.Hashed.Hash)
+        SafeCrash.ForceCrash();
+}
+```
+
+MD5 is fine here for the same reason ECB-AES was fine: we aren't
+defending against a cryptographic adversary, we're defending against
+someone who edited a few bytes in the assembly and is hoping nothing
+notices. The cost of a mismatch is the `SafeCrash` path that part 4 will
+get into — a deliberately ugly process death on a separate thread,
+designed to be hard to single-step past in a debugger.
+
+When a method is both encrypted and hashed, the dispatch fires both,
+decryption first, so the hash check runs against the real IL and not the
+ciphertext:
+
+```csharp
+foreach (JitMethodBase method in compiling_methods)
+    if (method is EncryptedMethod encrypted) { HandleCompile(encrypted, methodInfo); break; }
+foreach (JitMethodBase method in compiling_methods)
+    if (method is HashedMethod hashed)    { HandleCompile(hashed, methodInfo); break; }
+```
+
+If the ciphertext was tampered with, the decrypted bytes won't be valid IL
+and the JIT itself will object. If the ciphertext is intact but the
+plaintext was substituted by some earlier hook, the MD5 catches it. The
+two checks compose into something that's a real nuisance to bypass
+without unwinding the whole hook chain.
+
+---
+
+So we now have the runtime half of the encrypted-method story: a JIT hook
+that recognises marked methods, fetches their ciphertext from a resource
+or the network, drops cleartext IL into the JIT's buffer just long enough
+for the JIT to read it, and crashes the process if anything along the way
+looks tampered with.
+
+None of which does anything unless the assembly _on disk_ actually has
+ciphertext where the method's IL used to be, and a stamped `MethodHash`
+recording what the IL used to look like. That's an offline IL-rewriting
+problem — taking a normally-compiled .NET binary, finding every method
+marked `[ClrEncrypted]`, encrypting its IL with the same MD5-stretched
+AES the runtime expects, computing the MD5 hash and writing it back into
+the `[MethodHash]` attribute, and either embedding the ciphertext as a
+manifest resource or uploading it to the streaming server. That's what
+[Stripping IL with Mono.Cecil] is about.
+
+Anyway, that's part two. Stay curious.
+
+{/* reference links */}
+[Hijacking the .NET JIT Compiler]: /blog/hijacking-the-dotnet-jit-compiler
+[Stripping IL with Mono.Cecil]: /blog/stripping-il-with-monocecil
