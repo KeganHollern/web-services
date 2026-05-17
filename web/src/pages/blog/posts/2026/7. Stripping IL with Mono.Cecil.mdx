@@ -1,0 +1,346 @@
+---
+title: Stripping IL with Mono.Cecil
+description: |
+    Parts 1 and 2 of this series covered the runtime side — a hook installed into the .NET
+    JIT compiler, and a decryption path that swaps ciphertext for cleartext IL inside the
+    brief window the JIT is reading it. None of that does anything unless the assembly on
+    disk already has ciphertext where the method bodies used to be, which is what a
+    separate offline tool takes care of.
+slug: stripping-il-with-monocecil
+date: 2026-05-17
+image: /blog/stripping-il-with-monocecil/cover.png
+tags: [dotnet, reverse-engineering, obfuscation, il]
+visible: true
+---
+
+# Stripping IL with Mono.Cecil
+
+Parts 1 and 2 of this series covered the runtime side — a hook installed into the .NET
+JIT compiler, and a decryption path that swaps ciphertext for cleartext IL inside the
+brief window the JIT is reading it. None of that does anything unless the assembly on
+disk already has ciphertext where the method bodies used to be, which is what a
+separate offline tool takes care of.
+
+That tool is its own small project, [NetProtectEncrypter]. It's a command-line
+utility that opens a built .NET assembly, finds every method marked
+`[ClrEncrypted]`, encrypts its IL, embeds the ciphertext as a manifest resource,
+and stubs out the original method body so anyone who opens the DLL in dnSpy
+without the runtime hook gets nothing useful. If you haven't read [Hijacking the .NET JIT Compiler] or
+[Decrypting .NET Methods at JIT Compile Time] yet, do those first — this post is the
+build-time counterpart and assumes the runtime half already makes sense.
+
+---
+
+The first thing worth settling is why this is a separate tool at all, rather than
+something the runtime does at startup. The answer falls out of the threat model.
+The whole point of the exercise is to defeat static disassemblers — someone
+opening the DLL in dnSpy and reading the IL line by line. dnSpy doesn't care
+about anything the runtime is doing; it reads the bytes off disk and decodes
+them. If the binary on disk has cleartext IL in it, no amount of in-memory
+encryption helps, because the attacker isn't running your binary in the first
+place. The ciphertext has to be what's on disk, which means the encryption has
+to be a build-time step on the file itself.
+
+Rewriting a .NET PE by hand is masochism. Method bodies sit inside the `.text`
+section at file offsets you have to compute from RVAs, method headers come in
+two formats that the runtime distinguishes by a flag bit in the first byte,
+and any time you adjust the IL you risk invalidating the metadata tables that
+point at it. That stays true even if all you're doing is rewriting bytes in
+place. So the offline tool wants to lean on a library that already knows how
+to walk the assembly graph and serialize a valid PE back out.
+
+That library is [Mono.Cecil]. The encrypter is built on top of it, with [PeNet]
+filling in the gaps for the cases where Cecil's abstraction sits too high above
+the file and we need to reach the raw bytes ourselves. The dependency list of the
+whole project is essentially those two plus `CommandLineParser` for argument
+parsing.
+
+---
+
+Cecil's mental model is the assembly graph. `AssemblyDefinition.ReadAssembly(path)`
+loads a PE into an in-memory tree where the root is the assembly, the assembly has
+modules, modules have types, types have methods, and methods have bodies, custom
+attributes, IL instructions, exception handlers, and so on. `Assembly.Write(path)`
+serializes the whole tree back out as a valid PE. Everything in between is API
+surface for walking and editing the graph.
+
+For our purposes the relevant traversal is dull:
+
+```csharp
+ModuleDefinition main_module = Assembly.MainModule;
+foreach (TypeDefinition type in main_module.Types)
+{
+    foreach (MethodDefinition method in type.Methods)
+    {
+        if (method.HasBody && method.HasCustomAttributes)
+        {
+            foreach (CustomAttribute attribute in method.CustomAttributes)
+            {
+                if (attribute.AttributeType.Name.Contains("ClrEncrypted"))
+                    yield return new EncryptableMethod(method, GetMethodSection(method));
+            }
+        }
+    }
+}
+```
+
+The same shape, with `MethodHash` substituted for `ClrEncrypted`, finds the
+methods that want a tamper-detection hash recorded — and a method usually
+matches both. `GetMethodSection` is a helper that drops below Cecil and asks
+PeNet which PE section the method belongs to; we'll come back to it once a
+few PE concepts are out of the way.
+
+---
+
+A .NET assembly is a regular Windows PE file underneath all of Cecil's tree
+abstractions. The metadata tables and IL streams that Cecil parses sit
+inside a section called `.text`, which the OS loader maps into the process's
+address space at startup alongside any other sections (`.rsrc` for resources,
+`.reloc` for relocations, and so on). Two consequences of that PE shape
+matter for what we're doing.
+
+First, every byte inside the assembly has two addresses. There's the
+_virtual address_ it lives at once the PE is loaded into memory, and the
+_file offset_ where the same byte sits on disk before loading. These are
+not the same. The loader aligns sections to memory pages, so the gap
+between two sections in memory is usually much larger than in the file. The
+PE header maps between the two coordinate systems via a table of section
+headers; each section header records both a `VirtualAddress` (where the
+section starts in memory, relative to the image base) and a
+`PointerToRawData` (where the same section starts in the file). Cecil hands
+us a method's location as an `RVA` (Relative Virtual Address), which is the
+memory-side coordinate. To find that same method on disk we look up the
+section containing the RVA and apply
+`file_offset = RVA - section.VirtualAddress + section.PointerToRawData`.
+
+Second, what sits at the method's address is not IL directly. It's a
+_method record_: a 1-byte or 12-byte header followed by `CodeSize` bytes of
+IL, optionally followed by an exception handler table. The header is what
+the runtime reads first. It tells the runtime how long the body is, whether
+there are exception handlers behind the IL, what the max stack depth is,
+and which kind of header it is. The "tiny" format is a single byte used for
+small methods (IL under 64 bytes, no exception handlers, no locals, max
+stack ≤ 8); the "fat" format is twelve bytes and covers everything else.
+The runtime tells the two apart by looking at the bottom two bits of the
+header's first byte: `11` for fat, `10` for tiny.
+
+To get from a method record to the IL the JIT will actually see, then:
+walk the section table to find which section contains the RVA, compute the
+file offset of the method record, read the first byte to figure out the
+header size, skip past the header, and slice `CodeSize` bytes out of the
+file buffer.
+
+---
+
+Cecil exposes the method's IL as a parsed instruction stream too, and
+`MethodBody.GetILAsByteArray()` will re-emit those instructions back to
+bytes for you. That sounds like a shortcut around all of the above, and it
+is almost never the right one. Cecil's view is normalised, so the bytes it
+hands back are bytes that produce _equivalent_ IL, not the exact bytes that
+will sit in `.text` after `Assembly.Write()` runs. Along the way it may
+re-encode short-form branch instructions as long-form, recompute branch
+targets, or reorder exception handler tables. Everything we want to do
+downstream from here needs the bytes the JIT will literally receive, which
+means going through the file buffer rather than Cecil's parsed view. That
+covers replacing IL with ciphertext, MD5-ing the body for tamper detection,
+and stubbing the body out.
+
+PeNet's `ImageSectionHeaders` array is the section table from the PE
+header, exposed as a flat array. `GetMethodSection` walks it once, finds
+the section whose virtual range contains the method's RVA, and returns the
+matching `IMAGE_SECTION_HEADER`. From there `RVA - VirtualAddress + PointerToRawData`
+gives the file offset of the method record. Reading the first byte at that
+offset and masking the bottom two bits tells us which header format we're
+looking at:
+
+```csharp
+public uint GetHeaderSize(byte[] file_bytes)
+{
+    byte first_byte = file_bytes[GetFileOffset()];
+    byte fat_header = 0x3;
+    if ((first_byte & fat_header) == fat_header)
+        return 12;   // fat header
+    else
+        return 1;    // tiny header
+}
+```
+
+`MethodDefinition.Body.CodeSize` from Cecil is reliable even without
+re-emitting through the parser, since it reads straight out of the method's
+metadata. Once the header size is known, a flat `byte[CodeSize]` slice out
+of the file buffer at `file_offset + header_size` is the raw IL.
+
+With that primitive in hand the encrypter does two independent passes over
+the methods it found: a hashing pass for `[MethodHash]` matches and an
+encryption pass for `[ClrEncrypted]` matches. The hashing pass runs first,
+only because its output (an updated attribute argument) needs to be in the
+assembly's metadata before the IL bytes get replaced. Past that ordering
+constraint the two passes don't really interact.
+
+---
+
+The hashing pass walks every method marked `[MethodHash("...")]`, computes MD5
+of its IL bytes, and rewrites the attribute's constructor argument with the
+result. This is one of the places Cecil's abstraction is exactly what you
+want. Instead of patching a string into the metadata blob heap by hand, you
+replace the attribute argument on the in-memory graph and let
+`Assembly.Write()` figure out the serialization:
+
+```csharp
+TypeReference string_ref = current_attribute.ConstructorArguments[0].Type;
+current_attribute.ConstructorArguments[0]
+    = new CustomAttributeArgument(string_ref, value);
+```
+
+There is a subtlety here that cost me an evening. The first time you call
+`Assembly.Write()`, Cecil may shift bytes around in ways that change the
+IL. It re-lays out method bodies, recomputes branch offsets between short
+and long form, normalises exception tables. The bytes you hashed _before_
+writing are not necessarily the bytes that come out the other side. To get a hash that
+matches what the runtime will eventually see, you need a fixed point — write
+once, re-read, hash again, write again, and assert that the second and third
+hashes agree:
+
+```csharp
+HandleHashes();           // hash, store in [MethodHash]
+WriteToDisk(true, ...);   // Cecil serialises; some bytes may have moved
+HandleHashes();           // hash the new bytes, overwrite [MethodHash]
+WriteToDisk(true, ...);   // serialise again
+VerifyHashes();           // third hash; must match the stored second hash
+```
+
+In practice Cecil reaches a fixed point on the first write and the verify is
+always a tautology, but the assertion is cheap and it catches the case where
+something in the body somehow refuses to settle. If the third hash disagrees
+the encrypter throws and the binary is rejected, which is the right thing to
+do — a non-converging hash means part 2's integrity check is guaranteed to
+fail at runtime, and you'd rather find out at build time than ship a brick.
+
+---
+
+The encryption pass walks every method marked `[ClrEncrypted]` and dispatches
+on the attribute's type argument:
+
+```csharp
+byte[] msil = method.GetMethodBytes(Assembly.Data);
+byte[] encrypted;
+if (method.Type == EncryptionType.xor)
+    encrypted = Encryption.EncryptXOR(msil, XOR_BYTE);
+else if (method.Type == EncryptionType.aes)
+    encrypted = Encryption.EncryptAES(msil, this.aes_key);
+```
+
+The AES path is the same bit-for-bit implementation part 2 walked through —
+MD5 of the ASCII passphrase as the key, ECB mode, and the stray off-by-one in
+the second `Array.Copy` that leaves the high half of the key as a one-byte-shifted
+duplicate of the low half. This tool is what stamps that bug into the
+ciphertext, and any binary it produces can only ever be decrypted by a runtime
+that reproduces the bug.
+
+What happens to the ciphertext depends on the `streamed` flag on the attribute.
+Non-streamed methods get their ciphertext embedded directly in the assembly as
+a manifest resource named after the method:
+
+```csharp
+Assembly.Assembly.MainModule.Resources.Add(
+    new EmbeddedResource(method.Definition.Name,
+        ManifestResourceAttributes.Public, encrypted));
+```
+
+Streamed methods get their ciphertext POSTed to a remote upload endpoint and
+never ship inside the binary at all:
+
+```csharp
+File.WriteAllBytes("src_" + method.Definition.Name, encrypted);
+wc.UploadFile(this.UPLOAD_URL, "src_" + method.Definition.Name);
+File.Delete("src_" + method.Definition.Name);
+```
+
+The upload endpoint is the same `dev.lystic.net/netprotect` PHP backend the
+runtime fetches from at JIT time, with `up.php` to upload here and
+`test.php?m=src_<MethodName>` to retrieve in part 2. The only authentication
+on either side is that you know the method name.
+
+---
+
+The last step rewrites the method body in the on-disk `.text` section so that
+anyone who opens the assembly in dnSpy without the runtime hook gets nothing
+useful out of it. The encrypter walks every encrypted method, finds the IL byte
+range, and overwrites it from the tail backwards:
+
+```csharp
+int length = method.Definition.Body.CodeSize;
+int start  = (int)method.GetCodeOffset(this.Data);
+int stop   = start + length;
+bool writeonce = false;
+
+for (int i = stop - 1; i >= start; i--)
+{
+    if (!writeonce) this.Data[i] = 0x2A;   // ret
+    else            this.Data[i] = 0x01;   // break
+    writeonce = true;
+}
+```
+
+The last byte of the body becomes `0x2A`, the IL opcode for `ret`. Every byte
+before it becomes `0x01`, which is `break` — the IL opcode for "signal a
+debugger breakpoint." Open the resulting binary in dnSpy without the runtime
+hook attached and every encrypted method looks the same: a wall of `break`
+instructions ending in a single `ret`, with no trace of what the method
+originally did.
+
+The reason `break` is a better choice than `nop` here is what happens if
+something does manage to strip the encryption layer off the binary and tries
+to actually execute the stubs — every stubbed method tries to fire a debugger
+trap on the very first instruction, which is annoying to step past and which
+crashes the process loudly if no debugger is attached. A wall of `nop` would
+fall through silently to the `ret` and the caller would get back garbage,
+which is a worse failure mode for an attacker than an immediate explosion.
+
+This write goes to `this.Data` directly, the raw byte buffer that was read
+off disk at the start of the run, bypassing Cecil entirely. Cecil parses the
+IL into instructions and would refuse to serialise a body whose final
+instruction is a bare `break`, so raw bytes are the only way to make it
+commit.
+
+---
+
+There is a pattern in all of this worth naming explicitly. Cecil handles
+anything graph-shaped — which methods exist, what their custom attributes say,
+where to add a new manifest resource. PeNet plus raw byte access handles
+anything offset-shaped — where the IL actually lives in the file, what header
+byte to read, where to write the stub. Either tool on its own would have done
+most of this job; neither would have done all of it cleanly. Cecil can edit
+metadata and emit a valid PE but abstracts away exactly the byte layout we
+need to hash and stub, and PeNet exposes the PE structure but has no concept
+of "this method's IL" beyond bytes at an offset. The encrypter uses each for
+what it does well and routes around what it doesn't.
+
+---
+
+After this runs, the output binary has every `[ClrEncrypted]` method replaced
+with a wall of debugger-break instructions and a trailing `ret`, every
+`[MethodHash]` attribute updated to the post-rewrite MD5, the ciphertext
+sitting either inside the assembly as a manifest resource or up on the
+streaming server, and the AES passphrase written to a sidecar `DECRYPTION.key`
+file next to the output for the operator to deliver out of band. dnSpy sees a
+binary that does nothing interesting; the runtime hook from parts 1 and 2
+sees a binary it can decrypt at JIT time and execute normally.
+
+Which leaves only the hook itself as the soft target. An attacker who can't
+read the IL out of the file still has the option of attaching a debugger,
+dumping cleartext IL out of the JIT buffer at the moment of decryption, and
+reconstructing the assembly from there. The next post is about making that
+path miserable to walk — the `PreJit` warmup that arms the hook before any
+attacker tool can intercept it, the `SafeCrash` thread part 2 hinted at, and
+the various small irritations the runtime side does to make itself harder to
+single-step through.
+
+Anyway, that's part three. Stay curious.
+
+{/* reference links */}
+[Hijacking the .NET JIT Compiler]: /blog/hijacking-the-dotnet-jit-compiler
+[Decrypting .NET Methods at JIT Compile Time]: /blog/decrypting-dotnet-methods-at-jit-compile-time
+[NetProtectEncrypter]: https://github.com/KeganHollern/NetProtectEncrypter
+[Mono.Cecil]: https://github.com/jbevain/cecil
+[PeNet]: https://github.com/secana/PeNet
