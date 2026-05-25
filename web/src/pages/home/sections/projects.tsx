@@ -18,7 +18,7 @@ export function Projects() {
 Her key features are Text Chat, Voice Chat, and Vision.
 She is a companion, an assistant, and a utility.`,
             link: "https://github.com/KeganHollern/Aika",
-            picture: "https://aika.lystic.dev/selfies/932890148_aika,%20cute,%20tongue,%20blonde,%20green%20eyes,%20white%20shirt,%20nature,%20close%20up,%20facial%20shot,%20open%20mouth,%20winking,%20rawr_0.png",
+            picture: "/projects/aika.png",
         },
         {
             title: "Randal",
@@ -27,7 +27,7 @@ She is a companion, an assistant, and a utility.`,
 paper to implement actions and thought loops in
 Randal before OpenAI functions were introduced.`,
             link: "https://github.com/keganhollern/randal",
-            picture: "https://user-images.githubusercontent.com/15372623/227073663-2591d3e7-79a8-4b34-b322-1340eabbf0fe.png",
+            picture: "/projects/randal.png",
         },
         {
             title: "DayZ BR",
