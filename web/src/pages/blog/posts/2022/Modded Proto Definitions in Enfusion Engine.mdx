@@ -56,7 +56,7 @@ This will let me build a library that loads into **ArmaReforgerServer** and
 That's step one. Now comes the hard part of learning how classes are registered.
 To do this, we'll pull open [IDA Pro] and start reversing Reforger.
 
-![IDA](https://ss.lystic.zip/2022-06-27/00-32-14/rZG6sdfAPxQadW9wKUTYEGrx.png)
+![IDA](/blog/modded-proto-definitions-in-enfusion-engine/img-1.png)
 
 ---
 
@@ -88,7 +88,7 @@ char __fastcall KickCauseCodeScriptAPIRegistrator::Register(__int64 pRegistrator
 
 Going further, we'll find the virtual table that contains our routine.
 
-![VTABLE](https://ss.lystic.zip/2022-06-27/00-35-27/k3TXixM2yxF7hjPuRAx3FeuW.png)
+![VTABLE](/blog/modded-proto-definitions-in-enfusion-engine/img-2.png)
 
 Following xrefs to `vftable_KickCauseCodeScriptAPIRegistrator` we get to the
 constructor for this object. With some cleanup, we learn about a global

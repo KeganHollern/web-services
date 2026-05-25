@@ -29,7 +29,7 @@ The first step is to enable SSH and connect your Pi to wifi.
 Next you will need to connect over [Putty].
 The default login is: `pi` / `raspberry`
 
-![shell terminal](https://ss.lystic.zip/Legacy/H1ZjfkCw/T8mQqLvQ06YaFldX.png)
+![shell terminal](/blog/hardware-packet-monitor-raspberry-pi/img-1.png)
 
 Once connected, you'll need to navigate to `/etc`
 
@@ -58,7 +58,7 @@ This zeroes out both ethernet interfaces, creates a bridge `br0`, adds both inte
 
 I added a bit more when playing around. The new file should look like this.
 
-![full rc.local file content](https://ss.lystic.zip/Legacy/nfc3Bp18/wxfLDXHLEX8GP1BP.png)
+![full rc.local file content](/blog/hardware-packet-monitor-raspberry-pi/img-2.png)
 
 Good, now you can save that file with `Ctrl+O` and exit with `Ctrl+X`.
 
@@ -68,7 +68,7 @@ Now you can shutdown your Pi using `sudo shutdown`.
 
 **Hardware setup time!**
 
-![picture of raspberry pi all connected](https://ss.lystic.zip/Legacy/hnhjEyl2/photo_2017-03-04_16-01-29.jpg)
+![picture of raspberry pi all connected](/blog/hardware-packet-monitor-raspberry-pi/img-3.jpg)
 
 The red X's are unneeded for this build, I was using them during initial setup and never removed them.
 The yellow circle represents the `eth1` interface, this connects to your router/switch/etc.
@@ -95,7 +95,7 @@ For this I used `ifconfig`, however it can be done many ways.
 ifconfig
 ```
 
-![ifconfig output](https://ss.lystic.zip/Legacy/3QQHpbKd/KQDIYbcDZsWJq09k.png)
+![ifconfig output](/blog/hardware-packet-monitor-raspberry-pi/img-4.png)
 
 Now you can start monitoring packets.
 
@@ -105,7 +105,7 @@ sudo tcpdump -i br0 -X -n not port 22
 
 This listens on the bridge interface, prints hex and ASCII output, skips DNS resolution, and filters out SSH traffic so you don't flood the output with your own Putty session.
 
-<VideoPlayer src="https://ss.lystic.zip/Legacy/7NExONS1/1WsVzqT3eyWdY2Xf.mp4" />
+<VideoPlayer src="/blog/hardware-packet-monitor-raspberry-pi/img-5.mp4" />
 
 You can cancel the packet capture with `Ctrl+C`.
 
@@ -116,7 +116,7 @@ If you need between 100Mbps and 1Gbps I would recommend doing something similar 
 
 I plan to continue this project with a Raspberry Pi Zero, [Power over Ethernet], and [libtins].
 
-![picture of me thumbs up](https://ss.lystic.zip/Legacy/snLIjLYA/photo_2017-03-04_16-01-09.jpg)
+![picture of me thumbs up](/blog/hardware-packet-monitor-raspberry-pi/img-6.jpg)
 
 {/* reference links */}
 [Raspberry Pi 3]: https://www.raspberrypi.org/products/raspberry-pi-3-model-b/

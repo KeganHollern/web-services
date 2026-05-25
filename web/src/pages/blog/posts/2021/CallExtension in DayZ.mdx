@@ -51,7 +51,7 @@ This trick is an artifact the devs used to leave in the DayZ production server a
 The game would automatically load any library in the root folder called `BIDebugEngine`. 
 Here is the decompiled code from `DayZServer_x64.exe` that shows how it worked:
 
-![bidebugengine](https://ss.lystic.zip/2021-01-19/15-56-27/nBevHM0JWZbSY3na.png)
+![bidebugengine](/blog/callextension-in-dayz/img-1.png)
 
 > Note: shortly after releasing infinity, the developers of DayZ **removed** the code above. 
 > Infinity now includes a library loading executable to load `BIDebugEngine.dll` on the server.
@@ -65,7 +65,7 @@ So next step, we need to figure out how to register our own script functions.
 We can achieve this by understanding how `DayZServer` initializes the games native methods. 
 Taking a look at that:
 
-![native init](https://ss.lystic.zip/2021-01-19/16-03-19/WH9ICucqFVeHVcjz.png)
+![native init](/blog/callextension-in-dayz/img-2.png)
 
 In the `InitModules` method, we can see a standard call to `RegisterFunction`. 
 This registers our script command with a native C++ method to execute when it's called. 
@@ -75,7 +75,7 @@ Here is an example of the Math library.
 > Notice how we first register the class, 
 > then each function is registered with an argument being that class.
 
-![math lib](https://ss.lystic.zip/2021-01-19/16-04-39/msRl96ZKhqw22FtR.png)
+![math lib](/blog/callextension-in-dayz/img-3.png)
 
 So, the best approach to registering functions I can see is to hook this 
 `InitModules` method and call register ourselves with our own custom functions.
@@ -83,11 +83,11 @@ For this, I made use of [MinHook] which made hooking DayZ methods super simple.
 
 Here we are using minhook to hook initmodules:
 
-![minhook](https://ss.lystic.zip/2021-05-22/13-11-41/1AxMd8bIWjqoRKr5.png)
+![minhook](/blog/callextension-in-dayz/img-4.png)
 
 Here we are registering our functions for `callExtension`:
 
-![registration](https://ss.lystic.zip/2021-05-22/13-13-20/AqEbMbK0Ia7BziiV.png)
+![registration](/blog/callextension-in-dayz/img-5.png)
 
 ---
 

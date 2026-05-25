@@ -53,7 +53,7 @@ I created an example application that meets these requirements.
 First, we need to find a buffer in `.data` that is unused. 
 We want something that looks like this:
 
-![buffer example](https://ss.lystic.zip/2022-02-01/15-40-25/2LP69SFeD8HgZkZWWp87DJim.png)
+![buffer example](/blog/dma-code-execution/img-1.png)
 
 Between `data_140005018` and `data_140005048` there exists `0x28` unused bytes. 
 This is large enough to fit our `0x21` byte requirement.
@@ -64,16 +64,16 @@ segment behind an always failing if statement. If we go digging, we'll find this
 function's IF statement never passes and there exists `0x3AC` bytes in the 
 statement that we can use as a buffer:
 
-![code segment](https://ss.lystic.zip/2022-02-01/15-44-00/T9mhD8ZbkeXAg3DhXLNnVktW.png)
+![code segment](/blog/dma-code-execution/img-2.png)
 
 Lastly, we need to find a 5-byte call instruction that is run often or every tick.
 Here is a thread that runs every ms with a call:
 
-![ticking thread](https://ss.lystic.zip/2022-02-01/15-47-40/AUXAXhNXdYjpEJy6CvXBw32F.png)
+![ticking thread](/blog/dma-code-execution/img-3.png)
 
 Looking at the disassembly, we can happily say this call is 5 bytes in size:
 
-![5-byte call](https://ss.lystic.zip/2022-02-01/15-48-40/5FQTJR7PK8dBEN8VbLywetam.png)
+![5-byte call](/blog/dma-code-execution/img-4.png)
 
 Now we need to figure out how to put together these unused sections to build code execution.
 
@@ -85,23 +85,23 @@ change the program flow into our `.text` buffer.
 To do this, we overwrite the call instruction as a jmp instruction and 
 jump into our `.text` buffer:
 
-![before](https://ss.lystic.zip/2022-02-01/16-05-45/q4jSp6znTRjMXEDFJ4HD9fnt.png)
+![before](/blog/dma-code-execution/img-5.png)
 
 becomes
 
-![after](https://ss.lystic.zip/2022-02-01/16-06-17/9CYmYir6thDGaKGzn3SzsaGR.png)
+![after](/blog/dma-code-execution/img-6.png)
 
 Now, in our `.text` buffer, we recreate the call that was overwritten:
 
-![before 2](https://ss.lystic.zip/2022-02-01/16-06-56/adyjE2rwPx7SsJip7EgYqNjL.png)
+![before 2](/blog/dma-code-execution/img-7.png)
 
 becomes
 
-![after 2](https://ss.lystic.zip/2022-02-01/16-07-15/vj4wv2i5LP9fuba9sTczd2cb.png)
+![after 2](/blog/dma-code-execution/img-8.png)
 
 Lastly, we must jump back to the instruction proceeding the call that we overwrote:
 
-![jump](https://ss.lystic.zip/2022-02-01/16-09-00/xfkASLgb3nRJiVUrws8snejQ.png)
+![jump](/blog/dma-code-execution/img-9.png)
 
 Now we can test that by either patching our victim application or writing 
 those bytes with our DMA card. If we were successful, the victim application 
@@ -141,22 +141,22 @@ We'll need to know some `x86_x64` assembly and the [x64 software conventions] on
 The first thing we must do is store all of our [volatile registers] and other 
 registers we will use on the stack.
 
-![storing volatiles](https://ss.lystic.zip/2022-02-01/16-23-15/g3N52LFLen7pLxVAwvjCqRi8.png)
+![storing volatiles](/blog/dma-code-execution/img-10.png)
 
 Next, we will access the `.data` section and check if the boolean toggle is true. 
 If the value is `FALSE`, then we need to jump to the end of our `.text` buffer, 
 but before we restore the stack.
 
-![data access](https://ss.lystic.zip/2022-02-01/16-27-30/HRfgvzJ9iPBivuE9iAhMb6T7.png)
+![data access](/blog/dma-code-execution/img-11.png)
 
 Now, to be safe, we can check if the target function is `NULL`. 
 If it is, we can't run it, so we'll want to jump to the end of our `.text` buffer, just like before.
 
-![null check](https://ss.lystic.zip/2022-02-01/17-21-49/yugs9ZYAHYQryffeyChR3VvT.png)
+![null check](/blog/dma-code-execution/img-12.png)
 
 Finally, we'll move the function we want to execute onto the RAX register.
 
-![rax set](https://ss.lystic.zip/2022-02-01/17-23-17/39tfjZJJBkeCvaencbvGtvDi.png)
+![rax set](/blog/dma-code-execution/img-13.png)
 
 > Note: At this point, we could call our function. 
 > However, we want to be able to run functions with arguments. 
@@ -171,30 +171,30 @@ while all subsequent arguments are pushed onto the stack in reverse order.
 The first step when calling a function with arguments is to ensure our pointer 
 to the argument structure is nonnull.
 
-![more null check](https://ss.lystic.zip/2022-02-01/17-50-54/RUnJJ8R7GP9aQmPFDuiaYqJS.png)
+![more null check](/blog/dma-code-execution/img-14.png)
 
 Now we must push our first four arguments onto the correct registers.
 
-![arg registers](https://ss.lystic.zip/2022-02-01/17-51-35/9CDEtC7cQEghFBq3PuZmZgtt.png)
+![arg registers](/blog/dma-code-execution/img-15.png)
 
 For all remaining arguments, we'll want to load them into a register and 
 push their value onto the stack in reverse order. In our case, we only 
 have 1 more argument, so we only need to do this once for the value at `0x20`.
 
-![pushing to stack](https://ss.lystic.zip/2022-02-01/17-57-56/V4Kw54W2TZ5xB4jLv3XazvFx.png)
+![pushing to stack](/blog/dma-code-execution/img-16.png)
 
 Finally! We can call the function.
 
-![calling](https://ss.lystic.zip/2022-02-01/17-53-14/BGjv2LNjtbHFYcF3fkHkYLfg.png)
+![calling](/blog/dma-code-execution/img-17.png)
 
 After calling the function, we need to pop the arguments we pushed to the stack.
 
-![popping](https://ss.lystic.zip/2022-02-01/17-58-44/Fh7qeQLqZig8yb54KAgjuAEW.png)
+![popping](/blog/dma-code-execution/img-18.png)
 
 lastly, we push the return result to the `.data` structure and flip the boolean 
 toggle value back to false to prevent running this function a second time.
 
-![cleanup](https://ss.lystic.zip/2022-02-01/17-56-29/MPkdCYbQ6gn6zDxpE45D6YSC.png)
+![cleanup](/blog/dma-code-execution/img-19.png)
 
 Now we have a `.text` payload that can execute any function with 5 arguments! Here is the final assembly code:
 
@@ -264,7 +264,7 @@ In our target application, these three values exist at the offsets
 
 So our DMA application will start to look something like this:
 
-![dma program](https://ss.lystic.zip/2022-02-01/15-54-52/BD9AYSH5mxXJ76FGAkUxxiu4.png)
+![dma program](/blog/dma-code-execution/img-20.png)
 
 I have built a neat framework around my DMA application. 
 I don't expect this to be pertinent moving forward so you can take some of the code for granted.

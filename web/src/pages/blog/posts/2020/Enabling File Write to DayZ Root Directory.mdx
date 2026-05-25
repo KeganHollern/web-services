@@ -74,12 +74,12 @@ for this value to find the Register Function table. The third parameter of the
 Register function is the native functionality for our enforce method. 
 You can see I renamed it to `s_OpenFile`. 
 
-![img](https://ss.lystic.zip/Legacy/3Hp6TGFs/95bm4z005l7513kX.png)
-![img](https://ss.lystic.zip/Legacy/uxGdNGpb/X4iE43raVc6GfIfa.png)
+![img](/blog/enabling-file-write-to-dayz-root-directory/img-1.png)
+![img](/blog/enabling-file-write-to-dayz-root-directory/img-2.png)
 
 Here is `s_OpenFile`, I know it's a lot you may be unfamiliar with, but I'll explain the important parts.
 
-![img](https://ss.lystic.zip/Legacy/n7Lmy5B2/wfYtaquRWoUOasAP.png)
+![img](/blog/enabling-file-write-to-dayz-root-directory/img-3.png)
 
 In `s_OpenFile`, there is a method that is run right away, I renamed this to "valid_path". 
 This method can be found in pretty much every File accessor in Enforce. Another 
@@ -196,7 +196,7 @@ if (mode != 120)
 With Binary Ninja, we can save the file contents as a new `DayZServer_x64_patched.exe`.
 Using this new executable, we can test writing to ban.txt
 
-![img](https://ss.lystic.zip/Legacy/ILBBSflO/0rjUu4N0NSue5A1Y.png)
+![img](/blog/enabling-file-write-to-dayz-root-directory/img-4.png)
 
 And there we have it! In order to speed up our patching for future versions of DayZ,
 and even automate patching these two bytes, signatures should be made for these. 

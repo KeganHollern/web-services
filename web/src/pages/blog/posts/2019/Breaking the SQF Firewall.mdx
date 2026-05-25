@@ -86,8 +86,8 @@ tricking the engine into not removing an event that we set.
 // TODO: rip this off your SSD rather than rewrite all the code from the screenshot
 ```
 
-![img](https://ss.lystic.zip/Legacy/bwdC16Ts/DklaU4i3tvOZ401O.png)
-![img](https://ss.lystic.zip/Legacy/pRqFLRLf/Q50k3kGy1YUtZv77.png)
+![img](/blog/breaking-the-sqf-firewall/img-1.png)
+![img](/blog/breaking-the-sqf-firewall/img-2.png)
 
 There is a lot here we've never discussed. When I was looking into breaking through
 the firewall, my early attempts were based on trying to abuse a pre-existing exploit
@@ -126,7 +126,7 @@ to bypass the firewall. This is where our knowledge of past exploits comes into
 play. Back August 2nd, 2015, there was an exploit released on UnknownCheats. The
 original author of this exploit, JME, published the exploit on [MPGH] that same day.
 
-![img](https://ss.lystic.zip/Legacy/2nEVNDNB/0Nb3D7sa1db1jilF.png)
+![img](/blog/breaking-the-sqf-firewall/img-3.png)
 
 When the command [inGameUISetEventHandler] was implemented, BI forgot to clear
 it's value when connecting to an MP session. This allowed cheaters to set the value
@@ -151,7 +151,7 @@ we've successfully bypassed the firewall.
 That's a bit complex, here is a diagram that helps explain how the Firewall and
 SQF Engine interact during this process.
 
-![img](https://ss.lystic.zip/Legacy/K8VE2tNf/VSMZjSW2qZmKJN4U.png)
+![img](/blog/breaking-the-sqf-firewall/img-4.png)
 
 Lastly, on lines 18 to 32, we are simply checking all active displays and creating
 Map controls with Draw events on all of them. This keeps our code running as we

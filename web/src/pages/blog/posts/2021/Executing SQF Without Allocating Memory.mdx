@@ -64,7 +64,7 @@ Thankfully any existing `GameDataCode` variable contains an `ArmaString` pointer
 to its value. So when I run `str(var)` this `ArmaString` is what we see in the output.
 
 As of Arma 2.04 that can be found here:
-![offset chain](https://ss.lystic.zip/2021-07-22/02-48-09/rHuHGUPAVqPU7LNfpnFfQp7F.png)
+![offset chain](/blog/executing-sqf-without-allocating-memory/img-1.png)
 
 Using a variable in the `uiNamespace` such as `BIS_fnc_diagWiki`, 
 we have a large buffer we can write with our script into. 

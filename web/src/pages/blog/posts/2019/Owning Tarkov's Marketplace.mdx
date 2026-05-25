@@ -42,7 +42,7 @@ For this, I used [Wireshark] and [Fiddler 4], which provided me all the packet
 capturing needed to begin decoding the messages. Oh and one more issue, these
 packets are clearly packed or encrypted, here is what I noticed in Fiddler 4.
 
-![fiddler](https://ss.lystic.zip/Legacy/vWxYOlYH/LoSI72l1F7N5Wcc3.png)
+![fiddler](/blog/owning-tarkovs-marketplace/img-1.png)
 
 Okay, so they are packed or encrypted, but with what?
 The request header does not have a tag signifying the Content-Encoding. 
@@ -50,7 +50,7 @@ So in the case that I found something useful, which I did not, I went into the
 Tarkov application to find where the requests are sent. For this, I used [dnSpy],
 as Tarkov is a Unity-based game. After some time, here is one of a few web request modules I found.
 
-![dnspy](https://ss.lystic.zip/Legacy/5h0GI8TE/wyUVYDz0c4dR7uyl.png)
+![dnspy](/blog/owning-tarkovs-marketplace/img-2.png)
 
 Sweet! We can see the game uses **SimpleZLib** on a JSON formatted string.
 So now to take our Fiddler / Wireshark data and decompress with ZLib.
@@ -61,9 +61,9 @@ I created software to take the RAW TCP Stream data, and apply ZLib decompression
 to the content bodies. This works well, but Fiddler's is better, so here is the
 fiddler code snippet and an example.
 
-![code](https://ss.lystic.zip/Legacy/5KyZNiLm/NveH72uQQ4ocSVCo.png)
+![code](/blog/owning-tarkovs-marketplace/img-3.png)
 
-![example](https://ss.lystic.zip/Legacy/6GivlSJZ/OOydNMuqOZ3TU4XC.png)
+![example](/blog/owning-tarkovs-marketplace/img-4.png)
 
 Alright, so now I went ahead and decoded every packet required to view, buy,
 list, sell, and collect money, everything needed to automate the process.
@@ -94,11 +94,11 @@ like it could be what this references.
 Okay sweet, now look at that field, `_backend`, that looks even better.
 Doing some analysis we can see it is used here:
 
-![backend](https://ss.lystic.zip/Legacy/QwtvoJvF/nDm4XFqI2V2VsXOc.png)
+![backend](/blog/owning-tarkovs-marketplace/img-5.png)
 
 This is it, I think we are onto something, let's go into the backend class and see what we find.
 
-![more backend](https://ss.lystic.zip/Legacy/W5PPQmrA/iaVrRT9EQ1tA6fZn.png)
+![more backend](/blog/owning-tarkovs-marketplace/img-6.png)
 
 **BAM**, There is the session ID. Now it is stored a few layers deeper, but
 after 2 more offsets, we find the pointer to the `PHPSESSID` required to fire
@@ -133,7 +133,7 @@ functionality for verifying hardware codes. With this, if I run my bot on an
 Alt Account, under a VPN or Proxy connection, I could prevent the game devs
 from cross-account banning me. So this is nice. Here are the request structures:
 
-![structs](https://ss.lystic.zip/Legacy/43fCDaVI/LyLPM4fmJk3mwM42.png)
+![structs](/blog/owning-tarkovs-marketplace/img-7.png)
 
 But this login request requires a few things. Version Info, some other integrity checks,
 an MD5 hash of the password, and a hardware id. Breaking this down step by step.
@@ -141,7 +141,7 @@ an MD5 hash of the password, and a hardware id. Breaking this down step by step.
 _Version Info_: You can grab this from the applications Manifest file. 
 Pop `EscapeFromTarkov.Exe` into a resource viewer or editor and grab these from the version info.
 
-![version info](https://ss.lystic.zip/Legacy/F1Wf48ow/kAtfE8hefWknaTQu.png)
+![version info](/blog/owning-tarkovs-marketplace/img-8.png)
 
 _Hardware Id_: I don't want my real HWID, but I do want something close.
 So first I need to figure out what hardware code they send.
@@ -184,13 +184,13 @@ the web API. For this, I created a wrapper around the `HttpClient` found in
 connecting to, `https://prod.escapefromtarkov.com`, and create functions
 for sending and receiving data.
 
-![code](https://ss.lystic.zip/Legacy/OBKRhkhB/NaeZtewNAvzvYQku.png)
+![code](/blog/owning-tarkovs-marketplace/img-9.png)
 
 Okay, You can see from this, we also have a `TarkovResponseMessages` class.
 This collects all of the response data and applies decompression for us.
 Here is the compression class, nothing special here.
 
-![compression](https://ss.lystic.zip/Legacy/BBG9VTN5/qea4iLeG9DGZcM5f.png)
+![compression](/blog/owning-tarkovs-marketplace/img-10.png)
 
 Now, I have my web backend, but before I start my login process,
 I needed a way to quickly iterate on different methods of attacking
@@ -198,7 +198,7 @@ the market for the greatest profit. For this, I broke down some of my
 first tests and created a base class for all methods to derive from.
 Here is the base class.
 
-![base class](https://ss.lystic.zip/Legacy/qj3j7g59/yjTLV4GWvgDggwMJ.png)
+![base class](/blog/owning-tarkovs-marketplace/img-11.png)
 
 So here we can see some virtual and abstract methods. 
 As well, we have a lot of classes I haven't shown. 
@@ -220,18 +220,18 @@ So yeah, this class provides us all the core code to run our bot.
 Here is an example of how web requests are processed.
 This is from the `BuyOffer(MarketOffer offer, InventoryItem[] Money_Items)` method.
 
-![processed](https://ss.lystic.zip/Legacy/teAxeGc7/Ng7aDBsNwhfOjvHb.png)
+![processed](/blog/owning-tarkovs-marketplace/img-12.png)
 
 Looking at an actual botting method, this is how simple it boils down to in the end.
 
-![end](https://ss.lystic.zip/Legacy/pFixmAzo/ATxwMAz58oAM8PQ6.png)
+![end](/blog/owning-tarkovs-marketplace/img-13.png)
 
 So yeah, I basically program in "Do this, then this then that" and it just works.
 
 Onto the public and visible portion of the bots core, this allows my
 frontend to communicate with these backend classes. Here we can see the login process:
 
-![login](https://ss.lystic.zip/Legacy/lO4F3Uds/GTSAYHkfFq1qe38B.png)
+![login](/blog/owning-tarkovs-marketplace/img-14.png)
 
 So here we can see I fire off a login request and, if the request fails in a
 specific way, we know a hardware activation is required, otherwise, we
@@ -240,7 +240,7 @@ Really anything collapsed is not required.
 
 I won't show `Keep-Alive` because its quite simple, but here is the hardware activation:
 
-![hardware](https://ss.lystic.zip/Legacy/pLU8y97q/VguotqhgTRof4trQ.png)
+![hardware](/blog/owning-tarkovs-marketplace/img-15.png)
 
 So that is the real meat of a tarkov market bot. Nothing really complex,
 but a lot of very interesting code and methods for reaching it.
