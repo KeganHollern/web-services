@@ -1,0 +1,365 @@
+/* World Cup 2026 bracket — scoped under .fifa.
+   Hybrid theme: chrome follows the site's light/dark tokens
+   (--background, --card, --border, --foreground, --muted-foreground),
+   while wins/champion/connectors keep a World-Cup gold accent. */
+
+.fifa {
+    --wc-gold: #f0a824;
+    --wc-gold-soft: #ffce5a;
+    --wc-line: color-mix(in srgb, var(--wc-gold) 55%, transparent);
+    --wc-gap: 40px;
+    --wc-col-w: 184px;
+}
+
+/* ---------- Top bar ---------- */
+.fifa-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px 10px;
+}
+.fifa-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: clamp(18px, 2.4vw, 26px);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--foreground);
+}
+.fifa-title-icon {
+    width: 1.1em;
+    height: 1.1em;
+    color: var(--wc-gold);
+}
+.fifa-year { color: var(--wc-gold); }
+.fifa-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.fifa-progress {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+.fifa-progress.complete {
+    color: var(--wc-gold);
+    border-color: color-mix(in srgb, var(--wc-gold) 55%, transparent);
+    background: color-mix(in srgb, var(--wc-gold) 14%, transparent);
+}
+
+/* ---------- Champion banner ---------- */
+.fifa-champion {
+    position: relative;
+    overflow: hidden;
+    margin: 4px 20px 0;
+    padding: 12px 20px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background: linear-gradient(
+        100deg,
+        color-mix(in srgb, var(--wc-gold) 22%, var(--card)),
+        color-mix(in srgb, var(--wc-gold) 8%, var(--card))
+    );
+    border: 1px solid color-mix(in srgb, var(--wc-gold) 55%, transparent);
+    box-shadow: 0 10px 34px color-mix(in srgb, var(--wc-gold) 16%, transparent);
+    animation: fifa-pop 0.35s ease;
+}
+.fifa-champion::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--wc-gold-soft) 35%, transparent), transparent);
+    transform: skewX(-18deg);
+    animation: fifa-sweep 3.4s ease-in-out infinite;
+}
+.fifa-c-trophy { font-size: 32px; line-height: 1; }
+.fifa-c-body { text-align: center; }
+.fifa-c-label {
+    font-size: 12px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--wc-gold);
+    font-weight: 700;
+}
+.fifa-c-name {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: clamp(22px, 3vw, 32px);
+    color: var(--foreground);
+}
+.fifa-c-name img {
+    width: 42px;
+    border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.fifa-c-sub {
+    margin-top: 3px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+}
+.fifa-c-sub img { width: 20px; border-radius: 3px; }
+
+/* ---------- Bracket grid ---------- */
+.fifa-scroll {
+    overflow: auto;
+    padding: 18px 22px 12px;
+}
+.fifa-bracket {
+    display: flex;
+    gap: var(--wc-gap);
+    min-height: 720px;
+    width: max-content;
+    margin: 0 auto;
+    padding: 4px;
+}
+.fifa-col {
+    width: var(--wc-col-w);
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+}
+.fifa-col-title {
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted-foreground);
+    padding-bottom: 12px;
+    white-space: nowrap;
+}
+.fifa-col.center .fifa-col-title {
+    color: var(--wc-gold);
+    letter-spacing: 0.2em;
+}
+.fifa-col-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    flex: 1;
+}
+.fifa-pair {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    flex: 1;
+    position: relative;
+}
+.fifa-pair.solo { justify-content: center; }
+
+/* ---------- Match cards ---------- */
+.fifa-match {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.fifa-col.center .fifa-match {
+    border-color: color-mix(in srgb, var(--wc-gold) 55%, transparent);
+    box-shadow: 0 8px 26px color-mix(in srgb, var(--wc-gold) 18%, transparent);
+}
+.fifa-match.pending {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--border) 55%, transparent);
+    box-shadow: none;
+}
+.fifa-col.center .fifa-match.pending {
+    border-color: color-mix(in srgb, var(--wc-gold) 30%, transparent);
+    box-shadow: none;
+}
+
+.fifa-slot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    transition: background 0.16s ease;
+}
+.fifa-slot + .fifa-slot { border-top: 1px solid var(--border); }
+.fifa-slot:hover:not(.fifa-empty) {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.fifa-empty { cursor: default; color: var(--muted-foreground); }
+
+.fifa-flag {
+    width: 28px;
+    height: 19px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex: 0 0 auto;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+.fifa-flag.ph {
+    display: inline-block;
+    border: 1px dashed var(--border);
+    box-shadow: none;
+}
+.fifa-name {
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fifa-slot.winner {
+    background: color-mix(in srgb, var(--wc-gold) 20%, transparent);
+    box-shadow: inset 3px 0 0 var(--wc-gold);
+}
+.fifa-slot.winner .fifa-name { font-weight: 800; }
+.fifa-slot.winner::after {
+    content: "✓";
+    color: var(--wc-gold);
+    font-weight: 800;
+    font-size: 13px;
+    margin-left: 4px;
+}
+/* the champion's route through the bracket glows brighter than other winners */
+.fifa-slot.champ-path {
+    background: color-mix(in srgb, var(--wc-gold) 34%, transparent);
+    box-shadow: inset 3px 0 0 var(--wc-gold);
+}
+.fifa-slot.champ-path .fifa-name { font-weight: 800; }
+
+.fifa-slot.decided.loser { opacity: 0.55; }
+.fifa-slot.decided.loser .fifa-name {
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--foreground) 40%, transparent);
+}
+
+.fifa-match-no {
+    position: absolute;
+    top: 4px;
+    right: 7px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    pointer-events: none;
+    font-weight: 600;
+}
+
+.fifa-slot:focus-visible {
+    outline: 2px solid var(--wc-gold);
+    outline-offset: 2px;
+    z-index: 2;
+    border-radius: 4px;
+}
+
+/* ---------- Connectors ---------- */
+.fifa-col.left .fifa-pair:not(.solo)::after {
+    content: "";
+    position: absolute;
+    right: calc(var(--wc-gap) / -2);
+    top: 25%;
+    bottom: 25%;
+    width: calc(var(--wc-gap) / 2);
+    border: 2px solid var(--wc-line);
+    border-left: 0;
+    border-radius: 0 8px 8px 0;
+}
+.fifa-col.left .fifa-pair:not(.solo)::before {
+    content: "";
+    position: absolute;
+    right: calc(var(--wc-gap) * -1);
+    top: 50%;
+    width: calc(var(--wc-gap) / 2);
+    border-top: 2px solid var(--wc-line);
+}
+.fifa-col.right .fifa-pair:not(.solo)::after {
+    content: "";
+    position: absolute;
+    left: calc(var(--wc-gap) / -2);
+    top: 25%;
+    bottom: 25%;
+    width: calc(var(--wc-gap) / 2);
+    border: 2px solid var(--wc-line);
+    border-right: 0;
+    border-radius: 8px 0 0 8px;
+}
+.fifa-col.right .fifa-pair:not(.solo)::before {
+    content: "";
+    position: absolute;
+    left: calc(var(--wc-gap) * -1);
+    top: 50%;
+    width: calc(var(--wc-gap) / 2);
+    border-top: 2px solid var(--wc-line);
+}
+.fifa-col.left .fifa-pair.solo .fifa-match::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: calc(var(--wc-gap) * -1);
+    width: var(--wc-gap);
+    border-top: 2px solid var(--wc-line);
+}
+.fifa-col.right .fifa-pair.solo .fifa-match::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: calc(var(--wc-gap) * -1);
+    width: var(--wc-gap);
+    border-top: 2px solid var(--wc-line);
+}
+
+.fifa-hint {
+    text-align: center;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    padding: 6px 0 12px;
+}
+
+@keyframes fifa-pop {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+}
+@keyframes fifa-sweep {
+    0% { left: -60%; }
+    55%, 100% { left: 130%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fifa-champion,
+    .fifa-champion::after { animation: none; }
+    .fifa-slot { transition: none; }
+}
+
+@media (max-width: 720px) {
+    .fifa-topbar { padding: 12px 14px 8px; }
+    .fifa-champion { margin: 4px 14px 0; }
+    .fifa-scroll { padding: 14px; }
+    .fifa-slot { padding: 10px; }
+    .fifa-flag { width: 30px; height: 20px; }
+    .fifa-name { font-size: 16px; }
+}
