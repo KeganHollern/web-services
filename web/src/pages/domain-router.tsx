@@ -3,6 +3,7 @@ import { SubdomainProvider, useSubdomain } from "@/context/subdomain-provider"; 
 
 import { BlogRouter } from "@/pages/blog/router";
 import { EditRouter } from "@/pages/edit/router";
+import { FifaRouter } from "@/pages/fifa";
 import { HomeRouter } from "@/pages/home/router";
 import { PingRouter } from "@/pages/ping";
 import { SecretRouter } from "@/pages/secret/router";
@@ -20,6 +21,7 @@ export const SERVICE_ROUTERS: Record<string, React.FC> = {
     swap: SwapRouter,
     share: ShareRouter,
     ping: PingRouter,
+    fifa: FifaRouter,
 };
 
 function GetPageRouter(subdomain: string): React.FC {
