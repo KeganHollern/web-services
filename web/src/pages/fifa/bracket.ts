@@ -94,6 +94,19 @@ export const COLUMNS: Column[] = [
 export const ORDERED_IDS = Object.keys(MATCHES).map(Number).sort((a, b) => a - b);
 export const TOTAL_MATCHES = ORDERED_IDS.length; // 31
 
+// Actual played results — pre-filled and locked (cannot be changed). These are
+// always enforced over saved/shared/simulated state.
+export const RESULTS: Winners = {
+  73: "CA", // Canada beat South Africa
+};
+export function isLocked(matchId: number): boolean {
+  return Object.prototype.hasOwnProperty.call(RESULTS, matchId);
+}
+// Apply locked results on top of a winners map, then reconcile.
+export function withResults(winners: Winners): Winners {
+  return reconcile({ ...winners, ...RESULTS });
+}
+
 export function flagUrl(code: string, size: "w40" | "w80" = "w40"): string {
   return `https://flagcdn.com/${size}/${code}.png`;
 }
@@ -148,10 +161,11 @@ export function decodeState(str: string | null | undefined): Winners {
   return w;
 }
 
-// Random fill of every match, respecting dependency order.
+// Random fill of every match, respecting dependency order and locked results.
 export function simulateWinners(): Winners {
-  const w: Winners = {};
+  const w: Winners = { ...RESULTS };
   for (const id of ORDERED_IDS) {
+    if (w[id]) continue; // keep locked results
     const a = slotTeam(w, id, "a");
     const b = slotTeam(w, id, "b");
     if (a && b) w[id] = Math.random() < 0.5 ? a : b;
