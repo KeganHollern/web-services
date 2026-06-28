@@ -270,6 +270,18 @@
     font-weight: 600;
 }
 
+/* Locked / final results: shown but not changeable. */
+.fifa-slot.locked { cursor: default; }
+.fifa-slot.locked:hover:not(.fifa-empty) { background: none; }
+.fifa-slot.locked.winner { background: color-mix(in srgb, var(--wc-gold) 20%, transparent); }
+.fifa-match.locked {
+    border-color: color-mix(in srgb, var(--wc-gold) 45%, var(--border));
+}
+.fifa-match.locked .fifa-match-no {
+    color: var(--wc-gold);
+    font-weight: 700;
+}
+
 .fifa-slot:focus-visible {
     outline: 2px solid var(--wc-gold);
     outline-offset: 2px;

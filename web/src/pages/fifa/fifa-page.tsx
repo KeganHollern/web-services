@@ -15,17 +15,20 @@ import {
     encodeState,
     FINAL_ID,
     flagUrl,
-    reconcile,
+    isLocked,
+    RESULTS,
     simulateWinners,
     slotTeam,
     T,
     TOTAL_MATCHES,
     type Winners,
+    withResults,
 } from "./bracket";
 import "./fifa.css";
 
 const STORAGE_KEY = "wc2026-bracket-picks";
 const FIT_MIN_WIDTH = 1024;
+const LOCKED_COUNT = Object.keys(RESULTS).length;
 
 function readHash(): Winners | null {
     if (typeof window === "undefined") return null;
@@ -34,13 +37,14 @@ function readHash(): Winners | null {
 }
 
 function loadInitial(): Winners {
+    // Locked results (e.g. Canada beat South Africa) are always enforced on top.
     const fromUrl = readHash(); // a shared link wins over local storage
-    if (fromUrl && Object.keys(fromUrl).length) return fromUrl;
+    if (fromUrl && Object.keys(fromUrl).length) return withResults(fromUrl);
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? reconcile(JSON.parse(raw)) : {};
+        return withResults(raw ? JSON.parse(raw) : {});
     } catch {
-        return {};
+        return withResults({});
     }
 }
 
@@ -107,13 +111,14 @@ export function FifaPage() {
     const commit = useCallback(
         (next: Winners) => {
             setUndoStack((s) => [...s, JSON.stringify(winners)].slice(-100));
-            setWinners(reconcile(next));
+            setWinners(withResults(next)); // locked results always enforced
         },
         [winners],
     );
 
     const pick = useCallback(
         (matchId: number, teamKey: string) => {
+            if (isLocked(matchId)) return; // final results can't be changed
             if (winners[matchId] === teamKey) return;
             commit({ ...winners, [matchId]: teamKey });
         },
@@ -124,12 +129,13 @@ export function FifaPage() {
         if (!undoStack.length) return;
         const prev = undoStack[undoStack.length - 1];
         setUndoStack(undoStack.slice(0, -1));
-        setWinners(reconcile(JSON.parse(prev)));
+        setWinners(withResults(JSON.parse(prev)));
     }, [undoStack]);
 
     const simulate = useCallback(() => commit(simulateWinners()), [commit]);
+    // Reset clears user picks but keeps the locked results.
     const reset = useCallback(() => {
-        if (pickedCount) commit({});
+        if (pickedCount > LOCKED_COUNT) commit({ ...RESULTS });
     }, [commit, pickedCount]);
 
     const share = useCallback(() => {
@@ -238,11 +244,38 @@ export function FifaPage() {
         }
         const team = T[teamKey];
         const isWinner = winners[matchId] === teamKey;
+        const locked = isLocked(matchId);
         const cls = ["fifa-slot"];
         if (decided) cls.push("decided");
         if (isWinner) cls.push("winner");
         else if (decided) cls.push("loser");
         if (champ && isWinner && teamKey === champ) cls.push("champ-path");
+        if (locked) cls.push("locked");
+        const content = (
+            <>
+                <img
+                    className="fifa-flag"
+                    loading="lazy"
+                    src={flagUrl(team.c)}
+                    srcSet={`${flagUrl(team.c, "w80")} 2x`}
+                    alt=""
+                />
+                <span className="fifa-name">{team.n}</span>
+            </>
+        );
+        if (locked) {
+            // a real, played result — shown but not changeable
+            return (
+                <div
+                    key={slot}
+                    className={cls.join(" ")}
+                    title="Final result — locked"
+                    aria-label={(isWinner ? "Winner: " : "") + team.n + (isWinner ? " (final result)" : "")}
+                >
+                    {content}
+                </div>
+            );
+        }
         return (
             <button
                 key={slot}
@@ -252,25 +285,22 @@ export function FifaPage() {
                 aria-label={(isWinner ? "Winner: " : "Pick ") + team.n}
                 onClick={() => pick(matchId, teamKey)}
             >
-                <img
-                    className="fifa-flag"
-                    loading="lazy"
-                    src={flagUrl(team.c)}
-                    srcSet={`${flagUrl(team.c, "w80")} 2x`}
-                    alt=""
-                />
-                <span className="fifa-name">{team.n}</span>
+                {content}
             </button>
         );
     };
 
     const renderMatch = (matchId: number) => {
         const pending = !slotTeam(winners, matchId, "a") && !slotTeam(winners, matchId, "b");
+        const locked = isLocked(matchId);
         return (
-            <div className={`fifa-match${pending ? " pending" : ""}`} key={matchId}>
+            <div
+                className={`fifa-match${pending ? " pending" : ""}${locked ? " locked" : ""}`}
+                key={matchId}
+            >
                 {renderSlot(matchId, "a")}
                 {renderSlot(matchId, "b")}
-                <span className="fifa-match-no">M{matchId}</span>
+                <span className="fifa-match-no">{locked ? "FT" : `M${matchId}`}</span>
             </div>
         );
     };
@@ -329,7 +359,7 @@ export function FifaPage() {
                         <Button variant="outline" size="sm" onClick={undo} disabled={!undoStack.length}>
                             <Undo2 /> Undo
                         </Button>
-                        <Button variant="outline" size="sm" onClick={reset} disabled={!pickedCount}>
+                        <Button variant="outline" size="sm" onClick={reset} disabled={pickedCount <= LOCKED_COUNT}>
                             <RotateCcw /> Reset
                         </Button>
                         <Button variant="default" size="sm" onClick={share}>
