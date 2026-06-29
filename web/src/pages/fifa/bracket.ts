@@ -98,6 +98,8 @@ export const TOTAL_MATCHES = ORDERED_IDS.length; // 31
 // always enforced over saved/shared/simulated state.
 export const RESULTS: Winners = {
   73: "CA", // Canada beat South Africa
+  74: "PY", // Paraguay beat Germany
+  76: "BR", // Brazil beat Japan
 };
 export function isLocked(matchId: number): boolean {
   return Object.prototype.hasOwnProperty.call(RESULTS, matchId);
