@@ -99,6 +99,7 @@ export const TOTAL_MATCHES = ORDERED_IDS.length; // 31
 export const RESULTS: Winners = {
   73: "CA", // Canada beat South Africa
   74: "PY", // Paraguay beat Germany
+  75: "MA", // Morocco beat Netherlands
   76: "BR", // Brazil beat Japan
 };
 export function isLocked(matchId: number): boolean {
