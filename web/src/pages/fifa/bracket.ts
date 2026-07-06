@@ -113,6 +113,10 @@ export const RESULTS: Winners = {
   86: "AR", // Argentina beat Cape Verde 3-2 (a.e.t.)
   87: "CO", // Colombia beat Ghana 1-0
   88: "EG", // Egypt beat Australia (4-2 on penalties)
+  // Round of 16
+  89: "FR", // France beat Paraguay 1-0
+  90: "MA", // Morocco beat Canada 3-0
+  91: "NO", // Norway beat Brazil 2-1
 };
 export function isLocked(matchId: number): boolean {
   return Object.prototype.hasOwnProperty.call(RESULTS, matchId);
