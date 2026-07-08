@@ -117,7 +117,11 @@ export const RESULTS: Winners = {
   89: "FR", // France beat Paraguay 1-0
   90: "MA", // Morocco beat Canada 3-0
   91: "NO", // Norway beat Brazil 2-1
-  92: "EN", // England beat Mexico
+  92: "EN", // England beat Mexico 3-2
+  93: "ES", // Spain beat Portugal
+  94: "BE", // Belgium beat United States 4-1
+  95: "AR", // Argentina beat Egypt 3-2 (came back from 2-0 down)
+  96: "CH", // Switzerland beat Colombia 4-3 on penalties (0-0)
 };
 export function isLocked(matchId: number): boolean {
   return Object.prototype.hasOwnProperty.call(RESULTS, matchId);
