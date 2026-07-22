@@ -1,0 +1,194 @@
+---
+title: Building a Live-Only Weather Radar
+description: |
+    I wanted a weather radar I could leave open while driving and understand with one glance,
+    which ruled out most of the controls that weather apps treat as mandatory. HyprRadar is the
+    result: a dark, live-only Flutter map backed by a Go API that never pretends an old scan is current.
+slug: building-a-live-only-weather-radar
+date: 2026-07-22
+tags: [flutter, go, mobile, weather]
+visible: false
+---
+
+# Building a Live-Only Weather Radar
+
+I wanted a weather radar I could leave open while driving and understand with one glance,
+which ruled out most of the controls that weather apps treat as mandatory. HyprRadar is the
+result: a dark, live-only Flutter map backed by a Go API that never pretends an old scan is current.
+
+Removing those controls sounds like a straightforward subtraction, but it turned into the main
+engineering problem. A slippy map is assembled from independently requested raster tiles, NOAA
+can publish a new observation while those tiles are loading, and my API is designed to run across
+more than one replica. If every tile request simply means "give me the latest image," one screen
+can quietly contain several different moments while still wearing a **LIVE** badge.
+
+I built [HyprRadar] around the opposite rule: the app asks for one observation, every tile is
+bound to it, and the old layer stays on screen until the replacement is ready. The repository
+contains the Flutter client, Go service, Kubernetes deployment, and the workflow that produces
+the signed Android release, so the interesting parts are all there to inspect.
+
+---
+
+The visible product is intentionally small. The default _Nearby radar_ mode opens on a dark
+[MapLibre] map with roads and place names, the device location, current reflectivity, active
+National Weather Service alert polygons, and an optional live-lightning layer. There is no
+forecast, playback loop, historical slider, or time selector.
+
+![HyprRadar showing live radar and weather alerts](/blog/building-a-live-only-weather-radar/live-radar.png)
+
+At broad zooms, the radar is the current quality-controlled [NWS RIDGE II] mosaic. It is really
+five regional NOAA layers covering the continental United States, Alaska, Hawaii, the Caribbean,
+and Guam. At zoom 7 the API can fetch only the local region, and at zoom 9 it can add one nearby
+WSR-88D station's super-resolution reflectivity across the whole viewport. The regional grid is
+roughly one kilometer; the station product is roughly 150 meters, so this adds actual detail
+instead of stretching the same pixels further.
+
+Choosing one station for the viewport matters. Picking a radar independently for each tile leaves
+hard seams where neighboring tiles choose different sites or scan times. HyprRadar follows the
+map center while browsing and the accepted device location while pinned, with a 20 km handoff
+margin so GPS movement near a boundary does not constantly rebuild the layer. If the station scan
+is unavailable or more than ten minutes behind its regional observation, the current mosaic stays
+visible underneath.
+
+Both reflectivity sources also use the same presentation floor of about 15 dBZ. The NOAA station
+image includes weak returns from things like insects, dust, ground clutter, and anomalous
+propagation that the quality-controlled mosaic has already removed. Filtering only the station
+layer made those blue echoes disappear and reappear whenever the mode changed, so the app applies
+one rain-focused floor to both. This is a display choice rather than meteorological quality
+control, and the legend says that weak returns are hidden.
+
+The station controls expose reflectivity and radial velocity, but only at the real `0.5°` tilt
+published by the current RIDGE service. The data model supports a list of elevations; the UI does
+not fill that list with several labels pointing at the same image. Higher tilts will require the
+Level-II ingest, decoder, and tile pipeline described in the repository rather than a convincing
+dropdown.
+
+---
+
+The backend's definition of _latest_ begins with a manifest. It includes `observedAt`,
+`receivedAt`, `checkedAt`, `ageSeconds`, and `stale`, plus an opaque 24-character version. For the
+aggregate view it also includes the exact observation time for every available region. The tile
+template carries that version and a compact signed snapshot of the component times.
+
+The signature is deliberately bound to both the binary payload and the public version:
+
+```go
+func signAggregateSnapshot(payload []byte, generation, key string) []byte {
+	mac := hmac.New(sha256.New, []byte(key))
+	domain := "radar.aggregate.v1\x00"
+	if len(payload) > 0 && payload[0] == aggregateSnapshotSchemaV2 {
+		domain = "radar.aggregate.v2\x00"
+	}
+	_, _ = mac.Write([]byte(domain))
+	_, _ = mac.Write([]byte(generation))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write(payload)
+	return mac.Sum(nil)[:aggregateSnapshotSignatureBytes]
+}
+```
+
+Schema 1 stores the five regional timestamps and a missing-region mask. Schema 2 adds the selected
+detail station, its exact scan time, and canonical coordinates. Any API replica with the shared
+HMAC key can validate the token and reconstruct the exact upstream WMS requests without a
+per-tile database lookup or access to the replica that created the manifest.
+
+This closes a surprisingly awkward race. Imagine the map requests twelve tiles from replica A,
+then NOAA publishes a scan before the remaining tiles reach replica B. Resolving `latest` inside
+each request produces a checkerboard of two observations. With the snapshot, each request carries
+the five times chosen before the first tile loaded, and the server sends those exact values in the
+upstream `TIME` parameter. A malformed, future-dated, mismatched, or tampered snapshot is rejected
+before it can cause upstream work.
+
+Station products use the same idea with a simpler generation. The API verifies that the requested
+scan still appears in NOAA's current WMS capabilities and allows a bounded 15-minute handoff after
+a newer scan appears, long enough for an existing map to finish loading. It never turns that grace
+period into a history endpoint, and an unlisted old timestamp is rejected rather than silently
+resolved to whatever is current now.
+
+---
+
+Generation-pinned URLs keep one layer internally consistent, but changing the URL still used to
+make the radar blink. A native raster source cannot change its tile template in place, so the first
+implementation removed the current source and installed the new one. That exposed the basemap
+while MapLibre fetched the replacement tiles.
+
+The client now treats its two native source slots as a small state machine. One is active while
+the other stages the next generation:
+
+```dart
+final candidate = RadarLayerCandidate(
+  slot: active.slot.other,
+  key: key,
+  resampling: resampling,
+);
+_pending = candidate;
+return RadarLayerTransition._(
+  kind: pending == null
+      ? RadarLayerTransitionKind.stage
+      : RadarLayerTransitionKind.supersede,
+  candidate: candidate,
+  retired: pending == null ? const [] : [pending],
+);
+```
+
+The pending layer is installed at `0.001` opacity rather than zero, which is enough to make the
+native renderer fetch its visible tiles without making it perceptible beneath the active layer.
+After MapLibre reports that the current viewport is idle, the client raises the pending layer to
+normal opacity and retires the old slot. If a newer scan arrives while that is happening, it
+supersedes only the hidden candidate; the complete image on screen is left alone.
+
+![HyprRadar's live radar mode controls](/blog/building-a-live-only-weather-radar/radar-modes.png)
+
+Reflectivity can use linear resampling during that swap, while radial velocity uses nearest
+neighbor because its color bins are categorical measurements. Crossfading those colors would
+invent values that the radar never reported.
+
+The update path is similarly conservative. Server-sent events announce new radar metadata while
+the app is in the foreground, with a 15-second poll as recovery after a disconnect or resume.
+Automatic alert refreshes join an in-flight request, and a manual retry during one queues a single
+follow-up instead of spawning duplicate work. When an upstream request fails, the last valid
+radar or alert geometry remains visible but is explicitly marked stale.
+
+---
+
+Radar ended up being only one of the live feeds on the map. The Go service polls the [NWS alerts
+API] once and fans the normalized result out to clients. Alerts with inline polygons are kept as
+published. Many NWS alerts identify forecast or county zones instead, so the service resolves
+those trusted zone geometries, caches them for 24 hours, and simplifies the combined shape before
+sending it to a phone. Tapping overlapping polygons opens a chooser rather than arbitrarily
+selecting the first warning under a finger.
+
+The optional lightning layer comes directly from the [GOES Geostationary Lightning Mapper] feeds
+for GOES-18 and GOES-19. The backend reads the short live window, removes duplicate and invalid
+records, and exposes approximate satellite-detected flash centroids over their own update stream.
+The first snapshot is a quiet baseline; only flashes first received afterward pulse on screen for
+about a second. The locations are delayed and approximate, and GLM measures total lightning rather
+than guaranteeing that a point was a cloud-to-ground strike.
+
+Location follows the same narrow contract. The normal map keeps the position on the device. The
+separately enabled _Near me_ background-alert mode rounds a fix to three decimal places and sends
+it only for a point-scoped NWS lookup; neither the app nor API writes that request coordinate to
+persistent storage. Android runs that check through [WorkManager] at roughly 15-minute intervals,
+which makes it useful supplemental notification rather than a replacement for Wireless Emergency
+Alerts or NOAA Weather Radio.
+
+That distinction is important throughout the project. Reflectivity is not exact rain at road
+level, radial velocity is movement toward or away from a station rather than surface wind, and a
+satellite flash centroid is not a strike-proximity alarm. The app can be direct about what each
+layer knows because it does not need to turn those feeds into a forecast or a safety claim.
+
+The source and the [signed Android APK] are available now. There is still plenty I want to do,
+especially the Level-II pipeline for real elevation selection, but the current version solves the
+thing I started with: open one map, glance at one coherent observation, and keep it current without
+pretending it is newer or more precise than it really is.
+
+Anyway, that's it. I thought this one was quite fun to build.
+
+{/* reference links */}
+[HyprRadar]: https://github.com/KeganHollern/radar-app
+[MapLibre]: https://github.com/maplibre/flutter-maplibre-gl
+[NWS RIDGE II]: https://www.weather.gov/radarfaq/
+[NWS alerts API]: https://www.weather.gov/documentation/services-web-alerts
+[GOES Geostationary Lightning Mapper]: https://goes-r.noaa.gov/spacesegment/glm.html
+[WorkManager]: https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work
+[signed Android APK]: https://github.com/KeganHollern/radar-app/releases/tag/v1.0.3
