@@ -1,0 +1,169 @@
+---
+title: Building a Live-Only Weather Radar
+description: |
+    I kept checking weather radar while driving and getting a playback timeline when I only wanted
+    the newest scan. So I made HyprRadar a map I could leave open and understand with one glance.
+slug: building-a-live-only-weather-radar
+date: 2026-07-22
+tags: [flutter, go, mobile, weather]
+visible: false
+---
+
+# Building a Live-Only Weather Radar
+
+I kept checking weather radar while driving and getting a playback timeline when I only wanted
+the newest scan. So I made HyprRadar a map I could leave open and understand with one glance.
+
+The first build looked correct as long as nothing changed. As soon as I panned the map or NOAA
+published another observation, it failed three different ways: the timestamp in a tile URL did
+not pin the tile, nearby station choices cut seams across the weather, and replacing a raster
+source made the whole layer disappear between scans.
+
+Those bugs all came from treating a radar layer like one image. [MapLibre] actually asks for a
+grid of images independently, sometimes through different API replicas, and it has no idea that
+twelve tile requests are supposed to describe the same observation. I had to make every one of
+those requests carry the same answer.
+
+![HyprRadar showing live radar and weather alerts](/blog/building-a-live-only-weather-radar/live-radar.png)
+
+The app itself is Flutter, backed by a Go API that talks to NOAA. At broad zooms it uses the five
+regional [NWS RIDGE II] reflectivity mosaics. At zoom 9 and above it can lay one station's roughly
+150-meter super-resolution scan over the roughly one-kilometer regional grid, which gives me real
+detail instead of a larger interpolation of the same pixels. Active NWS alert polygons and
+optional GOES lightning sit on the same map, but radar freshness is the part I refused to blur.
+
+---
+
+I assumed the observation timestamp in my first tile template pinned the image because every
+refresh produced a coherent-looking layer. The timestamp did change the cache key, but the API
+threw it away before making the WMS request and still asked NOAA for whatever was newest at that
+instant.
+
+It only broke during a rollover. A viewport needs several tiles, so the first requests could get
+one observation and the last could get the next. The cache then preserved both as a checkerboard
+under one **LIVE** badge. The aggregate view made this worse because it is not backed by one
+nationwide timestamp; CONUS, Alaska, Hawaii, the Caribbean, and Guam can each be on a different
+observation.
+
+My next pass carried a generation in every tile URL and remembered the matching regional times in
+a Go map for 15 minutes. It worked on one process. The Kubernetes deployment has two API replicas,
+so a phone could get its manifest from replica A, cross a NOAA rollover, and send its remaining
+tiles to replica B, which had never seen the older generation.
+
+The current manifest carries the answer with it. Alongside a 24-character version, the tile URL
+contains a compact snapshot of the exact observation time for every available region. When nearby
+detail is enabled, the snapshot also includes the selected station, its scan time, and its
+coordinates. The whole payload is signed with a key shared by the API replicas:
+
+```go
+func signAggregateSnapshot(payload []byte, generation, key string) []byte {
+	mac := hmac.New(sha256.New, []byte(key))
+	domain := "radar.aggregate.v1\x00"
+	if len(payload) > 0 && payload[0] == aggregateSnapshotSchemaV2 {
+		domain = "radar.aggregate.v2\x00"
+	}
+	_, _ = mac.Write([]byte(domain))
+	_, _ = mac.Write([]byte(generation))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write(payload)
+	return mac.Sum(nil)[:aggregateSnapshotSignatureBytes]
+}
+```
+
+Any replica can validate that token and rebuild the exact `TIME` parameters without asking the
+replica that created it. Binding the signature to the public version also means a client cannot
+mix a valid payload with another generation or manufacture timestamps that make the API fetch
+arbitrary old scans.
+
+The API keeps already-issued snapshots valid for 15 minutes because MapLibre may still be finishing
+the old viewport when a new scan appears. For station products, it also verifies that the requested
+scan still appears in NOAA's current capabilities. If it does not, the API rejects the tile instead
+of silently replacing the timestamp with the newest one.
+
+---
+
+The next bug showed up as a literal line through the weather around San Antonio. I had added the
+station detail tier by choosing a radar from each zoom-7 parent tile. Every child of that parent
+used the same station and scan, which sounded like enough to prevent seams. Two neighboring parent
+tiles could still choose different stations, and the boundary between them was exactly where the
+line appeared.
+
+Choosing the station inside the tile handler was the wrong level. HyprRadar now picks one station
+for the entire viewport before it asks for the aggregate manifest. While browsing, the choice
+follows the map center; while location-follow is pinned, it follows the accepted device location.
+A new station has to be at least 20 km closer before the app switches, so small GPS movements near
+a handoff boundary do not continually replace the layer.
+
+The API then resolves one exact station scan and puts it into the signed snapshot with the five
+regional times. If that station image is unavailable or more than ten minutes behind its regional
+observation, HyprRadar keeps the current mosaic underneath instead of drawing an older, sharper
+storm cell over a newer base.
+
+![HyprRadar's live radar mode controls](/blog/building-a-live-only-weather-radar/radar-modes.png)
+
+There were two smaller display traps in the same area. The quality-controlled mosaic has already
+removed a lot of weak clutter, while a raw station image still contains insects, dust, and other
+returns below about 15 dBZ. Applying that floor only to station tiles made blue noise appear and
+disappear as the mode changed, so both reflectivity paths now use the same visible floor. Radial
+velocity keeps nearest-neighbor resampling because blending its color bins would imply values NOAA
+did not report.
+
+The station sheet also exposes only the real `0.5°` tilt that RIDGE currently publishes. The data
+model can hold more elevations, but I am not filling a dropdown with several labels for the same
+image. Real higher tilts need the Level-II ingest and tile path that is still on the project list.
+
+---
+
+Once every tile agreed on its source and time, updates still looked bad. A native MapLibre raster
+source cannot have its tile template changed in place, so my first implementation did the literal
+thing: remove the visible layer and source, then add replacements. The basemap showed through while
+the new tiles downloaded, which meant every successful refresh briefly erased the radar.
+
+HyprRadar now keeps two native source slots. One remains active while the other stages the next
+generation:
+
+```dart
+final candidate = RadarLayerCandidate(
+  slot: active.slot.other,
+  key: key,
+  resampling: resampling,
+);
+_pending = candidate;
+return RadarLayerTransition._(
+  kind: pending == null
+      ? RadarLayerTransitionKind.stage
+      : RadarLayerTransitionKind.supersede,
+  candidate: candidate,
+  retired: pending == null ? const [] : [pending],
+);
+```
+
+The pending layer goes underneath the current one at `0.001` opacity. Zero opacity lets the native
+renderer decide there is nothing worth fetching; `0.001` keeps it renderable without making it
+visible through the active radar. Once MapLibre reports that the current viewport is idle, the app
+promotes the pending slot and removes the old one.
+
+NOAA can publish another observation while that replacement is still loading. When that happens,
+the newer generation supersedes only the hidden candidate. The complete layer on screen stays put
+until one replacement has loaded for the viewport the user is actually looking at, and moving the
+map clears any stale readiness signal before promotion.
+
+Server-sent events trigger the normal refresh, and a 15-second poll repairs a dropped connection or
+an app resume. Both feed the same staged swap, so neither clears the screen first. If NOAA or the
+API fails, the last valid layer remains visible with stale status until a complete replacement is
+available.
+
+For HyprRadar, _live-only_ now means more than removing a timeline. The observation stays fixed
+while its tiles load, any API replica can serve it, and the old layer remains on screen until the
+next observation is complete.
+
+The [source][HyprRadar] and [signed Android APK] are up. Level-II is still on my list because that
+is what real elevation selection needs. The current version handles the thing that kept bothering
+me: I can leave one map open, glance at it, and stop wondering whether half of the screen belongs
+to a different scan.
+
+{/* reference links */}
+[HyprRadar]: https://github.com/KeganHollern/radar-app
+[MapLibre]: https://github.com/maplibre/flutter-maplibre-gl
+[NWS RIDGE II]: https://www.weather.gov/radarfaq/
+[signed Android APK]: https://github.com/KeganHollern/radar-app/releases/tag/v1.0.3
