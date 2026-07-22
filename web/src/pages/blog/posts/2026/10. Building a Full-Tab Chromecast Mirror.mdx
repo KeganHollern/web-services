@@ -1,9 +1,9 @@
 ---
 title: Building a Full-Tab Chromecast Mirror
 description: |
-    Chrome's casting menu kept trying to identify the important video on a page. I wanted the whole
-    tab instead: the player, its overlays and subtitles, and only that Chrome window's audio,
-    without routing the rest of my Mac through the TV.
+    When I tried to cast a page, Chrome kept pulling out its dominant `<video>` element and leaving
+    the rest behind. I wanted the rendered tab around it too: overlays, subtitles, and audio from
+    that Chrome window without anything else on my Mac.
 slug: building-a-full-tab-chromecast-mirror
 date: 2026-07-22
 tags: [python, macos, chromecast, streaming]
@@ -12,9 +12,9 @@ visible: false
 
 # Building a Full-Tab Chromecast Mirror
 
-Chrome's casting menu kept trying to identify the important video on a page. I wanted the whole
-tab instead: the player, its overlays and subtitles, and only that Chrome window's audio,
-without routing the rest of my Mac through the TV.
+When I tried to cast a page, Chrome kept pulling out its dominant `<video>` element and leaving
+the rest behind. I wanted the rendered tab around it too: overlays, subtitles, and audio from
+that Chrome window without anything else on my Mac.
 
 The command I wanted was about this complicated:
 
@@ -22,21 +22,21 @@ The command I wanted was about this complicated:
 cast "https://example.com/watch"
 ```
 
-[fix-casting] opens that URL in a dedicated Chrome profile, captures the pixels after Chrome has
-rendered them, taps audio from only those Chrome processes, and feeds both into ffmpeg. A tiny HTTP
-server exposes the resulting HLS stream on the LAN and the Chromecast plays it through its normal
-media receiver. The tool never needs to find a `<video>` element, so whatever I can see in the tab
-is what arrives on the TV.
+[fix-casting] never looks for a `<video>` element. It opens that URL in a dedicated Chrome profile
+and treats the rendered pixels plus audio from those Chrome processes as the source. ffmpeg packages
+both as HLS, a tiny HTTP server makes the stream available on the LAN, and the Chromecast plays it
+through its normal media receiver. That leaves the page in charge of composition, so its subtitles
+and overlays survive without any site-specific extraction.
 
-The first screencast version was not pleasant. It froze after a few frames. Once that was fixed,
-motion still lurched whenever ffmpeg closed a segment, and a longer run could end with the audio
-several seconds ahead of the picture. I spent most of my time on that last problem, partly because
-I managed to prove the wrong cause more than once.
+The first screencast froze after a few frames. Once I fixed that, motion still lurched whenever
+ffmpeg closed a segment, and a longer run could put the audio several seconds ahead of the picture.
+The lip-sync bug took the longest because I managed to prove the wrong cause more than once.
 
 ![fix-casting pipeline](/blog/building-a-full-tab-chromecast-mirror/pipeline.svg)
 
-The diagram is the finished version. The awkward part is the queue hiding on the JPEG arrow,
-between a browser that paints whenever it wants and an encoder that needs one frame every 33 ms.
+The diagram is the finished version. The queue hiding on the JPEG arrow caused the longest detour.
+It sits between a browser that paints whenever it wants and an encoder that needs one frame every
+33 ms.
 
 ---
 
@@ -78,11 +78,12 @@ That stream is paint-driven. A busy page may send 60 frames in a second, while a
 none. The encoder still needs a constant rate, so `HLSStreamer` keeps only the newest captured JPEG
 and samples it on an exact cadence, repeating the last one when Chrome has not painted again.
 
-Originally that same timed loop wrote each sample to ffmpeg. Most writes were quick, but segment
-flushes and keyframes occasionally blocked `stdin.write()` for as long as 770 ms. The HLS timestamps
-were still evenly spaced; the pictures chosen for those timestamps were not, which made motion
-speed up and slow down. I split it into a sampler thread and a writer thread with a bounded queue
-between them. That queue fixed the judder, and later became the reason the audio wandered away.
+Originally that same timed loop wrote each sample to ffmpeg. Writes usually returned quickly, but
+segment flushes and keyframes occasionally blocked `stdin.write()` for as long as 770 ms. The HLS
+timestamps were still evenly spaced; the pictures chosen for those timestamps were not, which made
+motion speed up and slow down. I split it into a sampler thread and a writer thread with a bounded
+queue between them. That queue fixed the judder, and later became the reason the audio wandered
+away.
 
 ---
 
@@ -176,22 +177,21 @@ failures and combining them was what sent me after the wrong fix.
 
 ---
 
-After ffmpeg produces H.264 and AAC, the remaining path is fairly ordinary. A
-`ThreadingHTTPServer` serves the HLS playlist from the Mac's LAN address and [pychromecast] loads
-it in the default media receiver. Buffered mode uses four-second segments and keeps twelve in the
-playlist, which gives the TV roughly 45 seconds to ride through network trouble. `--no-buffered`
-uses one-second segments and a much smaller playlist when latency matters more.
+Once ffmpeg has H.264 and AAC, there is no custom Chromecast protocol left. A
+`ThreadingHTTPServer` serves the HLS playlist from the Mac's LAN address, and [pychromecast] asks
+the default media receiver to load it. Buffered mode uses four-second segments and keeps twelve in
+the playlist, which gives the TV roughly 45 seconds to ride through network trouble.
+`--no-buffered` uses one-second segments and a much smaller playlist when latency matters more.
 
-Full-tab capture does mean re-encoding pixels that may already have been compressed, and the
-buffered mode is not interactive. Per-process audio also keeps the current tool on macOS 14.2 or
-newer, and some players still need one click in the local Chrome window before they make sound.
-Those are acceptable for what I wanted: the page on the TV is the page in front of me, with none
-of the other Mac audio mixed into it.
+Full-tab capture means re-encoding pixels that may already have been compressed. The roughly
+45-second buffered delay makes interaction impractical. Per-process audio also keeps the current
+tool on macOS 14.2 or newer, and some players still need one click in the local Chrome window before
+they make sound. The page on the TV is still the page in front of me, with none of the other Mac
+audio mixed into it.
 
-The one-second queue is the compromise I ended up trusting. It still isolates the sampling clock
-from ffmpeg's uneven writes, but it no longer lets preserving old pictures turn a brief encoder
-stall into several seconds of bad lip-sync. The [source][fix-casting] and install steps are up if
-you want to try it.
+The queue is capped at one second now. That is enough to isolate the sampling clock from ffmpeg's
+uneven writes without letting old pictures turn a brief encoder stall into several seconds of bad
+lip-sync. The [source][fix-casting] and install steps are up if you want to try it.
 
 {/* reference links */}
 [fix-casting]: https://github.com/KeganHollern/fix-casting
