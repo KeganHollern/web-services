@@ -1,9 +1,9 @@
 ---
 title: Building a Full-Tab Chromecast Mirror
 description: |
-    Chrome's casting menu tries to identify the important video on a page. I wanted the opposite:
-    mirror the entire tab exactly as Chrome rendered it, keep every other app on my Mac out of the
-    audio, and send the result to the Chromecast as one predictable stream.
+    Chrome's casting menu kept trying to identify the important video on a page. I wanted the whole
+    tab instead: the player, its overlays and subtitles, and only that Chrome window's audio,
+    without routing the rest of my Mac through the TV.
 slug: building-a-full-tab-chromecast-mirror
 date: 2026-07-22
 tags: [python, macos, chromecast, streaming]
@@ -12,38 +12,44 @@ visible: false
 
 # Building a Full-Tab Chromecast Mirror
 
-Chrome's casting menu tries to identify the important video on a page. I wanted the opposite:
-mirror the entire tab exactly as Chrome rendered it, keep every other app on my Mac out of the
-audio, and send the result to the Chromecast as one predictable stream.
+Chrome's casting menu kept trying to identify the important video on a page. I wanted the whole
+tab instead: the player, its overlays and subtitles, and only that Chrome window's audio,
+without routing the rest of my Mac through the TV.
 
-The result is [fix-casting], a small Python CLI that opens a URL in a dedicated Chrome window and
-mirrors that window to a Chromecast or Google TV:
+The command I wanted was about this complicated:
 
 ```bash
 cast "https://example.com/watch"
 ```
 
-It doesn't inspect the page for a `<video>` element or hand the original media URL to the TV. It
-captures the pixels after Chrome has rendered the page, taps the audio from that Chrome instance,
-encodes both into HLS, and asks the Chromecast's normal media receiver to play the local stream.
-That distinction means overlays, subtitles, site controls, and anything else painted into the tab
-arrive on the TV too.
+[fix-casting] opens that URL in a dedicated Chrome profile, captures the pixels after Chrome has
+rendered them, taps audio from only those Chrome processes, and feeds both into ffmpeg. A tiny HTTP
+server exposes the resulting HLS stream on the LAN and the Chromecast plays it through its normal
+media receiver. The tool never needs to find a `<video>` element, so whatever I can see in the tab
+is what arrives on the TV.
+
+The first screencast version was not pleasant. It froze after a few frames. Once that was fixed,
+motion still lurched whenever ffmpeg closed a segment, and a longer run could end with the audio
+several seconds ahead of the picture. I spent most of my time on that last problem, partly because
+I managed to prove the wrong cause more than once.
 
 ![fix-casting pipeline](/blog/building-a-full-tab-chromecast-mirror/pipeline.svg)
 
-The diagram makes the project look almost too tidy. Each arrow crosses a different timing boundary,
-and most of the work went into stopping those boundaries from slowly pulling the stream apart.
+The diagram is the finished version. The awkward part is the queue hiding on the JPEG arrow,
+between a browser that paints whenever it wants and an encoder that needs one frame every 33 ms.
 
 ---
 
-The video side starts with Playwright and a persistent, isolated Chrome profile. A Chrome DevTools
-Protocol session calls [`Page.startScreencast`], which pushes a JPEG whenever the page paints. This
-is a much better fit than repeatedly asking Playwright for screenshots, but CDP has one important
-rule: every frame has to be acknowledged. If the acknowledgements stop, Chrome sends a few frames
-and then the cast appears to freeze.
+I started by taking repeated screenshots of the tab. That worked at low frame rates, but it was a
+poor source for smooth video. Chrome already has a push API for this in the DevTools Protocol:
+[`Page.startScreencast`] sends a JPEG whenever the page paints and can keep up with a 60 fps source.
 
-The current handler only places the event data in a queue. The browser loop acknowledges it before
-doing the base64 decode or handing the frame to the rest of the pipeline:
+My first attempt received a handful of images and then stopped. I assumed the event stream was
+flaky. It was waiting for `Page.screencastFrameAck`; Chrome stops sending when the consumer does
+not acknowledge what it already has.
+
+The callback now does almost nothing. It puts the data and session ID into a deque, then the browser
+loop acknowledges the frame before decoding it:
 
 ```python
 def on_screencast_frame(params: dict) -> None:
@@ -64,104 +70,85 @@ while pending:
         self._on_frame(base64.b64decode(data_b64))
 ```
 
-Keeping the callback small also avoids re-entering Playwright from inside one of its own CDP event
-callbacks. The loop pumps Playwright every five milliseconds, drains everything Chrome delivered,
-and records the capture timestamp so the stats view can report how old a frame already was when it
-reached Python.
+Keeping the acknowledgement outside the callback also avoids calling back into Playwright while it
+is dispatching its own CDP event. The loop pumps Playwright every five milliseconds and records the
+Chrome timestamp so the dashboard can tell me how stale a frame was before Python even decoded it.
 
-There is another mismatch here: screencast frames are _paint-driven_, while a TV stream needs a
-constant frame rate. A page can paint at 60 fps during motion and produce nothing when the image is
-still. ffmpeg and the Chromecast still expect a steady sequence of evenly spaced frames.
+That stream is paint-driven. A busy page may send 60 frames in a second, while a still page sends
+none. The encoder still needs a constant rate, so `HLSStreamer` keeps only the newest captured JPEG
+and samples it on an exact cadence, repeating the last one when Chrome has not painted again.
 
-`HLSStreamer` therefore stores only the latest captured JPEG. A sampler wakes on an exact cadence
-and enqueues that image, repeating the previous one when Chrome hasn't painted anything new. A
-separate writer thread drains the queue into ffmpeg as quickly as ffmpeg will accept it. Separating
-sampling from writing matters because an `stdin.write()` can stall while ffmpeg closes an HLS
-segment; if the same thread owned the clock, that one slow write would turn into visible judder.
-
----
-
-Audio was the part that made this a macOS project. The first implementation used a virtual system
-device, which meant changing the Mac's audio routing and capturing more than the cast browser. On
-macOS 14.2 Apple added per-process Core Audio taps, and [AudioTee] wraps that API in a small Swift
-binary that writes raw PCM to standard output.
-
-Because fix-casting launches Chrome with a unique `--user-data-dir`, it can find the processes that
-belong to that browser without touching an existing Chrome session. It tries the renderer PIDs,
-the audio-service process, and finally the browser process until AudioTee finds the one actively
-producing sound. The command it launches is deliberately narrow:
-
-```python
-command = [
-    str(binary),
-    "--include-processes",
-    *[str(pid) for pid in pids],
-    "--mute",
-    "--stereo",
-    "--chunk-duration",
-    str(chunk_duration),
-]
-process = subprocess.Popen(
-    command,
-    stdout=tap_write,
-    stderr=subprocess.PIPE,
-)
-```
-
-`--mute` stops the dedicated Chrome instance from also playing through the Mac speakers; it does
-not mute the rest of the machine. AudioTee's output pipe is passed directly into ffmpeg, with no
-Python relay thread between them. Putting a GIL-scheduled relay on a real-time PCM path caused
-under-runs and clicks whenever that thread was late.
-
-The native PCM format also has to be treated as data rather than an assumption. AudioTee reports
-its actual sample rate, channel count, bit depth, and encoding on `stderr`; fix-casting parses that
-metadata before constructing the ffmpeg input. Forcing a sample-rate conversion inside AudioTee
-created a discontinuity at every 100 ms chunk boundary, while assuming `s16le` for a device sending
-32-bit float produced noise. The current path preserves the device's native format until ffmpeg
-muxes it to AAC.
-
-The result is the bit I actually wanted from the beginning: only the cast browser goes to the TV,
-while music, notifications, and every other Mac application keep using the normal output device.
+Originally that same timed loop wrote each sample to ffmpeg. Most writes were quick, but segment
+flushes and keyframes occasionally blocked `stdin.write()` for as long as 770 ms. The HLS timestamps
+were still evenly spaced; the pictures chosen for those timestamps were not, which made motion
+speed up and slow down. I split it into a sampler thread and a writer thread with a bounded queue
+between them. That queue fixed the judder, and later became the reason the audio wandered away.
 
 ---
 
-Once video and audio were both present, I spent much longer than expected chasing lip-sync. There
-are four clocks involved: Chrome's capture timestamps, the sampler's monotonic 30 fps cadence,
-AudioTee's hardware audio clock, and the Chromecast's playback position. Any one of them can be
-healthy while a queue between two of them grows.
+Audio had its own run of bad assumptions. I started with BlackHole, a virtual system device. It
+worked, but it also changed the Mac's routing and captured anything else making sound. That was
+exactly what I was trying to avoid.
 
-Startup had an obvious version of this problem. Audio bytes are available immediately, while CDP
-can take a few seconds to deliver its first screencast frame. Starting ffmpeg before that frame
-anchors audio PTS zero to one moment and video PTS zero to a later one. `HLSStreamer.start()` now
-waits for the first published JPEG, drains any PCM that accumulated in the pipe, and only then
-spawns ffmpeg so both inputs begin together.
+On macOS 14.2 and newer, Core Audio can tap selected processes. [AudioTee] wraps that API in a small
+Swift binary, and the dedicated Chrome profile gives fix-casting a reliable way to find the
+renderer, audio-service, and browser PIDs belonging to this cast. The tap uses `--mute` for those
+processes only, so the cast browser does not also play through the speakers while every other app
+continues normally.
 
-ffmpeg's default input probing caused a second startup skew. Both inputs are fully specified raw
-streams, so there is nothing useful to discover, but ffmpeg would still spend several seconds
-analysing them. During that pause it wasn't draining the MJPEG pipe, which backed video up before
-the first segment had even been written. The input explicitly disables that probe:
+I first relayed AudioTee's PCM through a Python thread. Any late GIL scheduling stalled a real-time
+audio pipe and produced clicks, so ffmpeg now inherits the tap's read descriptor and consumes it
+directly. Then I forced AudioTee to output 44.1 kHz, which created a discontinuity at every 100 ms
+conversion chunk. Removing that conversion exposed my next assumption: I was still telling ffmpeg
+the pipe was `s16le`, but the native tap on my Mac was 32-bit float. The result was full-scale
+noise.
 
-```python
-cmd = [
-    "ffmpeg",
-    "-thread_queue_size", "1024",
-    "-probesize", "32",
-    "-analyzeduration", "0",
-    "-f", "image2pipe",
-    "-vcodec", "mjpeg",
-    "-framerate", str(self.fps),
-    "-i", "pipe:0",
-    # Raw PCM input and the remaining encoder/HLS arguments follow.
-]
-```
+The current code waits for AudioTee's metadata and treats the sample rate, channels, bit depth, and
+encoding as part of the stream. It preserves that native format until ffmpeg encodes AAC. There is
+no virtual output device and no Python thread in the PCM path.
 
-That fixed the initial offset, but a longer cast could still develop audio lead. The sampler and
-writer queue had been made deep enough to absorb eight seconds of encoder stalls. This preserved
-every sampled frame, but it also preserved stale video: audio continued straight into ffmpeg while
-old JPEGs waited their turn. Queue depth divided by frame rate was approximately the amount by
-which audio led the corresponding picture.
+---
 
-The queue is now bounded to one second and discards the oldest frame when ffmpeg remains behind:
+With clean audio and video arriving, the first sync problem was easy to reproduce. AudioTee begins
+filling its pipe immediately, while Chrome can take a few seconds to produce the first JPEG. If I
+started ffmpeg straight away, audio PTS zero and video PTS zero referred to different moments.
+
+`HLSStreamer.start()` now waits for the first published frame, drains the PCM already sitting in
+the OS pipe, and only then launches ffmpeg. I also disable ffmpeg's default input analysis with
+`-probesize 32 -analyzeduration 0`. Both raw inputs are fully specified, and letting ffmpeg spend
+about five seconds probing them only builds a video backlog before the first HLS segment exists.
+
+That got short casts close to zero offset. Leave one running, though, and audio could still creep
+ahead. Here is where I spent a lot of time fixing the wrong thing.
+
+The first theory was dropped video frames. The sampler queue was about one second deep, and rare
+ffmpeg stalls could overflow it. I thought every discarded frame permanently shortened the video
+timeline, so I raised the queue to four seconds. After a 62-minute run still dropped 15 frames, I
+raised it again to eight.
+
+I also blamed the audio device clock. One run looked roughly 100 parts per million fast, so I gave
+the raw PCM wall-clock timestamps and used ffmpeg's asynchronous resampler to pull it back toward
+the video clock. My clapboard harness liked this change: over two 18-minute tests the measured
+drift went from about 293 ms to 26 ms.
+
+Then I listened to the output. The audio was alternating between sound and silence because ffmpeg
+read the pipe in bursts, stamped those read times as if they were source timing, and inserted gaps
+to catch up. My test knew when a beep arrived after a flash; it did not know whether the audio
+between beeps was intact. I reverted the change and added a continuous-tone test before touching
+clock correction again.
+
+The dropped-frame theory failed the same way once I tested it directly. I induced between 148 and
+224 drops on the real audio path and the muxed output stayed within roughly 30 ms. Those drops made
+the picture stutter, but they did not accumulate into lip-sync drift.
+
+The useful test was much simpler: add a controlled delay after every write to ffmpeg and graph
+queue depth next to measured A/V offset. They moved together. In this pipeline, a JPEG receives its
+video timing when it reaches ffmpeg's `image2pipe`; if it waits `depth / fps` seconds in my queue,
+the direct audio path gets that far ahead of the picture. The eight-second queue I had added to
+protect every frame was preserving up to eight seconds of stale video.
+
+The current queue goes the other direction. It holds at most one second and drops the oldest JPEG
+when the writer cannot keep up:
 
 ```python
 self._frame_queue: deque[bytes] = deque()
@@ -169,49 +156,45 @@ self._queue_maxlen = max(1, self.fps)
 
 def _enqueue_frame(self, frame: bytes) -> None:
     with self._queue_cond:
+        dropped = 0
         if len(self._frame_queue) >= self._queue_maxlen:
             self._frame_queue.popleft()
+            dropped = 1
         self._frame_queue.append(frame)
+        depth = len(self._frame_queue)
         self._queue_cond.notify()
+    if self._stats is not None:
+        self._stats.record_queue(depth=depth, dropped=dropped)
 ```
 
-In normal operation the queue stays around one frame. Under sustained contention, dropping an old
-frame produces a brief stutter, but the picture catches up instead of letting the A/V offset grow
-for the rest of the cast. The Textual dashboard exposes that queue depth as estimated audio lead,
-alongside capture lag, ffmpeg write time, HLS segment age, and the TV's playback progress. There is
-also a live audio-offset control for a fixed residual delay and an optional parts-per-million audio
-clock correction for drift measured over a much longer session.
+During a healthy cast the writer keeps that queue around one or two frames, which measured about
+54 ms of lead in the A/V harness. If the encoder remains blocked, an old picture may be
+skipped, but the next one catches up instead of extending the offset for the rest of the session.
+The Textual dashboard now reports average queue depth divided by frame rate as estimated audio
+lead. Dropped frames are shown separately as video stutter, because those are two different
+failures and combining them was what sent me after the wrong fix.
 
 ---
 
-The output side is intentionally conventional. ffmpeg encodes H.264 and AAC into an HLS playlist,
-a tiny `ThreadingHTTPServer` exposes the playlist on the Mac's LAN address, and [pychromecast]
-loads that URL into the default media receiver. Buffered mode uses four-second segments and keeps
-twelve in the playlist, giving the TV roughly 45 seconds of material to ride through network or
-encoder hiccups. `--no-buffered` switches to one-second segments and a four-entry playlist when
-latency matters more than quality.
+After ffmpeg produces H.264 and AAC, the remaining path is fairly ordinary. A
+`ThreadingHTTPServer` serves the HLS playlist from the Mac's LAN address and [pychromecast] loads
+it in the default media receiver. Buffered mode uses four-second segments and keeps twelve in the
+playlist, which gives the TV roughly 45 seconds to ride through network trouble. `--no-buffered`
+uses one-second segments and a much smaller playlist when latency matters more.
 
-One project-specific wrinkle is that whatever the page renders becomes part of the video, including
-ads. The first ad-blocking implementation routed every request through Python, which stole enough
-CPU from the encoder to cause stutter on busy pages. The current version extracts about 6,500 safe
-blanket-domain rules from [uBlock Origin's filter lists] and hands them to Chrome once with
-`Network.setBlockedURLs`. It deliberately skips the much larger collection of element-hiding,
-path-specific, and site-scoped rules. Some first-party ads can still pass, but ordinary page
-requests no longer cross Python just to be allowed.
+Full-tab capture does mean re-encoding pixels that may already have been compressed, and the
+buffered mode is not interactive. Per-process audio also keeps the current tool on macOS 14.2 or
+newer, and some players still need one click in the local Chrome window before they make sound.
+Those are acceptable for what I wanted: the page on the TV is the page in front of me, with none
+of the other Mac audio mixed into it.
 
-There are honest trade-offs. Full-tab mirroring means re-encoding pixels that may already have been
-compressed once, buffered mode is nowhere near interactive, and per-process audio keeps the current
-tool on macOS 14.2 or newer. Some players still require a click in the local Chrome window before
-they produce audio. In exchange, the pipeline does not need a site-specific extractor and the TV
-receives the same page I can see on the Mac.
-
-Anyway, I thought this was a fun project because none of the individual pieces are especially
-unusual; the work was making their clocks and buffers agree. The source and install steps are up
-on GitHub if you want to try it.
+The one-second queue is the compromise I ended up trusting. It still isolates the sampling clock
+from ffmpeg's uneven writes, but it no longer lets preserving old pictures turn a brief encoder
+stall into several seconds of bad lip-sync. The [source][fix-casting] and install steps are up if
+you want to try it.
 
 {/* reference links */}
 [fix-casting]: https://github.com/KeganHollern/fix-casting
 [`Page.startScreencast`]: https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-startScreencast
 [AudioTee]: https://github.com/makeusabrew/audiotee
 [pychromecast]: https://github.com/home-assistant-libs/pychromecast
-[uBlock Origin's filter lists]: https://github.com/uBlockOrigin/uAssets
