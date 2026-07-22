@@ -325,8 +325,8 @@ export function FifaPage() {
     return (
         <>
             <PageMeta
-                title="FIFA Bracket — World Cup 2026 predictor"
-                description="Pick the winners of every World Cup 2026 knockout match and share your bracket."
+                title="FIFA Bracket — World Cup 2026 results"
+                description="See the completed World Cup 2026 knockout bracket and Spain's championship run."
             />
             <Header breadcrumbItems={breadcrumbs} />
             <main className="fifa flex flex-1 flex-col overflow-hidden">
@@ -342,7 +342,9 @@ export function FifaPage() {
                             variant="outline"
                             className={`fifa-progress${pickedCount === TOTAL_MATCHES ? " complete" : ""}`}
                         >
-                            {pickedCount} / {TOTAL_MATCHES} picked
+                            {LOCKED_COUNT === TOTAL_MATCHES
+                                ? "Tournament complete"
+                                : `${pickedCount} / ${TOTAL_MATCHES} picked`}
                         </Badge>
                         <Button
                             variant={fitMode ? "secondary" : "outline"}
@@ -353,7 +355,12 @@ export function FifaPage() {
                             {fitMode ? <Minimize2 /> : <Maximize2 />}
                             {fitMode ? "Fit" : "Full size"}
                         </Button>
-                        <Button variant="outline" size="sm" onClick={simulate}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={simulate}
+                            disabled={LOCKED_COUNT === TOTAL_MATCHES}
+                        >
                             <Shuffle /> Simulate
                         </Button>
                         <Button variant="outline" size="sm" onClick={undo} disabled={!undoStack.length}>

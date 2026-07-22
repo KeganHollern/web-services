@@ -130,6 +130,8 @@ export const RESULTS: Winners = {
   // Semi-finals
   101: "ES", // Spain beat France 2-0
   102: "AR", // Argentina beat England 2-1
+  // Final
+  104: "ES", // Spain beat Argentina 1-0 (a.e.t.)
 };
 export function isLocked(matchId: number): boolean {
   return Object.prototype.hasOwnProperty.call(RESULTS, matchId);
